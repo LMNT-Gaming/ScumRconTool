@@ -1,0 +1,150 @@
+{
+  "id": "a2_6_npcterror",
+  "name": "A2#6 Npcterror",
+  "enabled": true,
+  "mode": "SilentZone",
+  "includeInRandomizer": false,
+  "maxConcurrentRandomEvents": 0,
+  "cooldownMinutes": 180,
+  "cleanupWhenEmptySeconds": 300,
+  "zone": {
+    "name": "A2#6 Npcterror Aktivierzone",
+    "centerX": -241952.964,
+    "centerY": 162.818,
+    "centerZ": 3861.2,
+    "radius": 50000
+  },
+  "initiatorBlock": {
+    "name": "Initiator",
+    "enabled": true,
+    "commands": []
+  },
+  "preLiveCleanupBlock": {
+    "name": "Pre Live Cleanup",
+    "enabled": true,
+    "commands": [
+      {
+        "name": "Cleanup old loot chest/items",
+        "enabled": true,
+        "command": "#DestroyAllItemsWithinRadius all 20 Location \"[{X=-241949.109 Y=-496374.281 Z=3821.713|P=326.917236 Y=46.639786 R=0.000000}]\"",
+        "repeat": 1,
+        "delayMs": 250
+      }
+    ]
+  },
+  "liveBlock": {
+    "name": "Live",
+    "enabled": true,
+    "commands": [
+      {
+        "name": "Event started broadcast",
+        "enabled": true,
+        "command": "#Broadcast Red Eventzone A2#6 Npcterror started",
+        "repeat": 1,
+        "delayMs": 250
+      },
+      {
+        "name": "NPC Terror Guard 1",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[-242930.250 84.051 3395.196]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "NPC Terror Guard 2",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[-242656.641 103.995 3710.575]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "NPC Terror Guard 3",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[-240816.000 342.958 4228.744]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "NPC Terror Guard 4",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[-241392.125 129.057 4228.744]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "NPC Terror Guard 5",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[-242084.875 120.985 3821.713]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "NPC Terror Guard 6",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[-241841.750 312.038 3821.713]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      }
+    ]
+  },
+  "lootCommandPacks": [
+    {
+      "name": "Pack SKS",
+      "enabled": true,
+      "weight": 30,
+      "location": "[{X=-241949.109 Y=-496374.281 Z=3821.713|P=326.917236 Y=46.639786 R=0.000000}]",
+      "command": "#SpawnInventoryFullOf Improved_Wooden_Chest 1 Weapon_SKS 1 Magazine_Clip_SKS 2 Cal_7_62x39mm_Ammobox 2 WeaponSuppressor_AK15 1 ImprovisedRail_Side 1 Location \"[{X=-241949.109 Y=-496374.281 Z=3821.713|P=326.917236 Y=46.639786 R=0.000000}]\"",
+      "delayMs": 250
+    },
+    {
+      "name": "Pack Lockpick",
+      "enabled": true,
+      "weight": 40,
+      "location": "[{X=-241949.109 Y=-496374.281 Z=3821.713|P=326.917236 Y=46.639786 R=0.000000}]",
+      "command": "#SpawnInventoryFullOf Improved_Wooden_Chest 1 Lockpick_Advanced_Item 3 Screwdriver 2 MRE_TunaSalad 2 Open_Finger_Gloves_02 1 Location \"[{X=-241949.109 Y=-496374.281 Z=3821.713|P=326.917236 Y=46.639786 R=0.000000}]\"",
+      "delayMs": 250
+    },
+    {
+      "name": "Pack AWP",
+      "enabled": true,
+      "weight": 30,
+      "location": "[{X=-241949.109 Y=-496374.281 Z=3821.713|P=326.917236 Y=46.639786 R=0.000000}]",
+      "command": "#SpawnInventoryFullOf Improved_Wooden_Chest 1 Weapon_AWP 1 Magazine_AWP 2 Cal_308_Ammobox 2 WeaponScope_Dragunov 1 Location \"[{X=-241949.109 Y=-496374.281 Z=3821.713|P=326.917236 Y=46.639786 R=0.000000}]\"",
+      "delayMs": 250
+    },
+    {
+      "name": "Pack MK18",
+      "enabled": true,
+      "weight": 20,
+      "location": "[{X=-241949.109 Y=-496374.281 Z=3821.713|P=326.917236 Y=46.639786 R=0.000000}]",
+      "command": "#SpawnInventoryFullOf Improved_Wooden_Chest 1 Weapon_MK18 1 Magazine_M16 2 Cal_5_56x45mm_Ammobox 2 WeaponSuppressor_MK18 1 WeaponSights_MRO_Red_Dot 1 Location \"[{X=-241949.109 Y=-496374.281 Z=3821.713|P=326.917236 Y=46.639786 R=0.000000}]\"",
+      "delayMs": 250
+    }
+  ],
+  "emptyBlock": {
+    "name": "Zone leer",
+    "enabled": true,
+    "commands": [
+      {
+        "name": "Zone empty broadcast",
+        "enabled": true,
+        "command": "#Broadcast Yellow A2#6 Npcterror ist leer. Cooldown startet.",
+        "repeat": 1,
+        "delayMs": 250
+      }
+    ]
+  },
+  "cleanupBlock": {
+    "name": "Cleanup",
+    "enabled": true,
+    "commands": [
+      {
+        "name": "Cleanup loot after event",
+        "enabled": true,
+        "command": "#DestroyAllItemsWithinRadius all 20 Location \"[{X=-241949.109 Y=-496374.281 Z=3821.713|P=326.917236 Y=46.639786 R=0.000000}]\"",
+        "repeat": 1,
+        "delayMs": 250
+      }
+    ]
+  }
+}

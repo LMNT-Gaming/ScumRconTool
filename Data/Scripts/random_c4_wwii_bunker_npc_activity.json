@@ -1,0 +1,197 @@
+{
+  "id": "random_c4_wwii_bunker_npc_activity",
+  "name": "Random - C4 WWII Bunker NPC Activity",
+  "enabled": true,
+  "mode": "RandomAnnouncedZone",
+  "includeInRandomizer": true,
+  "randomizerEveryMinutes": 360,
+  "initiatorRepeatEveryMinutes": 30,
+  "announcementType": "Yellow",
+  "announcement": "Npc activity in an C4 WWII Bunker",
+  "activationZone": {
+    "name": "C4 WWII Bunker Aktivierzone",
+    "centerX": 577863.403,
+    "centerY": 114773.696,
+    "centerZ": 5944.446,
+    "radius": 50000
+  },
+  "initiatorBlock": {
+    "name": "InitiatorBlock - repeat announcement every 30 min",
+    "enabled": true,
+    "commands": [
+      {
+        "name": "C4 WWII Bunker Announcement",
+        "enabled": true,
+        "command": "#Broadcast Yellow Npc activity in an C4 WWII Bunker",
+        "repeat": 1,
+        "delayMs": 250
+      }
+    ]
+  },
+  "liveBlock": {
+    "name": "LiveBlock - C4 WWII Bunker guards and loot",
+    "enabled": true,
+    "commands": [
+      {
+        "name": "Eventzone started",
+        "enabled": true,
+        "command": "#Broadcast Red Eventzone started",
+        "repeat": 1,
+        "delayMs": 250
+      },
+      {
+        "name": "Guard 1 - C4 bunker",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=577619.688 Y=115714.336 Z=5962.507|P=326.101379 Y=35.249073 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 2 - C4 bunker",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=577944.062 Y=115230.352 Z=5972.030|P=327.367035 Y=199.606567 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 3 - C4 bunker",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=577946.062 Y=115013.141 Z=5962.507|P=330.374634 Y=170.639771 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 4 - C4 bunker",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=577853.938 Y=113946.719 Z=5961.788|P=347.187531 Y=350.455017 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 5 - C4 bunker",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=578140.938 Y=114679.562 Z=5962.442|P=342.122498 Y=337.000732 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 6 - C4 bunker",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=577594.312 Y=114046.977 Z=5961.863|P=345.921082 Y=117.455917 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 7 - C4 bunker",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=577741.188 Y=114209.156 Z=5961.863|P=344.338135 Y=136.767029 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      }
+    ]
+  },
+  "emptyBlock": {
+    "name": "EmptyBlock - C4 WWII Bunker cooldown",
+    "enabled": true,
+    "commands": [
+      {
+        "name": "C4 Bunker zone empty",
+        "enabled": true,
+        "command": "#Broadcast Yellow C4 WWII Bunker eventzone is empty. Event cooldown started.",
+        "repeat": 1,
+        "delayMs": 250
+      }
+    ]
+  },
+  "cleanupWhenEmptySeconds": 300,
+  "cooldownMinutes": 60,
+  "preLiveCleanupBlock": {
+    "name": "PreLiveCleanupBlock - alte Lootreste entfernen",
+    "enabled": true,
+    "commands": [
+      {
+        "name": "Cleanup loot radius 20 - spot 1",
+        "enabled": true,
+        "command": "#DestroyAllItemsWithinRadius all 20 Location \"[{X=577961.125 Y=115021.242 Z=5877.507|P=296.218018 Y=230.051529 R=0.000000}]\"",
+        "repeat": 1,
+        "delayMs": 300
+      },
+      {
+        "name": "Cleanup loot radius 20 - spot 2",
+        "enabled": true,
+        "command": "#DestroyAllItemsWithinRadius all 20 Location \"[{X=577969.312 Y=115101.781 Z=5877.507|P=316.004181 Y=302.388977 R=0.000000}]\"",
+        "repeat": 1,
+        "delayMs": 300
+      }
+    ]
+  },
+  "cleanupBlock": {
+    "name": "CleanupBlock - Lootreste nach leerer Zone entfernen",
+    "enabled": true,
+    "commands": [
+      {
+        "name": "Cleanup loot radius 20 - spot 1",
+        "enabled": true,
+        "command": "#DestroyAllItemsWithinRadius all 20 Location \"[{X=577961.125 Y=115021.242 Z=5877.507|P=296.218018 Y=230.051529 R=0.000000}]\"",
+        "repeat": 1,
+        "delayMs": 300
+      },
+      {
+        "name": "Cleanup loot radius 20 - spot 2",
+        "enabled": true,
+        "command": "#DestroyAllItemsWithinRadius all 20 Location \"[{X=577969.312 Y=115101.781 Z=5877.507|P=316.004181 Y=302.388977 R=0.000000}]\"",
+        "repeat": 1,
+        "delayMs": 300
+      }
+    ]
+  },
+  "lootPacks": [
+    {
+      "name": "Pack 1 - MK18",
+      "enabled": true,
+      "weight": 1,
+      "location": "[{X=577961.125 Y=115021.242 Z=5877.507|P=296.218018 Y=230.051529 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_MK18",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_M16",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_5_56x45mm_Ammobox",
+          "quantity": 2,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "Pack 2 - M16",
+      "enabled": true,
+      "weight": 1,
+      "location": "[{X=577961.125 Y=115021.242 Z=5877.507|P=296.218018 Y=230.051529 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_M16",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_M16",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_5_56x45mm_Ammobox",
+          "quantity": 2,
+          "delayMs": 250
+        }
+      ]
+    }
+  ],
+  "maxConcurrentRandomEvents": 1
+}
