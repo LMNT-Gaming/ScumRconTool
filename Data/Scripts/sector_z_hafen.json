@@ -1,0 +1,339 @@
+{
+  "id": "sector_z_hafen",
+  "name": "Sector Z - Hafen",
+  "enabled": true,
+  "mode": "SilentZone",
+  "includeInRandomizer": false,
+  "randomizerEveryMinutes": 360,
+  "initiatorRepeatEveryMinutes": 0,
+  "maxConcurrentRandomEvents": 0,
+  "activationZone": {
+    "name": "Sector Z - Hafen Aktivierzone",
+    "centerX": 421641.312,
+    "centerY": -646039.259,
+    "centerZ": 591.632,
+    "radius": 28000
+  },
+  "initiatorBlock": {
+    "name": "Silent initiator",
+    "enabled": true,
+    "commands": []
+  },
+  "preLiveCleanupBlock": {
+    "name": "PreLiveCleanup - alte Lootreste entfernen",
+    "enabled": true,
+    "commands": [
+      {
+        "name": "Cleanup loot 1 - Sector Z Hafen",
+        "enabled": true,
+        "command": "#DestroyAllItemsWithinRadius all 20 Location \"[{X=424562.969 Y=-652823.750 Z=347.684|P=339.746796 Y=26.899868 R=0.000000}]\"",
+        "repeat": 1,
+        "delayMs": 250
+      }
+    ]
+  },
+  "liveBlock": {
+    "name": "LiveBlock - Sector Z - Hafen",
+    "enabled": true,
+    "commands": [
+      {
+        "name": "Guard 1 - Sector Z Hafen",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=423372.469 Y=-653234.812 Z=188.001|P=355.577301 Y=3.210740 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 2 - Sector Z Hafen",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=424877.656 Y=-652214.250 Z=193.163|P=354.469360 Y=332.977692 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 3 - Sector Z Hafen",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=426267.312 Y=-651611.312 Z=193.027|P=351.145172 Y=340.417084 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 4 - Sector Z Hafen",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=424595.906 Y=-647991.438 Z=546.654|P=347.029602 Y=91.376526 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 5 - Sector Z Hafen",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=420137.594 Y=-641507.938 Z=486.410|P=347.188019 Y=58.294277 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 6 - Sector Z Hafen",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=418167.375 Y=-639139.438 Z=529.353|P=345.763367 Y=51.646263 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 7 - Sector Z Hafen",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=414070.875 Y=-636575.625 Z=2004.819|P=333.417053 Y=22.838167 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      }
+    ]
+  },
+  "lootPacks": [
+    {
+      "name": "AWM - Hafen Lootpoint 1",
+      "enabled": true,
+      "weight": 40,
+      "location": "[{X=424562.969 Y=-652823.750 Z=347.684|P=339.746796 Y=26.899868 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_AWM",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_AWM",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_338_Ammobox",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_338_Black",
+          "quantity": 2,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "AWP - Hafen Lootpoint 1",
+      "enabled": true,
+      "weight": 40,
+      "location": "[{X=424562.969 Y=-652823.750 Z=347.684|P=339.746796 Y=26.899868 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_AWP",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_AWP",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_308_Ammobox",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_308_Black",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "M249 - Hafen Lootpoint 1",
+      "enabled": true,
+      "weight": 60,
+      "location": "[{X=424562.969 Y=-652823.750 Z=347.684|P=339.746796 Y=26.899868 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_M249",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_M249",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_5_56x45mm_Ammobox",
+          "quantity": 4,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_MK18",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "M82 - Hafen Lootpoint 1",
+      "enabled": true,
+      "weight": 15,
+      "location": "[{X=424562.969 Y=-652823.750 Z=347.684|P=339.746796 Y=26.899868 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_M82A1_Black",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_M82A1",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_50BMG_Ammobox",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_M82A1_Black",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "MK18 - Hafen Lootpoint 1",
+      "enabled": true,
+      "weight": 40,
+      "location": "[{X=424562.969 Y=-652823.750 Z=347.684|P=339.746796 Y=26.899868 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_MK18",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_M16",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_5_56x45mm_Ammobox",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_MK18",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "RPK - Hafen Lootpoint 1",
+      "enabled": true,
+      "weight": 30,
+      "location": "[{X=424562.969 Y=-652823.750 Z=347.684|P=339.746796 Y=26.899868 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_RPK-74",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_RPK",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_7_62x39mm_Ammobox",
+          "quantity": 4,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_AK15",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "Scar-L - Hafen Lootpoint 1",
+      "enabled": true,
+      "weight": 50,
+      "location": "[{X=424562.969 Y=-652823.750 Z=347.684|P=339.746796 Y=26.899868 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_SCAR_L",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_M16",
+          "quantity": 4,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_5_56x45mm_Ammobox",
+          "quantity": 4,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_MK18",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "Scar - Hafen Lootpoint 1",
+      "enabled": true,
+      "weight": 50,
+      "location": "[{X=424562.969 Y=-652823.750 Z=347.684|P=339.746796 Y=26.899868 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_SCAR_DMR",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_SCAR_DMR",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_308_Ammobox",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_308_Black",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    }
+  ],
+  "emptyBlock": {
+    "name": "EmptyBlock - Zone leer",
+    "enabled": true,
+    "commands": []
+  },
+  "cleanupBlock": {
+    "name": "CleanupBlock - Loot entfernen",
+    "enabled": true,
+    "commands": [
+      {
+        "name": "Cleanup loot 1 - Sector Z Hafen",
+        "enabled": true,
+        "command": "#DestroyAllItemsWithinRadius all 20 Location \"[{X=424562.969 Y=-652823.750 Z=347.684|P=339.746796 Y=26.899868 R=0.000000}]\"",
+        "repeat": 1,
+        "delayMs": 250
+      }
+    ]
+  },
+  "cleanupWhenEmptySeconds": 300,
+  "cooldownMinutes": 180,
+  "lootPackSpawnMode": "OneTotal",
+  "eventGroup": "sector_z",
+  "maxConcurrentInGroup": 1
+}

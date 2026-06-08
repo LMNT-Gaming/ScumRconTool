@@ -1,0 +1,11 @@
+Patch: Weekly/Daily target dropdown + fishing_stats support
+
+- Added a selectable target list for Weekly/Daily Tasks in the Weekly Tasks tab.
+- Added StatTable support to task JSON: survival_stats or fishing_stats.
+- Existing JSON remains compatible: StatTable defaults to survival_stats.
+- Also supports shorthand StatColumn values like fishing_stats.fish_caught.
+- Added all provided survival_stats columns and fishing_stats columns to the allowed target catalog.
+- Squad contribution joins now use the selected source table:
+  selected_table.user_profile_id -> squad_member.user_profile_id -> squad.id -> squad.name
+- Default examples now include Zombie, Animal, and Fishing challenges.
+- Added a helper button: "Beispiel mit gewaehltem Ziel einfuegen".

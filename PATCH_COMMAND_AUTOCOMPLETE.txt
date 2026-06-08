@@ -1,0 +1,20 @@
+Patch: Command Autocomplete
+
+- Added Services/ScumCommandCatalog.cs with an offline SCUM command suggestion list.
+- Added MainViewModel.ScumCommandSuggestions for WPF binding.
+- Replaced the Join Commands command TextBox with an editable ComboBox.
+- Replaced the Chat Commands command TextBox with an editable ComboBox.
+- Users can still type free commands; the dropdown only provides suggestions.
+- ExecAs logic remains unchanged: when the checkbox is active, the backend inserts the matching SteamID automatically.
+
+Source basis for the initial suggestions: ScumWorld command overview, last update stated there as 23.12.2025.
+
+Patch Dropdown Styling:
+- Dunkles ComboBox-Template mit Red-Raven Akzent, abgerundeten Kanten und dunklem Popup hinzugefuegt.
+- ComboBoxItem Hover/Selection Styling angepasst.
+- Join-Option 'Nur einmal pro Session' in 'Nur einmal pro Join ausfuehren' umbenannt und Tooltip ergaenzt.
+
+Fix 2026-05-20:
+- ComboBox ToggleButton now inherits the dark ComboBox background, preventing the grey initial chrome.
+- Command suggestion ComboBoxes now bind through a Window-level CollectionViewSource so item templates and popups reliably receive the offline command list.
+- Command suggestion ComboBoxes now bind directly to the static ScumCommandCatalog.Commands list, avoiding DataTemplate/Popup DataContext issues.

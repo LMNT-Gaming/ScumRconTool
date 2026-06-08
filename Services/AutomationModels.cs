@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
 
@@ -10,6 +11,10 @@ public sealed class ChatAutomationRule
     public string MatchMode { get; set; } = "equals";
     public string Command { get; set; } = string.Empty;
     public string Response { get; set; } = string.Empty;
+    public int DelaySeconds { get; set; }
+
+    // Wenn aktiv, wird der Command automatisch als #ExecAs fuer den Spieler ausgefuehrt, der den Chat-Trigger geschrieben hat.
+    public bool ExecuteAsChatPlayer { get; set; }
 
     // Per default: ein Spieler kann dieselbe Regel nur alle 5 Minuten ausloesen.
     public int CooldownSeconds { get; set; } = 300;
@@ -34,6 +39,10 @@ public sealed class JoinAutomationRule
     public string Command { get; set; } = string.Empty;
     public bool OnlyOncePerSession { get; set; } = true;
     public int CooldownSeconds { get; set; } = 300;
+
+    // Wenn aktiv, wird der Command automatisch als #ExecAs fuer den joinenden Spieler ausgefuehrt.
+    // Die SteamID wird vom Backend eingesetzt. Der sichtbare Editor muss keine rohe JSON-Regel anzeigen.
+    public bool ExecuteAsJoinedPlayer { get; set; }
 
     // Bei Join-Regeln wird aus "#execas #shownameplates true" automatisch
     // "#execas {steamId} #shownameplates true".
@@ -76,8 +85,11 @@ public sealed class ChatLogMessage
 {
     public string PlayerName { get; init; } = string.Empty;
     public string SteamId { get; init; } = string.Empty;
+    public string Channel { get; init; } = string.Empty;
     public string Message { get; init; } = string.Empty;
     public string RawLine { get; init; } = string.Empty;
+
+    public bool IsGlobal => string.Equals(Channel?.Trim(), "Global", StringComparison.OrdinalIgnoreCase);
 }
 
 public sealed class PlayerJoinEvent
@@ -85,6 +97,7 @@ public sealed class PlayerJoinEvent
     public string PlayerName { get; init; } = string.Empty;
     public string SteamId { get; init; } = string.Empty;
     public string RawLine { get; init; } = string.Empty;
+    public DateTime? LoggedAtUtc { get; init; }
 
     public string SessionKey => !string.IsNullOrWhiteSpace(SteamId) ? SteamId : (!string.IsNullOrWhiteSpace(PlayerName) ? PlayerName : RawLine);
 }
@@ -108,6 +121,7 @@ public static partial class AutomationLogParser
         {
             PlayerName = match.Groups["name"].Value.Trim().Trim('"', '\'', '[', ']'),
             SteamId = match.Groups["steamid"].Success ? match.Groups["steamid"].Value.Trim() : string.Empty,
+            Channel = match.Groups["channel"].Success ? match.Groups["channel"].Value.Trim() : string.Empty,
             Message = message,
             RawLine = line
         };
@@ -124,15 +138,29 @@ public static partial class AutomationLogParser
             return null;
         }
 
-        var match = JoinRegex1().Match(line);
+        var match = ScumLoginRegex().Match(line);
+        if (!match.Success) match = JoinRegex1().Match(line);
         if (!match.Success) match = JoinRegex2().Match(line);
+        if (!match.Success) return null;
 
         return new PlayerJoinEvent
         {
-            PlayerName = match.Success && match.Groups["name"].Success ? match.Groups["name"].Value.Trim().Trim('"', '\'', '[', ']') : string.Empty,
-            SteamId = match.Success && match.Groups["steamid"].Success ? match.Groups["steamid"].Value.Trim() : string.Empty,
+            PlayerName = match.Groups["name"].Success ? match.Groups["name"].Value.Trim().Trim('"', '\'', '[', ']') : string.Empty,
+            SteamId = match.Groups["steamid"].Success ? match.Groups["steamid"].Value.Trim() : string.Empty,
+            LoggedAtUtc = TryParseScumTimestampUtc(match.Groups["ts"].Success ? match.Groups["ts"].Value : string.Empty),
             RawLine = line
         };
+    }
+
+    private static DateTime? TryParseScumTimestampUtc(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        if (!DateTime.TryParseExact(value, "yyyy.MM.dd-HH.mm.ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var localTime))
+        {
+            return null;
+        }
+
+        return DateTime.SpecifyKind(localTime, DateTimeKind.Local).ToUniversalTime();
     }
 
     public static bool IsMatch(ChatAutomationRule rule, string message)
@@ -175,7 +203,13 @@ public static partial class AutomationLogParser
 
     public static bool TryBuildChatCommand(ChatAutomationRule rule, ChatLogMessage message, out string command, out string error)
     {
-        command = ApplyPlaceholders(rule.Command, message);
+        var template = rule.Command ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(template) && rule.ExecuteAsChatPlayer && !StartsWithExecas(template))
+        {
+            template = "#ExecAs " + template.Trim();
+        }
+
+        command = ApplyPlaceholders(template, message);
         error = string.Empty;
         if (string.IsNullOrWhiteSpace(command)) return true;
 
@@ -261,7 +295,13 @@ public static partial class AutomationLogParser
 
     public static bool TryBuildJoinCommand(JoinAutomationRule rule, PlayerJoinEvent join, out string command, out string error)
     {
-        command = ApplyPlaceholders(rule.Command, join);
+        var template = rule.Command ?? string.Empty;
+        if (rule.ExecuteAsJoinedPlayer && !StartsWithExecas(template))
+        {
+            template = "#ExecAs " + template.Trim();
+        }
+
+        command = ApplyPlaceholders(template, join);
         error = string.Empty;
         if (string.IsNullOrWhiteSpace(command)) return true;
 
@@ -317,6 +357,9 @@ public static partial class AutomationLogParser
 
     [GeneratedRegex(@"Chat.*?(?<name>[^:]+?)\s*:\s*(?<message>.+)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex ChatRegex3();
+
+    [GeneratedRegex(@"^(?<ts>\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}\.\d{2}):\s*'[^']*?\s+(?<steamid>\d{10,}):(?<name>.+?)\(\d+\)'\s+logged in at:", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex ScumLoginRegex();
 
     [GeneratedRegex(@"(?<name>[A-Za-z0-9_\- .]+).*?(?<steamid>\d{10,}).*?(join|login|logged in|connected)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex JoinRegex1();

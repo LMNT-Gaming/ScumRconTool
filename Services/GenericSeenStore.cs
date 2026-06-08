@@ -5,22 +5,19 @@ using System.IO;
 
 namespace ScumRconTool.Services;
 
-public sealed class KillLogSeenStore
+public sealed class GenericSeenStore
 {
     private readonly string _path;
     private readonly HashSet<string> _seen = new(StringComparer.OrdinalIgnoreCase);
 
-    public KillLogSeenStore()
+    public GenericSeenStore(string fileName)
     {
-        _path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ScumRconTool", "killlog-seen.json");
+        _path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ScumRconTool", fileName);
         Load();
     }
 
-    public bool IsEmpty => _seen.Count == 0;
-
-    public bool Add(KillLogEntry entry) => _seen.Add(Hash(entry.Key));
-
-    public bool Contains(KillLogEntry entry) => _seen.Contains(Hash(entry.Key));
+    public bool Add(string value) => _seen.Add(Hash(value));
+    public bool Contains(string value) => _seen.Contains(Hash(value));
 
     public void Save()
     {

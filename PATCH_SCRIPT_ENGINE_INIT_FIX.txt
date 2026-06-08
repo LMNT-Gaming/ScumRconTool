@@ -1,0 +1,9 @@
+Patch: Script Engine Initialisierung / AutoStart Resilienz
+
+- Script Engine startet jetzt ohne vorherige harte RCON-Verbindung.
+- RCON wird beim ersten Scan/Command automatisch verbunden.
+- Wenn RCON beim Serverrestart nicht erreichbar ist, beendet sich die Engine nicht mehr.
+- Fehler im Poll werden geloggt und beim naechsten Poll erneut versucht.
+- SilentZone-Skripte werden direkt beim Engine-Start auf Initiated gesetzt.
+- Start-Button setzt eine bereits laufende Engine nicht mehr zurueck.
+- Regelmaessiger Health-Log zeigt, wie viele Scripts initiiert/live/cooldown sind.

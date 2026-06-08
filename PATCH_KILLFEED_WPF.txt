@@ -1,0 +1,11 @@
+Killfeed WPF Patch
+
+- Added Kill Feed tab and sidebar navigation.
+- Added Dashboard/sidebar status for Kill Feed.
+- Added KillFeedAutomationService.
+- Uses SftpLogService and downloads the latest matching kill log into Logs/Kill.
+- Uses KillLogSeenStore to avoid duplicate broadcasts after restarts.
+- First run only memorizes existing kill entries to avoid spamming old kills.
+- New kills are sent ingame as: #Broadcast Blue <formatted text>.
+- Settings added to UI: AutoStartKillFeed, FtpKillLogPattern, KillPollSeconds, KillAnnounceTemplate.
+- AutoStartConfiguredAsync now starts Killfeed when AutoStartKillFeed is true.

@@ -1,0 +1,31 @@
+RCON Stability / Anti-RateLimit Patch
+====================================
+
+Ziel:
+- Keine RCON Auth-/Reconnect-Stuerme mehr, wenn mehrere Services gleichzeitig pollen.
+- ObjectDisposedException auf SemaphoreSlim vermeiden.
+- ggCON RateLimit/temporäre IP-Bans durch zu schnelle Reconnects reduzieren.
+
+Geaendert:
+1. SourceRconClient
+   - Zentraler Send-Lock bleibt erhalten.
+   - Mindestabstand zwischen RCON-Kommandos: ca. 900 ms.
+   - Reconnects/Auth-Versuche bekommen Backoff:
+     15s, 30s, 60s, 120s, danach 300s.
+   - Nach Auth-/Connect-Fehler wird nicht sofort weitergehämmert.
+   - Dispose wird nur noch als echter Shutdown betrachtet.
+   - ReconnectAsync nutzt denselben Client/Lock statt mehrere parallele Clients zu erzeugen.
+
+2. MainViewModel
+   - ConnectRconAsync ersetzt die RCON-Instanz nicht mehr bei jedem Connect.
+   - Bestehende RCON-Instanz wird wiederverwendet, solange Host/Port/Passwort gleich sind.
+   - Wenn RCON-Zugangsdaten geaendert wurden, werden RCON-Verbraucher zuerst gestoppt.
+   - #ListPlayersJson wird fuer 25 Sekunden gecached.
+     Discord Playerlist, Weekly/Daily Online-Check und Auto Messages loesen dadurch nicht gleichzeitig mehrere Player-Scans aus.
+
+3. EventEngine
+   - ObjectDisposedException beendet den Script-Engine-Loop jetzt sauber.
+   - Normale Fehler bleiben retryfaehig, aber RCON-Reconnects sind im Client gedrosselt.
+
+Hinweis:
+- dotnet build konnte in dieser Umgebung nicht ausgefuehrt werden, weil dotnet hier nicht installiert ist.

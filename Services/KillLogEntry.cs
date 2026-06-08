@@ -1,3 +1,4 @@
+using System.IO;
 namespace ScumRconTool.Services;
 
 public sealed class KillLogEntry

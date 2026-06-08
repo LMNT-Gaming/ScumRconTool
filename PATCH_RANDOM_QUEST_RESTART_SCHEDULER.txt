@@ -1,0 +1,9 @@
+Random Quest Restart Scheduler Patch
+
+- RandomAnnouncedZone Events werden nicht mehr ueber randomizerEveryMinutes gestartet, wenn RandomQuestScheduledMode aktiv ist.
+- Standard-Restart-Zeiten lokal: 04:00, 10:00, 16:00, 22:00.
+- Direkt nach einem Restart-Zeitpunkt wird ein Random Event initiiert.
+- Nach RandomQuestIntervalMinutes, standard 60, wird das naechste Random Event initiiert.
+- Bereits initiierte/live Random Events blockieren den naechsten Slot nicht mehr.
+- Bei neuem Restart-Zyklus werden Random-Runtime-States zurueckgesetzt. SilentZone Events bleiben unveraendert immer scharf und resetten nach Cleanup/Cooldown.
+- Settings im Hauptprogramm ergaenzt.

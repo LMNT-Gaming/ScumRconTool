@@ -1,0 +1,10 @@
+Killfeed patch
+
+- KillLogParser now explicitly handles current SCUM UTF-16 LE kill lines:
+  yyyy.MM.dd-HH.mm.ss: Died: Victim (...), Killer: Killer (...) Weapon: ... Distance: ...
+- JSON detail lines are ignored to avoid duplicate broadcasts for the same kill.
+- UTF-16 LE reading remains the default for logs without BOM.
+
+Note:
+The first run of the killfeed still only marks existing kills as seen and does not broadcast old kills.
+Only kills added after the first scan are broadcast.

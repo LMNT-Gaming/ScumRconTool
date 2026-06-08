@@ -1,0 +1,21 @@
+Auto Messages Tab
+-----------------
+- Neuer Tab "Auto Messages".
+- Sendet per #Broadcast alle N Minuten einen Flow-Schritt in den Ingame-Chat.
+- Optional nur wenn Spieler online sind.
+- Flow wird als JSON gepflegt.
+- Type="Challenges" erzeugt aktuelle Weekly/Daily Challenge-Staende.
+- Type="Text" sendet einen festen Text.
+
+Ablauf:
+Start -> Intervall warten -> Spieler online? -> Flow-Schritt holen ->
+  - Challenges: SCUM.db lesen und aktive Aufgaben formatieren
+  - Text: Text aus Flow senden
+-> #Broadcast -> naechster Flow-Schritt
+
+Beispiel:
+[
+  { "Type": "Challenges", "MessageType": "Cyan" },
+  { "Type": "Text", "Text": "Gebt /help ein fuer Hilfe.", "MessageType": "Yellow" },
+  { "Type": "Text", "Text": "Joint Discord fuer alle Updates und Funktionen.", "MessageType": "Green" }
+]

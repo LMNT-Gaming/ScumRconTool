@@ -1,0 +1,9 @@
+Patch: Join Commands
+
+- Adds a dedicated Join Commands tab.
+- Reads the latest login log via SFTP using FtpLoginLogPattern.
+- Saves byte positions per login log file in LocalAppData/ScumRconTool/State/join-command-positions.json.
+- Schedules delayed commands per join line and stores pending/executed state in LocalAppData/ScumRconTool/State/join-command-state.json.
+- Default rule: after 300 seconds run #execas <SteamID> #ShowNameplates true.
+- RCON is only connected when a delayed command is due, so server restarts do not stop the service.
+- Pending join commands remain pending when RCON is temporarily unavailable and will be retried on the next poll.

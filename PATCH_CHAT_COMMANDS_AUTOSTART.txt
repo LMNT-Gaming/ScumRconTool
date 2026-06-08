@@ -1,0 +1,6 @@
+Patch: Chat Commands Autostart resilience
+
+- Start button now persists AutoStartChatCommands=true.
+- Stop button persists AutoStartChatCommands=false.
+- AutoStartConfiguredAsync catches/logs individual startup errors so one failed feature does not block the rest.
+- Chat Commands no longer require an immediate RCON connection on start. The loop starts and polls SFTP; RCON connects only when a matching rule needs to execute.

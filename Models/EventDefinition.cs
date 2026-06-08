@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
+using System.IO;
 namespace ScumRconTool.Models;
 
 public sealed class EventDefinition
@@ -24,6 +25,17 @@ public sealed class EventDefinition
     // 1 = immer nur ein Random-Event gleichzeitig in Initiated/Live/CleanupPending.
     // 0 = kein Limit. Das kleinste positive Limit aller aktivierten Random-Scripts gewinnt.
     public int MaxConcurrentRandomEvents { get; set; } = 1;
+
+    // Optional: Scripts mit derselben Gruppe blockieren sich gegenseitig.
+    // Beispiel: Sector-Z-Unterzonen koennen alle eventGroup="sector_z" nutzen,
+    // damit nicht mehrere ueberlappende Zonen gleichzeitig live gehen.
+    public string EventGroup { get; set; } = "";
+    public int MaxConcurrentInGroup { get; set; } = 0;
+
+    // Loot-Auswahl:
+    // OneTotal/Single = genau ein Pack insgesamt.
+    // OnePerLocation = je Location genau ein Pack aus den Packs dieser Location.
+    public string LootPackSpawnMode { get; set; } = "OneTotal";
 
     // Backward-compatible Felder aus Phase 2.
     public int AnnounceEveryMinutes { get; set; } = 360;
@@ -78,7 +90,7 @@ public sealed class EventDefinition
                     Enabled = true,
                     Command = $"#Broadcast {AnnouncementType} {Announcement}",
                     Repeat = 1,
-                    DelayMs = 250
+                    DelayMs = 50
                 }
             };
         }
@@ -122,7 +134,7 @@ public sealed class EventCommand
     public bool Enabled { get; set; } = true;
     public string Command { get; set; } = "";
     public int Repeat { get; set; } = 1;
-    public int DelayMs { get; set; } = 250;
+    public int DelayMs { get; set; } = 50;
 }
 
 public sealed class LootPack
@@ -155,14 +167,14 @@ public sealed class LootCommandPack
     // #SpawnInventoryFullOf Improved_Wooden_Chest 1 Weapon_SKS 1 ... Location "[{X=...}]"
     public string Command { get; set; } = "";
 
-    public int DelayMs { get; set; } = 250;
+    public int DelayMs { get; set; } = 50;
 }
 
 public sealed class LootItem
 {
     public string Item { get; set; } = "";
     public int Quantity { get; set; } = 1;
-    public int DelayMs { get; set; } = 250;
+    public int DelayMs { get; set; } = 50;
 }
 
 public enum EventRuntimeState

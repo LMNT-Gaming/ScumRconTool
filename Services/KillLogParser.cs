@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.IO;
 
 namespace ScumRconTool.Services;
 
@@ -52,6 +53,31 @@ public static partial class KillLogParser
     {
         if (string.IsNullOrWhiteSpace(line)) return null;
         var raw = line.Trim();
+
+        // SCUM writes each kill twice in current logs:
+        // 1) a readable line: "Died: Victim (...), Killer: Killer (...) Weapon: ..."
+        // 2) a JSON detail line with Killer/Victim objects.
+        // We use the readable line and ignore the JSON detail line to avoid duplicate broadcasts.
+        if (raw.Contains("\"Killer\"", StringComparison.OrdinalIgnoreCase)
+            && raw.Contains("\"Victim\"", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var died = ScumDiedRegex().Match(raw);
+        if (died.Success)
+        {
+            return new KillLogEntry
+            {
+                Timestamp = TryParseTimestamp(raw),
+                Killer = CleanValue(died.Groups["killer"].Value),
+                Victim = CleanValue(died.Groups["victim"].Value),
+                Weapon = died.Groups["weapon"].Success ? CleanValue(died.Groups["weapon"].Value) : "",
+                Distance = died.Groups["distance"].Success ? CleanValue(died.Groups["distance"].Value + " m") : "",
+                RawLine = raw,
+                SourceFile = sourceFile
+            };
+        }
 
         var killer = FindNamedValue(raw, "killer") ?? FindNamedValue(raw, "attacker") ?? FindNamedValue(raw, "instigator");
         var victim = FindNamedValue(raw, "victim") ?? FindNamedValue(raw, "killed") ?? FindNamedValue(raw, "target");
@@ -121,6 +147,9 @@ public static partial class KillLogParser
             ? dt
             : DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out dt) ? dt : null;
     }
+
+    [GeneratedRegex("(?i)^(?:\\d{4}\\.\\d{2}\\.\\d{2}-\\d{2}\\.\\d{2}\\.\\d{2}:\\s*)?Died:\\s*(?<victim>.+?)(?:\\s*\\([^)]*\\))?,\\s*Killer:\\s*(?<killer>.+?)(?:\\s*\\([^)]*\\))?\\s+Weapon:\\s*(?<weapon>.+?)(?:\\s+S:\\[.*?Distance:\\s*(?<distance>[0-9.,]+)\\s*m.*\\])?$")]
+    private static partial Regex ScumDiedRegex();
 
     [GeneratedRegex("(?i)(?<killer>.+?)\\s+(?:killed|eliminated|murdered)\\s+(?<victim>.+?)(?:\\s+(?:with|using)\\s+(?<weapon>.+?))?(?:\\s+(?:from|distance)\\s+(?<distance>[0-9.,]+\\s*m?))?$")]
     private static partial Regex KilledRegex();

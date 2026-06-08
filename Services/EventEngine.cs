@@ -16,17 +16,25 @@ public sealed class EventEngine : IDisposable
     private readonly Action? _stateChanged;
     private readonly List<EventRuntime> _events;
     private readonly Random _random = new();
+    private readonly BotSettings? _settings;
+    private string? _scheduledRandomCycleKey;
+    private int _scheduledRandomLastSlotStarted = -1;
+    private readonly HashSet<string> _scheduledRandomStartedIds = new(StringComparer.OrdinalIgnoreCase);
+    private DateTime _lastScheduledRandomWaitLogUtc = DateTime.MinValue;
     private CancellationTokenSource? _cts;
     private Task? _loopTask;
     private DateTime _lastRandomizerLimitLogUtc = DateTime.MinValue;
+    private DateTime _lastEngineHealthLogUtc = DateTime.MinValue;
+    private DateTime _lastZoneDiagnosticLogUtc = DateTime.MinValue;
 
     public bool IsRunning => _loopTask is not null && !_loopTask.IsCompleted;
 
-    public EventEngine(SourceRconClient rcon, IEnumerable<EventDefinition> definitions, Action<string> log, Action? stateChanged = null)
+    public EventEngine(SourceRconClient rcon, IEnumerable<EventDefinition> definitions, Action<string> log, Action? stateChanged = null, BotSettings? settings = null)
     {
         _rcon = rcon;
         _log = log;
         _stateChanged = stateChanged;
+        _settings = settings;
         _events = definitions.Select(x => new EventRuntime(x)).ToList();
     }
 
@@ -34,12 +42,21 @@ public sealed class EventEngine : IDisposable
 
     public void Start(int pollSeconds)
     {
-        if (IsRunning) return;
+        if (IsRunning)
+        {
+            _log("Script Engine laeuft bereits. Start wurde ignoriert, damit Runtime-States nicht zurueckgesetzt werden.");
+            LogRuntimeSummary("Aktueller Script-Status");
+            return;
+        }
+
         if (pollSeconds < 2) pollSeconds = 2;
+
+        InitializeLocalStates(DateTime.UtcNow);
 
         _cts = new CancellationTokenSource();
         _loopTask = Task.Run(() => LoopAsync(TimeSpan.FromSeconds(pollSeconds), _cts.Token));
         _log($"Script Engine gestartet. Poll: {pollSeconds}s");
+        LogRuntimeSummary("Script Engine Initialisierung");
         _stateChanged?.Invoke();
     }
 
@@ -85,10 +102,16 @@ public sealed class EventEngine : IDisposable
             {
                 break;
             }
-            catch (Exception ex)
+            catch (ObjectDisposedException ex) when (!cancellationToken.IsCancellationRequested)
             {
-                _log("Script Engine Fehler: " + ex.Message);
-                throw;
+                _log("Script Engine Fehler: RCON-Client wurde beendet. Engine-Loop wird gestoppt, um Reconnect-/Auth-Spam zu verhindern.");
+                AppLogService.WriteException("ScriptEngine.Loop.ObjectDisposed", ex);
+                break;
+            }
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                _log("Script Engine Fehler: " + ex.Message + " - Engine bleibt aktiv, aber RCON-Reconnects sind jetzt gedrosselt.");
+                AppLogService.WriteException("ScriptEngine.Loop", ex);
             }
 
             try
@@ -113,21 +136,29 @@ public sealed class EventEngine : IDisposable
     private async Task EvaluateAsync(List<ScumPlayer> players, CancellationToken cancellationToken)
     {
         var now = DateTime.UtcNow;
+        InitializeLocalStates(now);
 
-        foreach (var runtime in _events.Where(e => e.Definition.Enabled))
+
+        if (_settings?.RandomQuestScheduledMode == true)
         {
-            if (runtime.State == EventRuntimeState.Cooldown && runtime.CooldownUntilUtc <= now)
-            {
-                SetState(runtime, IsSilentZone(runtime) ? EventRuntimeState.Initiated : EventRuntimeState.Stopped, "Cooldown beendet.");
-            }
-
-            if (IsSilentZone(runtime) && runtime.State == EventRuntimeState.Stopped)
-            {
-                SetState(runtime, EventRuntimeState.Initiated, "Silent-Script ist scharf und wartet auf Spieler in der Aktivierzone.");
-            }
+            await RunScheduledRandomQuestsAsync(players, now, cancellationToken);
+        }
+        else
+        {
+            await RunRandomizerAsync(players, now, cancellationToken);
         }
 
-        await RunRandomizerAsync(players, now, cancellationToken);
+        if (now - _lastEngineHealthLogUtc >= TimeSpan.FromMinutes(5))
+        {
+            LogRuntimeSummary("Script Engine Health");
+            _lastEngineHealthLogUtc = now;
+        }
+
+        if (now - _lastZoneDiagnosticLogUtc >= TimeSpan.FromMinutes(1))
+        {
+            LogZoneDiagnostics(players);
+            _lastZoneDiagnosticLogUtc = now;
+        }
 
         foreach (var runtime in _events.Where(e => e.Definition.Enabled))
         {
@@ -151,7 +182,14 @@ public sealed class EventEngine : IDisposable
                 if (runtime.State == EventRuntimeState.Initiated)
                 {
                     var triggerPlayer = playersInZone[0];
-                    await GoLiveAsync(runtime, triggerPlayer, cancellationToken);
+                    if (IsGroupBlocked(runtime))
+                    {
+                        _log($"{runtime.Definition.Name}: Spieler in Zone, aber Scriptgruppe '{runtime.Definition.EventGroup}' ist bereits aktiv. Script bleibt initiiert.");
+                    }
+                    else
+                    {
+                        await GoLiveAsync(runtime, triggerPlayer, cancellationToken);
+                    }
                 }
                 else if (runtime.State == EventRuntimeState.CleanupPending)
                 {
@@ -176,6 +214,275 @@ public sealed class EventEngine : IDisposable
                 }
             }
         }
+    }
+
+    private void InitializeLocalStates(DateTime now)
+    {
+        foreach (var runtime in _events)
+        {
+            if (!runtime.Definition.Enabled)
+            {
+                if (runtime.State != EventRuntimeState.Stopped)
+                {
+                    SetState(runtime, EventRuntimeState.Stopped, "Script ist deaktiviert.");
+                }
+                continue;
+            }
+
+            if (runtime.Definition.EffectiveZone.Radius <= 0)
+            {
+                _log($"{runtime.Definition.Name}: WARNUNG Aktivierzone hat Radius <= 0 und kann nicht triggern.");
+                continue;
+            }
+
+            if (runtime.State == EventRuntimeState.Cooldown && runtime.CooldownUntilUtc <= now)
+            {
+                ResetRuntime(runtime, clearCooldown: true);
+                SetState(runtime, IsSilentZone(runtime) ? EventRuntimeState.Initiated : EventRuntimeState.Stopped, "Cooldown beendet und Runtime sauber zurueckgesetzt.");
+            }
+
+            if (IsSilentZone(runtime) && runtime.State == EventRuntimeState.Stopped)
+            {
+                ResetRuntime(runtime, clearCooldown: false);
+                SetState(runtime, EventRuntimeState.Initiated, "Silent-Script ist scharf und wartet auf Spieler in der Aktivierzone.");
+            }
+        }
+    }
+
+    private void ResetRuntime(EventRuntime runtime, bool clearCooldown)
+    {
+        runtime.EmptySinceUtc = null;
+        runtime.LastOccupiedUtc = DateTime.MinValue;
+        runtime.LastLiveUtc = DateTime.MinValue;
+        runtime.LastInitiatedUtc = DateTime.MinValue;
+        runtime.LastInitiatorRepeatUtc = DateTime.MinValue;
+        if (clearCooldown)
+        {
+            runtime.CooldownUntilUtc = DateTime.MinValue;
+        }
+    }
+
+    private void LogRuntimeSummary(string prefix)
+    {
+        var enabled = _events.Count(e => e.Definition.Enabled);
+        var silent = _events.Count(e => e.Definition.Enabled && IsSilentZone(e));
+        var random = _events.Count(e => e.Definition.Enabled && IsRandomAnnouncedZone(e) && e.Definition.IncludeInRandomizer);
+        var initiated = _events.Count(e => e.State == EventRuntimeState.Initiated);
+        var live = _events.Count(e => e.State == EventRuntimeState.Live);
+        var cooldown = _events.Count(e => e.State == EventRuntimeState.Cooldown);
+        _log($"{prefix}: {enabled} aktivierte Scripts, {silent} SilentZone, {random} RandomAnnouncedZone, Status: {initiated} initiiert, {live} live, {cooldown} cooldown.");
+
+        foreach (var runtime in _events.Where(e => e.Definition.Enabled && e.State != EventRuntimeState.Stopped))
+        {
+            _log($" - {runtime.Definition.Name}: {runtime.State}");
+        }
+    }
+
+    private void LogZoneDiagnostics(List<ScumPlayer> players)
+    {
+        var waiting = _events
+            .Where(e => e.Definition.Enabled && e.State == EventRuntimeState.Initiated)
+            .ToList();
+
+        if (waiting.Count == 0)
+        {
+            return;
+        }
+
+        if (players.Count == 0)
+        {
+            _log($"Script Engine Diagnose: {waiting.Count} initiiert, aber keine Spieler online.");
+            return;
+        }
+
+        foreach (var runtime in waiting)
+        {
+            var zone = runtime.Definition.EffectiveZone;
+            var nearest = players
+                .Where(p => p.Location is not null)
+                .Select(p => new { Player = p, Distance = p.Location!.Distance2DTo(zone.Center) })
+                .OrderBy(x => x.Distance)
+                .FirstOrDefault();
+
+            if (nearest is null)
+            {
+                _log($"Script Engine Diagnose: {runtime.Definition.Name} wartet, aber #ListPlayersJson liefert keine Positionen.");
+                continue;
+            }
+
+            var inside = nearest.Distance <= zone.Radius;
+            var groupInfo = !string.IsNullOrWhiteSpace(runtime.Definition.EventGroup)
+                ? $", Gruppe={runtime.Definition.EventGroup}, blockiert={IsGroupBlocked(runtime)}"
+                : string.Empty;
+            _log($"Script Engine Diagnose: {runtime.Definition.Name} wartet. Naechster Spieler {nearest.Player.DisplayName}: {nearest.Distance:0} / Radius {zone.Radius:0} -> {(inside ? "IN ZONE" : "ausserhalb")}{groupInfo}.");
+        }
+    }
+
+    private bool IsGroupBlocked(EventRuntime runtime)
+    {
+        var group = runtime.Definition.EventGroup?.Trim();
+        if (string.IsNullOrWhiteSpace(group))
+        {
+            return false;
+        }
+
+        var limit = runtime.Definition.MaxConcurrentInGroup;
+        if (limit <= 0)
+        {
+            limit = _events
+                .Where(e => e.Definition.Enabled)
+                .Where(e => string.Equals(e.Definition.EventGroup?.Trim(), group, StringComparison.OrdinalIgnoreCase))
+                .Select(e => e.Definition.MaxConcurrentInGroup)
+                .Where(x => x > 0)
+                .DefaultIfEmpty(1)
+                .Min();
+        }
+
+        var active = _events
+            .Where(e => !ReferenceEquals(e, runtime))
+            .Where(e => e.Definition.Enabled)
+            .Where(e => string.Equals(e.Definition.EventGroup?.Trim(), group, StringComparison.OrdinalIgnoreCase))
+            .Count(e => e.State == EventRuntimeState.Live || e.State == EventRuntimeState.CleanupPending || e.State == EventRuntimeState.Cooldown);
+
+        return active >= limit;
+    }
+
+    private async Task RunScheduledRandomQuestsAsync(List<ScumPlayer> players, DateTime nowUtc, CancellationToken cancellationToken)
+    {
+        var randomScripts = _events
+            .Where(r => r.Definition.Enabled)
+            .Where(r => IsRandomAnnouncedZone(r))
+            .Where(r => r.Definition.IncludeInRandomizer)
+            .ToList();
+
+        if (randomScripts.Count == 0)
+        {
+            return;
+        }
+
+        var settings = _settings;
+        var intervalMinutes = Math.Max(1, settings?.RandomQuestIntervalMinutes ?? 60);
+        var startDelayMinutes = Math.Max(0, settings?.RandomQuestStartDelayMinutes ?? 0);
+        var nowLocal = DateTime.Now;
+        var cycleStart = GetLatestScheduledRestartLocal(nowLocal, settings?.RandomQuestRestartTimes ?? "04:00,10:00,16:00,22:00");
+        var cycleKey = cycleStart.ToString("yyyyMMddHHmm", CultureInfo.InvariantCulture);
+
+        if (!string.Equals(_scheduledRandomCycleKey, cycleKey, StringComparison.Ordinal))
+        {
+            _scheduledRandomCycleKey = cycleKey;
+            _scheduledRandomLastSlotStarted = -1;
+            _scheduledRandomStartedIds.Clear();
+
+            foreach (var runtime in randomScripts)
+            {
+                ResetRuntime(runtime, clearCooldown: true);
+                if (runtime.State != EventRuntimeState.Stopped)
+                {
+                    runtime.State = EventRuntimeState.Stopped;
+                }
+                runtime.NextRandomizerUtc = DateTime.MinValue;
+            }
+
+            _log($"RandomQuest Scheduler: neuer Restart-Zyklus seit {cycleStart:dd.MM. HH:mm}. Random-Scripts wurden fuer den neuen Zyklus zurueckgesetzt.");
+            _stateChanged?.Invoke();
+        }
+
+        var elapsed = nowLocal - cycleStart.AddMinutes(startDelayMinutes);
+        if (elapsed < TimeSpan.Zero)
+        {
+            return;
+        }
+
+        var slot = (int)Math.Floor(elapsed.TotalMinutes / intervalMinutes);
+        if (slot <= _scheduledRandomLastSlotStarted)
+        {
+            return;
+        }
+
+        var candidates = randomScripts
+            .Where(r => r.State == EventRuntimeState.Stopped)
+            .Where(r => nowUtc >= r.CooldownUntilUtc)
+            .Where(r => !_scheduledRandomStartedIds.Contains(r.Definition.Id ?? r.Definition.Name ?? string.Empty))
+            .Where(r => GetPlayersInZone(r, players).Count == 0)
+            .ToList();
+
+        if (candidates.Count == 0)
+        {
+            var stopped = randomScripts
+                .Where(r => r.State == EventRuntimeState.Stopped)
+                .Where(r => nowUtc >= r.CooldownUntilUtc)
+                .Where(r => GetPlayersInZone(r, players).Count == 0)
+                .ToList();
+
+            if (stopped.Count > 0)
+            {
+                _scheduledRandomStartedIds.Clear();
+                candidates = stopped;
+            }
+        }
+
+        if (candidates.Count == 0)
+        {
+            if (nowUtc - _lastScheduledRandomWaitLogUtc >= TimeSpan.FromMinutes(5))
+            {
+                var active = randomScripts.Count(IsRandomScriptActive);
+                _log($"RandomQuest Scheduler wartet: Slot {slot + 1} ist faellig, aber kein gestopptes Random-Script ist verfuegbar. Aktiv/Initiiert: {active}, Random-Scripts gesamt: {randomScripts.Count}.");
+                _lastScheduledRandomWaitLogUtc = nowUtc;
+            }
+            return;
+        }
+
+        var selected = candidates[_random.Next(candidates.Count)];
+        _log($"RandomQuest Scheduler: Slot {slot + 1} nach Restart {cycleStart:HH:mm} startet '{selected.Definition.Name}'. Naechster Slot in {intervalMinutes} Minuten.");
+        await InitiateAsync(selected, null, cancellationToken, manual: false);
+
+        _scheduledRandomLastSlotStarted = slot;
+        _scheduledRandomStartedIds.Add(selected.Definition.Id ?? selected.Definition.Name ?? Guid.NewGuid().ToString("N"));
+    }
+
+    private static DateTime GetLatestScheduledRestartLocal(DateTime nowLocal, string restartTimes)
+    {
+        var times = ParseRestartTimes(restartTimes);
+        var candidates = times
+            .Select(t => nowLocal.Date.Add(t))
+            .Concat(times.Select(t => nowLocal.Date.AddDays(-1).Add(t)))
+            .Where(dt => dt <= nowLocal)
+            .ToList();
+
+        return candidates.Count == 0 ? nowLocal.Date : candidates.Max();
+    }
+
+    private static List<TimeSpan> ParseRestartTimes(string restartTimes)
+    {
+        var result = new List<TimeSpan>();
+        var parts = (restartTimes ?? string.Empty).Split(new[] { ',', ';', '|', ' ' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        foreach (var part in parts)
+        {
+            if (TimeSpan.TryParse(part, CultureInfo.InvariantCulture, out var ts))
+            {
+                result.Add(ts);
+                continue;
+            }
+
+            if (part.Length == 4 && int.TryParse(part[..2], out var hour) && int.TryParse(part[2..], out var minute))
+            {
+                if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59)
+                {
+                    result.Add(new TimeSpan(hour, minute, 0));
+                }
+            }
+        }
+
+        if (result.Count == 0)
+        {
+            result.Add(new TimeSpan(4, 0, 0));
+            result.Add(new TimeSpan(10, 0, 0));
+            result.Add(new TimeSpan(16, 0, 0));
+            result.Add(new TimeSpan(22, 0, 0));
+        }
+
+        return result.Distinct().OrderBy(x => x).ToList();
     }
 
     private async Task RunRandomizerAsync(List<ScumPlayer> players, DateTime now, CancellationToken cancellationToken)
@@ -339,8 +646,11 @@ public sealed class EventEngine : IDisposable
             return;
         }
 
-        var normalizedCommand = NormalizeCommandBeforeSend(command);
+        var normalizedCommand = NormalizeCommandBeforeSend(EnsureExecAsForTriggerPlayer(command, player));
         _log($"{runtime.Definition.Name}: LootCommandPack gewaehlt: {selected.Name}");
+        runtime.LastLootSummary = "LootCommandPack: " + selected.Name;
+        runtime.SpawnedLootCount++;
+        MarkRuntime(runtime, "LootCommandPack gespawnt: " + selected.Name, normalizedCommand);
         await SendAsync(normalizedCommand, cancellationToken);
 
         if (selected.DelayMs > 0)
@@ -360,9 +670,29 @@ public sealed class EventEngine : IDisposable
             return;
         }
 
+        var mode = runtime.Definition.LootPackSpawnMode?.Trim() ?? "OneTotal";
+        if (mode.Equals("OnePerLocation", StringComparison.OrdinalIgnoreCase) ||
+            mode.Equals("PerLocation", StringComparison.OrdinalIgnoreCase))
+        {
+            var groups = packs.GroupBy(p => NormalizeLocationKey(ReplacePlaceholders(p.Location, runtime, player)));
+            foreach (var group in groups)
+            {
+                var selected = SelectWeighted(group.ToList());
+                await SpawnLootPackAsync(runtime, selected, player, cancellationToken);
+            }
+            return;
+        }
+
+        // Backward compatible: Single/OneTotal = genau ein Pack aus allen Packs.
+        var one = SelectWeighted(packs);
+        await SpawnLootPackAsync(runtime, one, player, cancellationToken);
+    }
+
+    private LootPack SelectWeighted(List<LootPack> packs)
+    {
         var totalWeight = packs.Sum(p => Math.Max(1, p.Weight));
         var roll = _random.Next(1, totalWeight + 1);
-        LootPack selected = packs[0];
+        var selected = packs[0];
         foreach (var pack in packs)
         {
             roll -= Math.Max(1, pack.Weight);
@@ -372,9 +702,15 @@ public sealed class EventEngine : IDisposable
                 break;
             }
         }
+        return selected;
+    }
 
+    private async Task SpawnLootPackAsync(EventRuntime runtime, LootPack selected, ScumPlayer? player, CancellationToken cancellationToken)
+    {
         var location = ReplacePlaceholders(selected.Location, runtime, player);
         _log($"{runtime.Definition.Name}: LootPack gewaehlt: {selected.Name}");
+        runtime.LastLootSummary = "LootPack: " + selected.Name + " @ " + location;
+        var spawnedCount = 0;
 
         foreach (var item in selected.Items)
         {
@@ -384,7 +720,10 @@ public sealed class EventEngine : IDisposable
             }
 
             var quantity = Math.Max(1, item.Quantity);
-            var command = $"#SpawnItem {item.Item.Trim()} {quantity} Location \"{location}\"";
+            var command = EnsureExecAsForTriggerPlayer($"#SpawnItem {item.Item.Trim()} {quantity} Location \"{location}\"", player);
+            spawnedCount += quantity;
+            runtime.SpawnedLootCount += quantity;
+            MarkRuntime(runtime, $"Loot gespawnt: {item.Item.Trim()} x{quantity}", command);
             await SendAsync(command, cancellationToken);
 
             if (item.DelayMs > 0)
@@ -392,6 +731,11 @@ public sealed class EventEngine : IDisposable
                 await Task.Delay(item.DelayMs, cancellationToken);
             }
         }
+    }
+
+    private static string NormalizeLocationKey(string location)
+    {
+        return Regex.Replace(location ?? string.Empty, @"\s+", " ").Trim();
     }
 
     private static string ReplacePlaceholders(string input, EventRuntime runtime, ScumPlayer? player)
@@ -502,12 +846,14 @@ public sealed class EventEngine : IDisposable
                     continue;
                 }
 
-                var normalizedCommand = NormalizeCommandBeforeSend(command);
-                if (!string.Equals(command, normalizedCommand, StringComparison.Ordinal))
+                if (IsSpawnCommand(command))
                 {
-                    _log("Command normalisiert: #ExecAs vor #SpawnItem entfernt, damit kein Spieler-Executor sichtbar genutzt wird.");
+                    command = EnsureExecAsForTriggerPlayer(command, player);
                 }
 
+                var normalizedCommand = NormalizeCommandBeforeSend(command);
+
+                MarkRuntime(runtime, "Command gesendet" + (string.IsNullOrWhiteSpace(eventCommand.Name) ? "" : ": " + eventCommand.Name), normalizedCommand);
                 await SendAsync(normalizedCommand, cancellationToken);
 
                 if (eventCommand.DelayMs > 0)
@@ -520,23 +866,52 @@ public sealed class EventEngine : IDisposable
 
     private static string NormalizeCommandBeforeSend(string command)
     {
+        return string.IsNullOrWhiteSpace(command) ? command : command.Trim();
+    }
+
+    private static string EnsureExecAsForTriggerPlayer(string command, ScumPlayer? player)
+    {
         if (string.IsNullOrWhiteSpace(command))
         {
             return command;
         }
 
-        // Items sollen bewusst NICHT ueber #ExecAs laufen: Spieler sehen sonst ggf. die Admin-Aktion.
-        // Beispiel:
-        // #ExecAs 7656... #SpawnItem Weapon_SKS 1 Location "[...]"
-        // wird zu:
-        // #SpawnItem Weapon_SKS 1 Location "[...]"
-        var execAsSpawnItem = Regex.Match(command, @"^\s*#ExecAs\s+\S+\s+(#SpawnItem\b.*)$", RegexOptions.IgnoreCase);
-        if (execAsSpawnItem.Success)
+        var trimmed = command.Trim();
+        if (Regex.IsMatch(trimmed, @"^#ExecAs\b", RegexOptions.IgnoreCase))
         {
-            return execAsSpawnItem.Groups[1].Value.Trim();
+            return trimmed;
         }
 
-        return command;
+        if (string.IsNullOrWhiteSpace(player?.UserId))
+        {
+            return trimmed;
+        }
+
+        // Event-Loot und LootCommandPacks muessen aus Spielersicht gespawnt werden,
+        // damit SCUM die Items/NPCs/Objekte zuverlaessig am Zielort erzeugt.
+        return "#ExecAs " + player.UserId.Trim() + " " + trimmed;
+    }
+
+    private static bool IsSpawnCommand(string command)
+    {
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            return false;
+        }
+
+        var trimmed = command.Trim();
+        return Regex.IsMatch(
+            trimmed,
+            @"^#(SpawnItem|SpawnInventory|SpawnInventoryFullOf|SpawnArmedNPC|SpawnNPC|SpawnZombie|SpawnVehicle)\b",
+            RegexOptions.IgnoreCase);
+    }
+
+    private void MarkRuntime(EventRuntime runtime, string action, string rawCommand)
+    {
+        runtime.LastAction = action;
+        runtime.LastRawCommand = rawCommand;
+        runtime.LastUpdatedUtc = DateTime.UtcNow;
+        _stateChanged?.Invoke();
     }
 
     private async Task SendAsync(string command, CancellationToken cancellationToken)
@@ -570,6 +945,14 @@ public sealed class EventRuntime
     public DateTime? EmptySinceUtc { get; set; }
     public DateTime CooldownUntilUtc { get; set; } = DateTime.MinValue;
     public DateTime NextRandomizerUtc { get; set; } = DateTime.MinValue;
+
+    // Live-Diagnose fuer die Script-Uebersicht.
+    // Diese Werte werden von EventEngine.MarkRuntime(...) und den Loot-Routinen aktualisiert.
+    public string LastAction { get; set; } = string.Empty;
+    public string LastRawCommand { get; set; } = string.Empty;
+    public string LastLootSummary { get; set; } = string.Empty;
+    public int SpawnedLootCount { get; set; }
+    public DateTime LastUpdatedUtc { get; set; } = DateTime.MinValue;
 
     public override string ToString() => $"{Definition.Name} - {State}";
 }

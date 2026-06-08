@@ -1,0 +1,11 @@
+Patch: Dashboard Script Status + Discord Random Events
+
+- Dashboard zeigt jetzt eine eigene Script-Status-Card.
+- Blau = Initiated / initialisiert / scharf.
+- Gruen = Live / gestartet.
+- Orange = CleanupPending.
+- Grau = Cooldown.
+- Status wird bei Script-Engine-State-Changes aktualisiert.
+- Discord Playerlist Channel bekommt optional eine zweite Bot-Nachricht: "Aktive Random Events".
+- Die Random-Events-Nachricht wird aktualisiert, statt den Channel vollzuspammen.
+- Gekoppelt an Playerlist-Update, steuerbar ueber AutoStartDiscordRandomEvents.

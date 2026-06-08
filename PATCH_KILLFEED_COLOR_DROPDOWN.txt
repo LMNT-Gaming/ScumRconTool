@@ -1,0 +1,1 @@
+Adds KillAnnounceColor setting and WPF ComboBox for ggCON #Broadcast message colors. Valid values: Yellow, White, Cyan, Green, Red, ServerMessage, Error. Killfeed now uses selected color instead of hard-coded Blue.

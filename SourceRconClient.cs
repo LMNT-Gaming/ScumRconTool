@@ -17,16 +17,21 @@ public sealed class SourceRconClient : IAsyncDisposable
     private TcpClient? _tcpClient;
     private NetworkStream? _stream;
     private bool _isAuthenticated;
+    private bool _disposed;
     private int _requestId = 1000;
     private readonly SemaphoreSlim _commandLock = new(1, 1);
     private DateTime _lastActivityUtc = DateTime.MinValue;
+    private DateTime _lastCommandUtc = DateTime.MinValue;
+    private DateTime _nextReconnectAllowedUtc = DateTime.MinValue;
+    private int _consecutiveReconnectFailures;
     private readonly TimeSpan _idleReconnectAfter = TimeSpan.FromMinutes(2);
+    private readonly TimeSpan _minimumCommandGap = TimeSpan.FromMilliseconds(900);
 
     private const int ServerDataAuth = 3;
     private const int ServerDataAuthResponse = 2;
     private const int ServerDataExecCommand = 2;
 
-    public bool IsConnected => _isAuthenticated && _stream is not null && _tcpClient is not null;
+    public bool IsConnected => !_disposed && _isAuthenticated && _stream is not null && _tcpClient is not null;
 
     public SourceRconClient(string host, int port, string password)
     {
@@ -35,8 +40,16 @@ public sealed class SourceRconClient : IAsyncDisposable
         _password = password;
     }
 
+    public bool Matches(string host, int port, string password)
+    {
+        return string.Equals(_host, host, StringComparison.OrdinalIgnoreCase)
+               && _port == port
+               && string.Equals(_password, password, StringComparison.Ordinal);
+    }
+
     public async Task ConnectAsync(CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed();
         Close();
 
         _tcpClient = new TcpClient
@@ -50,6 +63,7 @@ public sealed class SourceRconClient : IAsyncDisposable
 
     public async Task AuthenticateAsync(CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed();
         var authId = NextRequestId();
         await SendPacketAsync(authId, ServerDataAuth, _password, cancellationToken);
 
@@ -70,12 +84,15 @@ public sealed class SourceRconClient : IAsyncDisposable
                     if (packet.Id == authId)
                     {
                         _isAuthenticated = true;
+                        _consecutiveReconnectFailures = 0;
+                        _nextReconnectAllowedUtc = DateTime.MinValue;
+                        _lastActivityUtc = DateTime.UtcNow;
                         return;
                     }
 
                     if (packet.Id == -1)
                     {
-                        throw new InvalidOperationException("RCON-Authentifizierung fehlgeschlagen: Passwort falsch oder Zugriff verweigert.");
+                        throw new InvalidOperationException("RCON-Authentifizierung fehlgeschlagen: Passwort falsch, Zugriff verweigert oder ggCON Rate-Limit aktiv.");
                     }
                 }
             }
@@ -86,13 +103,14 @@ public sealed class SourceRconClient : IAsyncDisposable
         }
 
         throw new InvalidOperationException(
-            "RCON-Authentifizierung fehlgeschlagen. Passwort, Port oder AllowedIPs pruefen." +
+            "RCON-Authentifizierung fehlgeschlagen. Passwort, Port, AllowedIPs oder ggCON Rate-Limit pruefen." +
             Environment.NewLine +
             debug);
     }
 
     public async Task EnsureConnectedAsync(CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed();
         await _commandLock.WaitAsync(cancellationToken);
         try
         {
@@ -106,10 +124,12 @@ public sealed class SourceRconClient : IAsyncDisposable
 
     public async Task<string> SendCommandAsync(string command, CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed();
         await _commandLock.WaitAsync(cancellationToken);
         try
         {
             await EnsureConnectedCoreAsync(cancellationToken);
+            await ThrottleCommandAsync(cancellationToken);
 
             try
             {
@@ -118,8 +138,8 @@ public sealed class SourceRconClient : IAsyncDisposable
             catch (Exception ex) when (IsConnectionException(ex) && !cancellationToken.IsCancellationRequested)
             {
                 Close();
-                await ConnectAsync(cancellationToken);
-                await AuthenticateAsync(cancellationToken);
+                await EnsureConnectedCoreAsync(cancellationToken, forceReconnect: true);
+                await ThrottleCommandAsync(cancellationToken);
                 return await SendCommandCoreAsync(command, cancellationToken);
             }
         }
@@ -129,16 +149,66 @@ public sealed class SourceRconClient : IAsyncDisposable
         }
     }
 
-    private async Task EnsureConnectedCoreAsync(CancellationToken cancellationToken)
+    private async Task EnsureConnectedCoreAsync(CancellationToken cancellationToken, bool forceReconnect = false)
     {
+        ThrowIfDisposed();
         var idleTooLong = _lastActivityUtc != DateTime.MinValue &&
                           DateTime.UtcNow - _lastActivityUtc > _idleReconnectAfter;
 
-        if (!IsConnected || idleTooLong)
+        if (forceReconnect || !IsConnected || idleTooLong)
         {
+            await WaitForReconnectWindowAsync(cancellationToken);
             Close();
-            await ConnectAsync(cancellationToken);
-            await AuthenticateAsync(cancellationToken);
+
+            try
+            {
+                await ConnectAsync(cancellationToken);
+                await AuthenticateAsync(cancellationToken);
+            }
+            catch
+            {
+                Close();
+                RegisterReconnectFailure();
+                throw;
+            }
+        }
+    }
+
+    private async Task WaitForReconnectWindowAsync(CancellationToken cancellationToken)
+    {
+        var wait = _nextReconnectAllowedUtc - DateTime.UtcNow;
+        if (wait > TimeSpan.Zero)
+        {
+            await Task.Delay(wait, cancellationToken);
+        }
+    }
+
+    private void RegisterReconnectFailure()
+    {
+        _consecutiveReconnectFailures = Math.Min(_consecutiveReconnectFailures + 1, 6);
+        var seconds = _consecutiveReconnectFailures switch
+        {
+            1 => 15,
+            2 => 30,
+            3 => 60,
+            4 => 120,
+            _ => 300
+        };
+
+        _nextReconnectAllowedUtc = DateTime.UtcNow.AddSeconds(seconds);
+    }
+
+    private async Task ThrottleCommandAsync(CancellationToken cancellationToken)
+    {
+        if (_lastCommandUtc == DateTime.MinValue)
+        {
+            return;
+        }
+
+        var wait = _minimumCommandGap - (DateTime.UtcNow - _lastCommandUtc);
+        if (wait > TimeSpan.Zero)
+        {
+            await Task.Delay(wait, cancellationToken);
         }
     }
 
@@ -151,6 +221,7 @@ public sealed class SourceRconClient : IAsyncDisposable
 
         var commandId = NextRequestId();
         await SendPacketAsync(commandId, ServerDataExecCommand, command, cancellationToken);
+        _lastCommandUtc = DateTime.UtcNow;
 
         var bodies = new List<string>();
         var debugPackets = new List<string>();
@@ -190,32 +261,36 @@ public sealed class SourceRconClient : IAsyncDisposable
 
     private static bool IsConnectionException(Exception ex)
     {
-        return ex is IOException || ex is SocketException || ex is ObjectDisposedException ||
-               ex is InvalidOperationException || ex.InnerException is IOException || ex.InnerException is SocketException;
+        return ex is IOException || ex is SocketException ||
+               ex.InnerException is IOException || ex.InnerException is SocketException;
     }
 
     private static void AddPacket(RconPacket packet, List<string> bodies, List<string> debugPackets, int commandId)
     {
         debugPackets.Add($"Id={packet.Id}, Type={packet.Type}, Body={packet.Body}");
 
-        // Normally the response has the same ID as the command. Some RCON servers also send
-        // harmless empty packets, so we ignore empty bodies.
         if (packet.Id == commandId && !string.IsNullOrWhiteSpace(packet.Body))
         {
             bodies.Add(packet.Body);
         }
         else if (!string.IsNullOrWhiteSpace(packet.Body) && packet.Id != -1)
         {
-            // Keep unexpected non-empty packets visible instead of silently losing them.
             bodies.Add(packet.Body);
         }
     }
 
     public async Task ReconnectAsync(CancellationToken cancellationToken = default)
     {
-        Close();
-        await ConnectAsync(cancellationToken);
-        await AuthenticateAsync(cancellationToken);
+        ThrowIfDisposed();
+        await _commandLock.WaitAsync(cancellationToken);
+        try
+        {
+            await EnsureConnectedCoreAsync(cancellationToken, forceReconnect: true);
+        }
+        finally
+        {
+            _commandLock.Release();
+        }
     }
 
     private int NextRequestId()
@@ -225,6 +300,7 @@ public sealed class SourceRconClient : IAsyncDisposable
 
     private async Task SendPacketAsync(int id, int type, string body, CancellationToken cancellationToken)
     {
+        ThrowIfDisposed();
         if (_stream is null)
         {
             throw new InvalidOperationException("Nicht verbunden.");
@@ -247,6 +323,7 @@ public sealed class SourceRconClient : IAsyncDisposable
 
     private async Task<RconPacket> ReadPacketAsync(CancellationToken cancellationToken)
     {
+        ThrowIfDisposed();
         if (_stream is null)
         {
             throw new InvalidOperationException("Nicht verbunden.");
@@ -274,6 +351,7 @@ public sealed class SourceRconClient : IAsyncDisposable
 
     private async Task<byte[]> ReadExactAsync(int length, CancellationToken cancellationToken)
     {
+        ThrowIfDisposed();
         if (_stream is null)
         {
             throw new InvalidOperationException("Nicht verbunden.");
@@ -317,9 +395,23 @@ public sealed class SourceRconClient : IAsyncDisposable
 
     public ValueTask DisposeAsync()
     {
+        if (_disposed)
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        _disposed = true;
         Close();
         _commandLock.Dispose();
         return ValueTask.CompletedTask;
+    }
+
+    private void ThrowIfDisposed()
+    {
+        if (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(SourceRconClient));
+        }
     }
 
     private sealed record RconPacket(int Id, int Type, string Body);

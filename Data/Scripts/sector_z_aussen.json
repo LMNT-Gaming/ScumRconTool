@@ -1,0 +1,84 @@
+{
+  "id": "sector_z_aussen",
+  "name": "Sector Z - Aussen",
+  "enabled": true,
+  "mode": "SilentZone",
+  "includeInRandomizer": false,
+  "randomizerEveryMinutes": 360,
+  "initiatorRepeatEveryMinutes": 0,
+  "maxConcurrentRandomEvents": 0,
+  "activationZone": {
+    "name": "Sector Z - Aussen Aktivierzone",
+    "centerX": 373355.075,
+    "centerY": -653617.0,
+    "centerZ": 3406.079,
+    "radius": 25000
+  },
+  "initiatorBlock": {
+    "name": "Silent initiator",
+    "enabled": true,
+    "commands": []
+  },
+  "preLiveCleanupBlock": {
+    "name": "PreLiveCleanup - alte Lootreste entfernen",
+    "enabled": true,
+    "commands": []
+  },
+  "liveBlock": {
+    "name": "LiveBlock - Sector Z - Aussen",
+    "enabled": true,
+    "commands": [
+      {
+        "name": "Guard 1 - Sector Z Aussen",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=368135.719 Y=-653453.062 Z=3518.074|P=341.004730 Y=9.807697 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 2 - Sector Z Aussen",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=368414.812 Y=-660643.812 Z=3307.525|P=339.104767 Y=323.746460 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 3 - Sector Z Aussen",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=373533.719 Y=-650132.500 Z=3248.091|P=332.772858 Y=120.609306 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 4 - Sector Z Aussen",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=373754.875 Y=-650339.875 Z=3355.634|P=349.234833 Y=325.750183 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 5 - Sector Z Aussen",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=382936.250 Y=-653515.750 Z=3601.069|P=348.126556 Y=25.899240 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      }
+    ]
+  },
+  "lootPacks": [],
+  "emptyBlock": {
+    "name": "EmptyBlock - Zone leer",
+    "enabled": true,
+    "commands": []
+  },
+  "cleanupBlock": {
+    "name": "CleanupBlock - Loot entfernen",
+    "enabled": true,
+    "commands": []
+  },
+  "cleanupWhenEmptySeconds": 300,
+  "cooldownMinutes": 180,
+  "eventGroup": "sector_z",
+  "maxConcurrentInGroup": 1,
+  "lootPackSpawnMode": "OneTotal"
+}

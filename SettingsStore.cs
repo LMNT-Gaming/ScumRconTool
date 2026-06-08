@@ -8,7 +8,7 @@ public static class SettingsStore
 {
     private static readonly string SettingsPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "ScumRconTool",
+        "RedRavenRconTool",
         "settings.json");
 
     public static BotSettings Load()

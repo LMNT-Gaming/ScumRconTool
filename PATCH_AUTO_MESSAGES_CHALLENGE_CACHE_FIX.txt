@@ -1,0 +1,12 @@
+Auto Messages Challenge Fix
+===========================
+
+- Challenge-Flow akzeptiert jetzt mehrere Schreibweisen:
+  Challenge, Challenges, Challange, Challanges, CommunityChallenge, CommunityChallenges.
+- Auto Messages loggt jetzt sauber, ob aktive Weekly/Daily Tasks im JSON gefunden wurden.
+- Wenn der Challenge-Scan 0 Ergebnisse liefert oder beim DB-Download/Scan ein Fehler passiert, wird der letzte bekannte Weekly/Daily-Stand aus dem laufenden Tool verwendet.
+- Manuelle und automatische Weekly/Daily-Updates speichern jetzt intern die komplette Fortschrittsliste, nicht nur die erste Aufgabe.
+- Dadurch verschwindet der Challenge-Text im Ingamechat nicht mehr sofort, nur weil ein einzelner Auto-Message-Scan scheitert.
+
+Hinweis:
+Der Challenge-Text kommt aus WeeklyTaskJson, nicht aus AutoMessagesFlowJson. Im Flow muss nur ein Schritt vom Typ Challenges stehen.
