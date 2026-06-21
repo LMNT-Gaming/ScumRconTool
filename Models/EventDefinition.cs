@@ -42,6 +42,8 @@ public sealed class EventDefinition
     public string AnnouncementType { get; set; } = "Yellow";
     public string Announcement { get; set; } = "Event wurde gesichtet.";
 
+    public ScriptLocalVariables LocalVariables { get; set; } = new();
+
     public EventZone? ActivationZone { get; set; }
     public EventZone Zone { get; set; } = new();
 
@@ -51,6 +53,10 @@ public sealed class EventDefinition
     public ScriptBlock PreLiveCleanupBlock { get; set; } = new() { Name = "PreLiveCleanupBlock" };
 
     public ScriptBlock LiveBlock { get; set; } = new();
+
+    // Vereinfachte Spawn-Bausteine fuer den Editor. Sie werden beim Live-Start
+    // nach dem LiveBlock ausgefuehrt und koennen optional wiederholt laufen.
+    public List<SpawnBlock> SpawnBlocks { get; set; } = new();
 
     // Optional: pro Live-Start wird genau ein LootPack zufaellig gewaehlt und als einzelne #SpawnItem-Commands gespawnt.
     public List<LootPack> LootPacks { get; set; } = new();
@@ -128,6 +134,19 @@ public sealed class EventZone
     public WorldPosition Center => new() { X = CenterX, Y = CenterY, Z = CenterZ };
 }
 
+public sealed class ScriptLocalVariables
+{
+    public string InitiatorMessage { get; set; } = "";
+    public List<ScriptLocationVariable> LootSpawnLocations { get; set; } = new();
+    public List<ScriptLocationVariable> NpcSpawnLocations { get; set; } = new();
+}
+
+public sealed class ScriptLocationVariable
+{
+    public string Name { get; set; } = "position";
+    public string Location { get; set; } = "";
+}
+
 public sealed class EventCommand
 {
     public string Name { get; set; } = "";
@@ -135,6 +154,30 @@ public sealed class EventCommand
     public string Command { get; set; } = "";
     public int Repeat { get; set; } = 1;
     public int DelayMs { get; set; } = 50;
+}
+
+public sealed class SpawnBlock
+{
+    public string Name { get; set; } = "Spawn";
+    public bool Enabled { get; set; } = true;
+
+    // Item, ArmedNPC, NPC, Zombie oder Vehicle.
+    public string Type { get; set; } = "ArmedNPC";
+    public string Asset { get; set; } = "BP_Guard_Lvl_1";
+    public int Quantity { get; set; } = 1;
+    public string Location { get; set; } = "";
+
+    // Freier Zusatz, z. B. "Modifier minimalfunctional".
+    public string Extra { get; set; } = "";
+    public int DespawnLifetimeSeconds { get; set; } = 0;
+
+    // StartDelaySeconds verzoegert den ersten Spawn. RepeatEverySeconds ist
+    // der Abstand zwischen Wiederholungen, falls Repeat > 1.
+    public int StartDelaySeconds { get; set; } = 0;
+    public int Repeat { get; set; } = 1;
+    public int RepeatEverySeconds { get; set; } = 0;
+    public int DelayMs { get; set; } = 250;
+    public bool UseTriggerPlayer { get; set; } = true;
 }
 
 public sealed class LootPack

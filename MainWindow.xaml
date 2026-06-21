@@ -3,61 +3,101 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:avalon="http://icsharpcode.net/sharpdevelop/avalonedit"
         xmlns:services="clr-namespace:ScumRconTool.Services"
+        xmlns:viewModels="clr-namespace:ScumRconTool.ViewModels"
         Title="Red Raven Rcon Tool" Height="900" Width="1380" MinHeight="760" MinWidth="1180">
     <Grid Background="{StaticResource AppBackgroundBrush}">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="260" />
+            <ColumnDefinition Width="240" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
-        <Border Grid.Column="0" Background="#09090D" BorderBrush="{StaticResource AppBorderBrush}" BorderThickness="0,0,1,0" Padding="18">
-            <DockPanel>
+        <Border Grid.Column="0"
+                Background="#101016"
+                BorderBrush="{StaticResource AppBorderBrush}"
+                BorderThickness="0,0,1,0"
+                Padding="18">
+            <DockPanel LastChildFill="True">
                 <StackPanel DockPanel.Dock="Top">
-                    <Image Source="Assets/logo.png" Height="118" HorizontalAlignment="Stretch" Stretch="Uniform" Margin="0,0,0,16" />
-                    <TextBlock Text="Red Raven" FontSize="30" FontWeight="Bold" />
-                    <TextBlock Text="Rcon Tool" FontSize="20" FontWeight="SemiBold" />
-                    <TextBlock Text="Red Raven" Foreground="{StaticResource AccentBrush}" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,30" />
+                    <Image Source="Assets/logo.png"
+                           Height="118"
+                           Stretch="Uniform"
+                           Margin="0,0,0,14" />
+                    <TextBlock Text="Red Raven"
+                               FontSize="24"
+                               FontWeight="Bold"
+                               HorizontalAlignment="Center" />
+                    <TextBlock Text="Rcon Tool"
+                               Foreground="{StaticResource MutedTextBrush}"
+                               HorizontalAlignment="Center"
+                               Margin="0,2,0,18" />
 
-                    <Button Style="{StaticResource NavButton}" Content="Dashboard" Click="NavDashboard_Click" />
-                    <Button Style="{StaticResource NavButton}" Content="RCON Console" Click="NavRcon_Click" />
-                    <Button Style="{StaticResource NavButton}" Content="Discord Bridge" Click="NavDiscord_Click" />
-                    <Button Style="{StaticResource NavButton}" Content="Chat Commands" Click="NavChatCommands_Click" />
-                    <Button Style="{StaticResource NavButton}" Content="Join Commands" Click="NavJoinCommands_Click" />
-                    <Button Style="{StaticResource NavButton}" Content="Kill Feed" Click="NavKillFeed_Click" />
-                    <Button Style="{StaticResource NavButton}" Content="Weekly Tasks" Click="NavWeeklyTasks_Click" />
-                    <Button Style="{StaticResource NavButton}" Content="Auto Messages" Click="NavAutoMessages_Click" />
-                    <Button Style="{StaticResource NavButton}" Content="Script Editor" Click="NavScripts_Click" />
-                    <Button Style="{StaticResource NavButton}" Content="Debug Logs" Click="NavLogs_Click" />
-                    <Button Style="{StaticResource NavButton}" Content="Settings" Click="NavSettings_Click" />
+                    <Border Background="#17171F"
+                            BorderBrush="{StaticResource AppBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="10"
+                            Padding="12"
+                            Margin="0,0,0,14">
+                        <StackPanel>
+                            <TextBlock Text="Version"
+                                       FontSize="16"
+                                       FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding VersionText}"
+                                       Foreground="{StaticResource AccentBrush}"
+                                       FontWeight="Bold"
+                                       Margin="0,4,0,0" />
+                            <TextBlock Text="{Binding UpdateStatusText}"
+                                       Foreground="{StaticResource MutedTextBrush}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,8,0,10" />
+                            <Button Content="{Binding UpdateButtonText}"
+                                    Command="{Binding CheckForUpdatesCommand}"
+                                    Margin="0,0,0,8" />
+                            <Button Content="{Binding Texts[OpenDownload]}"
+                                    Command="{Binding OpenUpdateDownloadCommand}"
+                                    Margin="0,0,0,8" />
+                            <Button Content="{Binding Texts[SwitchLanguage]}"
+                                    Command="{Binding SwitchLanguageCommand}"
+                                    Margin="0,0,0,8" />
+                            <Button Content="{Binding Texts[GgconDocs]}"
+                                    Command="{Binding OpenGgconDocsCommand}" />
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
 
                 <StackPanel DockPanel.Dock="Bottom">
-                    <Border Style="{StaticResource Card}" Margin="0">
+                    <TextBlock Text="Status"
+                               FontSize="16"
+                               FontWeight="SemiBold"
+                               Margin="0,0,0,8" />
+                    <Border Background="#17171F"
+                            BorderBrush="{StaticResource AppBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="10"
+                            Padding="12">
                         <StackPanel>
-                            <TextBlock Text="Status" FontWeight="SemiBold" FontSize="16" />
-                            <TextBlock Text="RCON" Foreground="{StaticResource MutedTextBrush}" Margin="0,10,0,0" />
-                            <TextBlock Text="{Binding RconConnected}" FontWeight="Bold" />
-                            <TextBlock Text="Discord" Foreground="{StaticResource MutedTextBrush}" Margin="0,10,0,0" />
-                            <TextBlock Text="{Binding DiscordStatus}" FontWeight="Bold" />
-                            <TextBlock Text="Chat Commands" Foreground="{StaticResource MutedTextBrush}" Margin="0,10,0,0" />
-                            <TextBlock Text="{Binding ChatCommandsRunning}" FontWeight="Bold" />
-                            <TextBlock Text="Join Commands" Foreground="{StaticResource MutedTextBrush}" Margin="0,10,0,0" />
-                            <TextBlock Text="{Binding JoinCommandsRunning}" FontWeight="Bold" />
-                            <TextBlock Text="Kill Feed" Foreground="{StaticResource MutedTextBrush}" Margin="0,10,0,0" />
-                            <TextBlock Text="{Binding KillFeedRunning}" FontWeight="Bold" />
-                            <TextBlock Text="Weekly Tasks" Foreground="{StaticResource MutedTextBrush}" Margin="0,10,0,0" />
-                            <TextBlock Text="{Binding WeeklyTasksRunning}" FontWeight="Bold" />
-                            <TextBlock Text="Auto Messages" Foreground="{StaticResource MutedTextBrush}" Margin="0,10,0,0" />
-                            <TextBlock Text="{Binding AutoMessagesRunning}" FontWeight="Bold" />
-                            <TextBlock Text="Script Engine" Foreground="{StaticResource MutedTextBrush}" Margin="0,10,0,0" />
-                            <TextBlock Text="{Binding ScriptEngineRunning}" FontWeight="Bold" />
+                            <DockPanel Margin="0,0,0,8">
+                                <TextBlock Text="RCON" Foreground="{StaticResource MutedTextBrush}" />
+                                <TextBlock Text="{Binding RconConnected}" HorizontalAlignment="Right" FontWeight="Bold" />
+                            </DockPanel>
+                            <DockPanel Margin="0,0,0,8">
+                                <TextBlock Text="Discord" Foreground="{StaticResource MutedTextBrush}" />
+                                <TextBlock Text="{Binding DiscordStatus}" HorizontalAlignment="Right" FontWeight="Bold" />
+                            </DockPanel>
+                            <DockPanel Margin="0,0,0,8">
+                                <TextBlock Text="Auto Messages" Foreground="{StaticResource MutedTextBrush}" />
+                                <TextBlock Text="{Binding AutoMessagesRunning}" HorizontalAlignment="Right" FontWeight="Bold" />
+                            </DockPanel>
+                            <DockPanel>
+                                <TextBlock Text="Skriptzone" Foreground="{StaticResource MutedTextBrush}" />
+                                <TextBlock Text="{Binding ScriptEngineRunning}" HorizontalAlignment="Right" FontWeight="Bold" />
+                            </DockPanel>
                         </StackPanel>
                     </Border>
                 </StackPanel>
             </DockPanel>
         </Border>
 
-        <Grid Grid.Column="1" Margin="24">
+        <Grid Grid.Column="1" Margin="18">
             <TabControl x:Name="MainTabs" Background="Transparent">
                 <TabItem Header="Dashboard">
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -190,8 +230,8 @@
                                     <DockPanel Margin="0,0,0,10">
                                         <TextBlock Text="Letzte Aktionen" FontSize="18" FontWeight="SemiBold" DockPanel.Dock="Left" />
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                            <Button Content="Ordner" Command="{Binding OpenLogFolderCommand}" />
-                                            <Button Content="Leeren" Command="{Binding ClearLogCommand}" />
+                                            <Button Content="{Binding Texts[OpenFolder]}" Command="{Binding OpenLogFolderCommand}" />
+                                            <Button Content="{Binding Texts[Clear]}" Command="{Binding ClearLogCommand}" />
                                         </StackPanel>
                                     </DockPanel>
                                     <ListBox ItemsSource="{Binding LogLines}" Height="420" Background="#101016" Foreground="{StaticResource AppTextBrush}" BorderBrush="{StaticResource AppBorderBrush}" />
@@ -212,8 +252,8 @@
                                 <TextBlock Text="RCON Console" FontSize="28" FontWeight="Bold" />
                                 <TextBlock Text="Befehle werden an ggCON per Source-RCON gesendet. Antworten sind in der Regel JSON." Foreground="{StaticResource MutedTextBrush}" Margin="0,4,0,16" />
                                 <StackPanel Orientation="Horizontal">
-                                    <Button Content="Verbinden" Command="{Binding ConnectRconCommand}" />
-                                    <Button Content="Senden" Command="{Binding SendRconCommand}" />
+                                    <Button Content="{Binding Texts[Connect]}" Command="{Binding ConnectRconCommand}" />
+                                    <Button Content="{Binding Texts[Send]}" Command="{Binding SendRconCommand}" />
                                 </StackPanel>
                                 <TextBlock Text="Command" Foreground="{StaticResource MutedTextBrush}" />
                                 <TextBox Text="{Binding RconCommand, UpdateSourceTrigger=PropertyChanged}" FontFamily="Consolas" />
@@ -234,12 +274,12 @@
                                     <TextBlock Text="Bot" FontSize="20" FontWeight="SemiBold" />
                                     <TextBlock Text="Der Bot liest nur den angegebenen Bridge-Channel und baut daraus sichere Broadcasts. Nachrichten mit #, /, !, ., ; oder $ am Anfang werden blockiert." Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" Margin="0,4,0,16" />
                                     <StackPanel Orientation="Horizontal">
-                                        <Button Content="Discord starten" Command="{Binding StartDiscordCommand}" />
-                                        <Button Content="Playerlist aktualisieren" Command="{Binding UpdatePlayerListCommand}" />
-                                        <Button Content="Chatlog Auto starten" Command="{Binding StartChatLogForwarderCommand}" />
-                                        <Button Content="Chatlog Auto stoppen" Command="{Binding StopChatLogForwarderCommand}" />
-                                        <Button Content="Chatlog jetzt als Embeds senden" Command="{Binding ScanChatLogCommand}" />
-                                        <Button Content="Einstellungen speichern" Command="{Binding SaveSettingsCommand}" />
+                                        <Button Content="{Binding Texts[StartDiscord]}" Command="{Binding StartDiscordCommand}" />
+                                        <Button Content="{Binding Texts[UpdateServerStatus]}" Command="{Binding UpdateServerStatusCommand}" />
+                                        <Button Content="{Binding Texts[StartChatLogAuto]}" Command="{Binding StartChatLogForwarderCommand}" />
+                                        <Button Content="{Binding Texts[StopChatLogAuto]}" Command="{Binding StopChatLogForwarderCommand}" />
+                                        <Button Content="{Binding Texts[SendChatLogEmbedsNow]}" Command="{Binding ScanChatLogCommand}" />
+                                        <Button Content="{Binding Texts[SaveSettings]}" Command="{Binding SaveSettingsCommand}" />
                                     </StackPanel>
                                     <TextBlock Text="{Binding ChatLogForwarderRunning, StringFormat={}Chatlog Forwarder aktiv: {0}}" Foreground="{StaticResource MutedTextBrush}" Margin="0,0,0,8" />
                                     <TextBlock Text="Discord Token" Foreground="{StaticResource MutedTextBrush}" />
@@ -248,14 +288,31 @@
                                     <TextBox Text="{Binding Settings.DiscordChatLogChannelId, UpdateSourceTrigger=PropertyChanged}" />
                                     <TextBlock Text="Discord → Game Bridge Channel-ID" Foreground="{StaticResource MutedTextBrush}" />
                                     <TextBox Text="{Binding Settings.DiscordGameBridgeChannelId, UpdateSourceTrigger=PropertyChanged}" />
-                                    <TextBlock Text="Playerlist Channel-ID" Foreground="{StaticResource MutedTextBrush}" />
-                                    <TextBox Text="{Binding Settings.DiscordPlayerListChannelId, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Text="Serverstatus Nachricht Channel-ID" Foreground="{StaticResource MutedTextBrush}" Margin="0,8,0,0" />
+                                    <TextBox Text="{Binding Settings.DiscordServerStatusChannelId, UpdateSourceTrigger=PropertyChanged}" />
+                                    <CheckBox Content="Serverstatus als eine Nachricht automatisch aktualisieren" IsChecked="{Binding Settings.AutoStartDiscordServerStatusMessage}" Foreground="{StaticResource AppTextBrush}" Margin="0,4,0,4" />
+                                    <CheckBox Content="Discord Botstatus mit Spieleranzahl aktualisieren" IsChecked="{Binding Settings.AutoStartDiscordBotStatus}" Foreground="{StaticResource AppTextBrush}" Margin="0,0,0,4" />
+                                    <TextBlock Text="Botstatus Template" Foreground="{StaticResource MutedTextBrush}" />
+                                    <TextBox Text="{Binding Settings.DiscordBotStatusTemplate, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Text="Serverstatus Titel" Foreground="{StaticResource MutedTextBrush}" />
+                                    <TextBox Text="{Binding Settings.DiscordServerStatusTitle, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Text="Servername" Foreground="{StaticResource MutedTextBrush}" />
+                                    <TextBox Text="{Binding Settings.DiscordServerName, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Text="Server-IP / Adresse fuer Discord, leer = Host:GamePort" Foreground="{StaticResource MutedTextBrush}" />
+                                    <TextBox Text="{Binding Settings.DiscordServerAddress, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Text="ggCON HTTP Base URL optional, leer = http://Host:HTTP-Port" Foreground="{StaticResource MutedTextBrush}" Margin="0,8,0,0" />
+                                    <TextBox Text="{Binding Settings.GgconHttpBaseUrl, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Text="ggCON HTTP Port, bei GGHost meist RCON-Port minus 1, z.B. 5376" Foreground="{StaticResource MutedTextBrush}" />
+                                    <TextBox Text="{Binding Settings.GgconHttpPort, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Text="ggCON HTTP Passwort optional, leer = RCON Passwort" Foreground="{StaticResource MutedTextBrush}" />
+                                    <TextBox Text="{Binding Settings.GgconHttpPassword, UpdateSourceTrigger=PropertyChanged}" />
+                                    <CheckBox Content="Updates beim Start pruefen" IsChecked="{Binding Settings.AutoCheckForUpdates}" Foreground="{StaticResource AppTextBrush}" Margin="0,10,0,4" />
+                                    <TextBlock Text="Update latest.json URL" Foreground="{StaticResource MutedTextBrush}" />
+                                    <TextBox Text="{Binding Settings.UpdateLatestJsonUrl, UpdateSourceTrigger=PropertyChanged}" />
                                     <CheckBox Content="Discord → Ingame aktivieren" IsChecked="{Binding Settings.DiscordGameBridgeEnabled}" Foreground="{StaticResource AppTextBrush}" Margin="0,4,0,10" />
                                     <CheckBox Content="Chatlogs als Embed aktivieren" IsChecked="{Binding Settings.DiscordChatLogEmbedsEnabled}" Foreground="{StaticResource AppTextBrush}" Margin="0,4,0,4" />
+                                    <CheckBox Content="Vehicle-Destruction Logs als Embed aktivieren" IsChecked="{Binding Settings.DiscordVehicleLogEmbedsEnabled}" Foreground="{StaticResource AppTextBrush}" Margin="0,0,0,4" />
                                     <CheckBox Content="Chatlogs automatisch starten" IsChecked="{Binding Settings.AutoStartDiscordChatLogs}" Foreground="{StaticResource AppTextBrush}" Margin="0,0,0,10" />
-                                    <CheckBox Content="Discord Status automatisch starten" IsChecked="{Binding Settings.AutoStartDiscordStatus}" Foreground="{StaticResource AppTextBrush}" Margin="0,0,0,4" />
-                                    <CheckBox Content="Playerlist automatisch aktualisieren" IsChecked="{Binding Settings.AutoStartDiscordPlayerList}" Foreground="{StaticResource AppTextBrush}" Margin="0,0,0,4" />
-                                    <CheckBox Content="Aktive Random Events im Playerlist-Channel anzeigen" IsChecked="{Binding Settings.AutoStartDiscordRandomEvents}" Foreground="{StaticResource AppTextBrush}" Margin="0,0,0,10" />
                                     <TextBlock Text="Message Type fuer Ingame-Broadcast" Foreground="{StaticResource MutedTextBrush}" />
                                     <TextBox Text="{Binding Settings.DiscordGameBridgeMessageType, UpdateSourceTrigger=PropertyChanged}" />
                                 </StackPanel>
@@ -274,16 +331,39 @@
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
                                 <TextBlock Text="Chat Commands" FontSize="34" FontWeight="Bold" />
-                                <TextBlock Text="Liest den SCUM-Chatlog per SFTP und fuehrt passende Regeln per RCON aus. Die Regeln werden unten als einzelne, aufklappbare Commands gepflegt; kein rohes JSON mehr noetig. Die Command-Felder haben SCUM-Autovervollstaendigung. Mit ExecAs wird die SteamID des Chat-Spielers automatisch eingefuegt." Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" Margin="0,4,0,14" />
+                                <TextBlock Text="Liest den SCUM-Chat aus ggCON HTTP Logs oder SFTP und fuehrt passende Regeln per RCON aus. Commands werden in Global, Local, Squad und Admin Chat erkannt. Die Regeln werden unten als einzelne, aufklappbare Commands gepflegt; kein rohes JSON mehr noetig. Die Command-Felder haben SCUM-Autovervollstaendigung. Mit ExecAs wird die SteamID des Chat-Spielers automatisch eingefuegt." Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" Margin="0,4,0,14" />
                                 <StackPanel Orientation="Horizontal">
-                                    <Button Content="Start" Command="{Binding StartChatCommandsCommand}" />
-                                    <Button Content="Stop" Command="{Binding StopChatCommandsCommand}" />
-                                    <Button Content="Scan jetzt" Command="{Binding ScanChatCommandsCommand}" />
-                                    <Button Content="+ Command" Command="{Binding AddChatCommandRuleCommand}" />
-                                    <Button Content="Beispiele einfuegen" Command="{Binding InsertDefaultChatCommandsCommand}" />
-                                    <Button Content="Speichern" Command="{Binding SaveSettingsCommand}" />
+                                    <Button Content="{Binding Texts[Start]}" Command="{Binding StartChatCommandsCommand}" />
+                                    <Button Content="{Binding Texts[Stop]}" Command="{Binding StopChatCommandsCommand}" />
+                                    <Button Content="{Binding Texts[ScanNow]}" Command="{Binding ScanChatCommandsCommand}" />
+                                    <Button Content="{Binding Texts[AddCommand]}" Command="{Binding AddChatCommandRuleCommand}" />
+                                    <Button Content="{Binding Texts[InsertExamples]}" Command="{Binding InsertDefaultChatCommandsCommand}" />
+                                    <Button Content="{Binding Texts[Save]}" Command="{Binding SaveSettingsCommand}" />
                                 </StackPanel>
                                 <CheckBox Content="Chat Commands automatisch starten" IsChecked="{Binding Settings.AutoStartChatCommands}" Margin="0,8,0,0" />
+                                <CheckBox Content="Chat Commands via ggCON HTTP Logs lesen" IsChecked="{Binding Settings.UseGgconLogsForChatCommands}" Margin="0,8,0,0" />
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <TextBlock Text="HTTP Log Poll" Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Center" />
+                                    <TextBox Width="70" Margin="12,0,6,0" Text="{Binding Settings.GgconChatCommandPollSeconds, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Text="Sekunden" Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Center" />
+                                    <TextBlock Text="Initial Backfill" Foreground="{StaticResource MutedTextBrush}" Margin="20,0,8,0" VerticalAlignment="Center" />
+                                    <TextBox Width="70" Text="{Binding Settings.GgconChatCommandInitialBackfillSeconds, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Text="Sekunden" Foreground="{StaticResource MutedTextBrush}" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                </StackPanel>
+                                <CheckBox Content="Votes mit Ingamegeld kaufen" IsChecked="{Binding Settings.PaidVotesEnabled}" Margin="0,10,0,0" />
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <TextBlock Text="Vote-Kaufpreis" Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Center" />
+                                    <TextBox Width="90" Margin="12,0,6,0" Text="{Binding Settings.VotePrice, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Text="$" Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Center" />
+                                    <TextBlock Text="Bestaetigung" Foreground="{StaticResource MutedTextBrush}" Margin="20,0,8,0" VerticalAlignment="Center" />
+                                    <TextBox Width="70" Text="{Binding Settings.VoteConfirmationTimeoutSeconds, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Text="Sekunden" Foreground="{StaticResource MutedTextBrush}" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                </StackPanel>
+                                <TextBlock Text="Vote Kauf-Anfrage" Foreground="{StaticResource MutedTextBrush}" Margin="0,8,0,0" />
+                                <TextBox Text="{Binding Settings.VotePurchasePromptResponse, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" />
+                                <TextBlock Text="Vote Nicht-genug-Geld-Antwort" Foreground="{StaticResource MutedTextBrush}" Margin="0,8,0,0" />
+                                <TextBox Text="{Binding Settings.VoteInsufficientFundsResponse, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" />
+                                <TextBlock Text="Platzhalter: {name}, {steamId}, {cost}, {price}, {balance}, {timeoutSeconds}, {confirmCommand}, {voteCommand}, {remaining}" Foreground="{StaticResource MutedTextBrush}" FontSize="12" Margin="0,4,0,0" />
                                 <TextBlock Text="Status" Foreground="{StaticResource MutedTextBrush}" Margin="0,10,0,0" />
                                 <TextBlock Text="{Binding ChatCommandsRunning}" FontWeight="Bold" />
                             </StackPanel>
@@ -327,7 +407,7 @@
                                                                 <TextBox Width="80" Text="{Binding DelaySeconds, UpdateSourceTrigger=PropertyChanged}" />
                                                                 <TextBlock Text="s" Foreground="{StaticResource MutedTextBrush}" Margin="8,0,0,0" VerticalAlignment="Center" />
                                                             </StackPanel>
-                                                            <Button Grid.Column="2" Content="- Loeschen" Command="{Binding DataContext.RemoveChatCommandRuleCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                            <Button Grid.Column="2" Content="{Binding DataContext.Texts[RemoveDelete], RelativeSource={RelativeSource AncestorType=Window}}" Command="{Binding DataContext.RemoveChatCommandRuleCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
 
                                                             <TextBlock Grid.Row="1" Text="Command" Foreground="{StaticResource MutedTextBrush}" Margin="0,10,0,0" VerticalAlignment="Top" />
                                                             <ComboBox Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" IsEditable="True" IsTextSearchEnabled="True" StaysOpenOnEdit="True" ItemsSource="{Binding DataContext.ScumCommandSuggestions, RelativeSource={RelativeSource AncestorType=Window}}" Text="{Binding Command, UpdateSourceTrigger=PropertyChanged}" Margin="0,10,0,0" MinHeight="42" />
@@ -372,13 +452,13 @@
                                 <TextBlock Text="Join Commands" FontSize="34" FontWeight="Bold" />
                                 <TextBlock Text="Liest den SCUM-Loginlog per SFTP und plant nach einem Join verzoegerte RCON-Befehle. Die Regeln werden unten als einzelne Commands gepflegt; kein rohes JSON mehr noetig. Die Command-Felder haben SCUM-Autovervollstaendigung. Mit ExecAs wird die SteamID des joinenden Spielers automatisch eingefuegt." Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" Margin="0,4,0,14" />
                                 <StackPanel Orientation="Horizontal">
-                                    <Button Content="Start" Command="{Binding StartJoinCommandsCommand}" />
-                                    <Button Content="Stop" Command="{Binding StopJoinCommandsCommand}" />
-                                    <Button Content="Scan jetzt" Command="{Binding ScanJoinCommandsCommand}" />
-                                    <Button Content="Fuer alle Online-Spieler ausfuehren" Command="{Binding ExecuteJoinCommandsForOnlinePlayersCommand}" />
-                                    <Button Content="+ Command" Command="{Binding AddJoinCommandRuleCommand}" />
-                                    <Button Content="Beispiel einfuegen" Command="{Binding InsertDefaultJoinCommandsCommand}" />
-                                    <Button Content="Speichern" Command="{Binding SaveSettingsCommand}" />
+                                    <Button Content="{Binding Texts[Start]}" Command="{Binding StartJoinCommandsCommand}" />
+                                    <Button Content="{Binding Texts[Stop]}" Command="{Binding StopJoinCommandsCommand}" />
+                                    <Button Content="{Binding Texts[ScanNow]}" Command="{Binding ScanJoinCommandsCommand}" />
+                                    <Button Content="{Binding Texts[ExecuteForAllOnlinePlayers]}" Command="{Binding ExecuteJoinCommandsForOnlinePlayersCommand}" />
+                                    <Button Content="{Binding Texts[AddCommand]}" Command="{Binding AddJoinCommandRuleCommand}" />
+                                    <Button Content="{Binding Texts[InsertExample]}" Command="{Binding InsertDefaultJoinCommandsCommand}" />
+                                    <Button Content="{Binding Texts[Save]}" Command="{Binding SaveSettingsCommand}" />
                                 </StackPanel>
                                 <CheckBox Content="Join Commands automatisch starten" IsChecked="{Binding Settings.AutoStartJoinCommands}" Margin="0,8,0,0" />
                                 <TextBlock Text="Status" Foreground="{StaticResource MutedTextBrush}" Margin="0,10,0,0" />
@@ -415,7 +495,7 @@
 
                                                             <TextBlock Text="Delay seconds" Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Center" />
                                                             <TextBox Grid.Column="1" Width="120" HorizontalAlignment="Left" Text="{Binding DelaySeconds, UpdateSourceTrigger=PropertyChanged}" />
-                                                            <Button Grid.Column="2" Content="- Loeschen" Command="{Binding DataContext.RemoveJoinCommandRuleCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                            <Button Grid.Column="2" Content="{Binding DataContext.Texts[RemoveDelete], RelativeSource={RelativeSource AncestorType=Window}}" Command="{Binding DataContext.RemoveJoinCommandRuleCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
 
                                                             <TextBlock Grid.Row="1" Text="Command" Foreground="{StaticResource MutedTextBrush}" Margin="0,10,0,0" VerticalAlignment="Top" />
                                                             <ComboBox Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" IsEditable="True" IsTextSearchEnabled="True" StaysOpenOnEdit="True" ItemsSource="{Binding DataContext.ScumCommandSuggestions, RelativeSource={RelativeSource AncestorType=Window}}" Text="{Binding Command, UpdateSourceTrigger=PropertyChanged}" Margin="0,10,0,0" MinHeight="42" />
@@ -449,10 +529,10 @@
                                     <TextBlock Text="Killlog -&gt; Ingame Broadcast" FontSize="20" FontWeight="SemiBold" />
                                     <TextBlock Text="Lädt die neueste Killlog-Datei per SFTP, merkt bereits bekannte Kill-Zeilen und sendet neue Kills als #Broadcast mit einstellbarer Farbe in den Ingamechat. Beim allerersten Lauf werden vorhandene Zeilen nur gemerkt, damit alte Kills nicht gespammt werden." Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" Margin="0,4,0,14" />
                                     <StackPanel Orientation="Horizontal">
-                                        <Button Content="Start" Command="{Binding StartKillFeedCommand}" />
-                                        <Button Content="Stop" Command="{Binding StopKillFeedCommand}" />
-                                        <Button Content="Scan jetzt" Command="{Binding ScanKillFeedCommand}" />
-                                        <Button Content="Speichern" Command="{Binding SaveSettingsCommand}" />
+                                        <Button Content="{Binding Texts[Start]}" Command="{Binding StartKillFeedCommand}" />
+                                        <Button Content="{Binding Texts[Stop]}" Command="{Binding StopKillFeedCommand}" />
+                                        <Button Content="{Binding Texts[ScanNow]}" Command="{Binding ScanKillFeedCommand}" />
+                                        <Button Content="{Binding Texts[Save]}" Command="{Binding SaveSettingsCommand}" />
                                     </StackPanel>
                                     <CheckBox Content="Killfeed automatisch starten" IsChecked="{Binding Settings.AutoStartKillFeed}" Margin="0,8,0,0" />
                                     <TextBlock Text="Status" Foreground="{StaticResource MutedTextBrush}" Margin="0,10,0,0" />
@@ -481,12 +561,12 @@
                                     <TextBlock Text="Community Fortschritt aus scum.db" FontSize="20" FontWeight="SemiBold" />
                                     <TextBlock Text="Lädt die scum.db per SFTP, speichert beim Start einen Basiswert und berechnet danach nur die Differenz. Discord wird alle 30 Minuten aktualisiert, aber nur wenn Spieler online sind." Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" Margin="0,4,0,14" />
                                     <StackPanel Orientation="Horizontal">
-                                        <Button Content="Start" Command="{Binding StartWeeklyTasksCommand}" />
-                                        <Button Content="Stop" Command="{Binding StopWeeklyTasksCommand}" />
-                                        <Button Content="Scan + Discord jetzt" Command="{Binding ScanWeeklyTasksCommand}" />
-                                        <Button Content="Startwert neu setzen" Command="{Binding ResetWeeklyTaskBaselineCommand}" />
-                                        <Button Content="JSON Reset Beispiel" Command="{Binding InsertDefaultWeeklyTaskCommand}" />
-                                        <Button Content="Speichern" Command="{Binding SaveSettingsCommand}" />
+                                        <Button Content="{Binding Texts[Start]}" Command="{Binding StartWeeklyTasksCommand}" />
+                                        <Button Content="{Binding Texts[Stop]}" Command="{Binding StopWeeklyTasksCommand}" />
+                                        <Button Content="{Binding Texts[ScanDiscordNow]}" Command="{Binding ScanWeeklyTasksCommand}" />
+                                        <Button Content="{Binding Texts[ResetBaseline]}" Command="{Binding ResetWeeklyTaskBaselineCommand}" />
+                                        <Button Content="{Binding Texts[JsonResetExample]}" Command="{Binding InsertDefaultWeeklyTaskCommand}" />
+                                        <Button Content="{Binding Texts[Save]}" Command="{Binding SaveSettingsCommand}" />
                                     </StackPanel>
                                     <CheckBox Content="Weekly Tasks automatisch starten" IsChecked="{Binding Settings.AutoStartWeeklyTasks}" Margin="0,8,0,0" />
                                     <CheckBox Content="DB nur aktualisieren, wenn Spieler online sind" IsChecked="{Binding Settings.WeeklyTaskOnlyWhenPlayersOnline}" Margin="0,4,0,0" />
@@ -494,7 +574,7 @@
                                     <TextBlock Text="{Binding WeeklyTaskStatus}" FontWeight="Bold" TextWrapping="Wrap" />
                                     <TextBlock Text="SCUM.db Remote-Dateipfad absolut" Foreground="{StaticResource MutedTextBrush}" Margin="0,14,0,0" />
                                     <TextBox Text="{Binding Settings.WeeklyTaskDbRemoteFilePath, UpdateSourceTrigger=PropertyChanged}" />
-                                    <TextBlock Text="Discord Channel-ID fuer Weekly Tasks (leer/0 = Playerlist Channel)" Foreground="{StaticResource MutedTextBrush}" />
+                                    <TextBlock Text="Discord Channel-ID fuer Weekly Tasks (leer/0 = Serverstatus Channel)" Foreground="{StaticResource MutedTextBrush}" />
                                     <TextBox Text="{Binding Settings.WeeklyTaskDiscordChannelId, UpdateSourceTrigger=PropertyChanged}" />
                                     <TextBlock Text="Update Intervall Minuten" Foreground="{StaticResource MutedTextBrush}" />
                                     <TextBox Text="{Binding Settings.WeeklyTaskPollMinutes, UpdateSourceTrigger=PropertyChanged}" />
@@ -506,9 +586,9 @@
                                     <TextBlock Text="Jede Challenge ist eine eigene Card. Neue Challenges werden als neue Card angelegt, bestehende werden nicht ueberschrieben. Geplante Tasks starten ab Startzeit; abgelaufene Tasks werden nicht mehr aktualisiert/angezeigt." Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" Margin="0,4,0,12" />
 
                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
-                                        <Button Content="Neue Challenge" Command="{Binding AddWeeklyTaskEditorCommand}" />
-                                        <Button Content="Aus vorhandenen Daten neu laden" Command="{Binding ReloadWeeklyTaskEditorCommand}" />
-                                        <Button Content="Alle Challenges speichern" Command="{Binding ApplyWeeklyTaskEditorCommand}" />
+                                        <Button Content="{Binding Texts[NewChallenge]}" Command="{Binding AddWeeklyTaskEditorCommand}" />
+                                        <Button Content="{Binding Texts[ReloadExistingData]}" Command="{Binding ReloadWeeklyTaskEditorCommand}" />
+                                        <Button Content="{Binding Texts[SaveAllChallenges]}" Command="{Binding ApplyWeeklyTaskEditorCommand}" />
                                     </StackPanel>
 
                                     <ItemsControl ItemsSource="{Binding WeeklyTaskEditors}">
@@ -522,8 +602,8 @@
                                                                 <TextBlock Text="{Binding Id}" Foreground="{StaticResource MutedTextBrush}" />
                                                             </StackPanel>
                                                             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
-                                                                <Button Content="Duplizieren" Command="{Binding DataContext.DuplicateWeeklyTaskEditorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
-                                                                <Button Content="Loeschen" Command="{Binding DataContext.DeleteWeeklyTaskEditorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                                <Button Content="{Binding DataContext.Texts[Duplicate], RelativeSource={RelativeSource AncestorType=Window}}" Command="{Binding DataContext.DuplicateWeeklyTaskEditorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                                <Button Content="{Binding DataContext.Texts[Delete], RelativeSource={RelativeSource AncestorType=Window}}" Command="{Binding DataContext.DeleteWeeklyTaskEditorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
                                                             </StackPanel>
                                                         </DockPanel>
 
@@ -622,42 +702,174 @@
                             <TextBlock Text="Auto Messages" FontSize="34" FontWeight="Bold" Margin="0,0,0,18" />
                             <Border Style="{StaticResource Card}">
                                 <StackPanel>
-                                    <TextBlock Text="Ingame-Chat Rotation" FontSize="20" FontWeight="SemiBold" />
-                                    <TextBlock Text="Sendet alle N Minuten eine Nachricht per #Broadcast, aber nur wenn Spieler online sind. Der Flow rotiert z.B. Challenge-Status, /help Hinweis, Discord Hinweis und wieder Challenge-Status." Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" Margin="0,4,0,14" />
+                                    <TextBlock Text="Ingame Broadcasts" FontSize="20" FontWeight="SemiBold" />
                                     <StackPanel Orientation="Horizontal">
-                                        <Button Content="Start" Command="{Binding StartAutoMessagesCommand}" />
-                                        <Button Content="Stop" Command="{Binding StopAutoMessagesCommand}" />
-                                        <Button Content="Jetzt senden" Command="{Binding SendAutoMessageNowCommand}" />
-                                        <Button Content="Flow auf Anfang" Command="{Binding ResetAutoMessageFlowCommand}" />
-                                        <Button Content="Beispiel einfuegen" Command="{Binding InsertDefaultAutoMessagesCommand}" />
-                                        <Button Content="Speichern" Command="{Binding SaveSettingsCommand}" />
+                                        <Button Content="{Binding Texts[Start]}" Command="{Binding StartAutoMessagesCommand}" />
+                                        <Button Content="{Binding Texts[Stop]}" Command="{Binding StopAutoMessagesCommand}" />
+                                        <Button Content="{Binding Texts[SendNow]}" Command="{Binding SendAutoMessageNowCommand}" />
+                                        <Button Content="{Binding Texts[ResetQueue]}" Command="{Binding ResetAutoMessageFlowCommand}" />
+                                        <Button Content="{Binding Texts[AddMessage]}" Command="{Binding AddAutoMessageCommand}" />
+                                        <Button Content="{Binding Texts[InsertExample]}" Command="{Binding InsertDefaultAutoMessagesCommand}" />
+                                        <Button Content="{Binding Texts[Reload]}" Command="{Binding ReloadAutoMessagesCommand}" />
+                                        <Button Content="{Binding Texts[Save]}" Command="{Binding SaveSettingsCommand}" />
                                     </StackPanel>
-                                    <CheckBox Content="Auto Messages automatisch starten" IsChecked="{Binding Settings.AutoStartAutoMessages}" Margin="0,8,0,0" />
-                                    <CheckBox Content="Nur senden, wenn Spieler online sind" IsChecked="{Binding Settings.AutoMessagesOnlyWhenPlayersOnline}" Margin="0,4,0,0" />
-                                    <TextBlock Text="Status" Foreground="{StaticResource MutedTextBrush}" Margin="0,10,0,0" />
-                                    <TextBlock Text="{Binding AutoMessageStatus}" FontWeight="Bold" TextWrapping="Wrap" />
-                                    <TextBlock Text="Intervall Minuten" Foreground="{StaticResource MutedTextBrush}" Margin="0,14,0,0" />
-                                    <TextBox Text="{Binding Settings.AutoMessagesIntervalMinutes, UpdateSourceTrigger=PropertyChanged}" />
-                                    <TextBlock Text="Standard Nachricht-Farbe" Foreground="{StaticResource MutedTextBrush}" />
-                                    <ComboBox ItemsSource="{Binding BroadcastMessageTypes}" SelectedItem="{Binding Settings.AutoMessagesBroadcastType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <TextBlock Text="Maximale Laenge pro Broadcast" Foreground="{StaticResource MutedTextBrush}" />
-                                    <TextBox Text="{Binding Settings.AutoMessagesMaxLength, UpdateSourceTrigger=PropertyChanged}" />
-                                    <TextBlock Text="Text, wenn keine Challenge aktiv ist" Foreground="{StaticResource MutedTextBrush}" />
+                                    <Grid Margin="0,10,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="240" />
+                                            <ColumnDefinition Width="210" />
+                                            <ColumnDefinition Width="210" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <CheckBox Content="AutoStart" IsChecked="{Binding Settings.AutoStartAutoMessages}" />
+                                            <CheckBox Content="Nur bei Spielern online" IsChecked="{Binding Settings.AutoMessagesOnlyWhenPlayersOnline}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Margin="8,0,8,0">
+                                            <TextBlock Text="Queue Minuten" Foreground="{StaticResource MutedTextBrush}" />
+                                            <TextBox Text="{Binding Settings.AutoMessagesIntervalMinutes, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2" Margin="8,0,8,0">
+                                            <TextBlock Text="Max. Laenge" Foreground="{StaticResource MutedTextBrush}" />
+                                            <TextBox Text="{Binding Settings.AutoMessagesMaxLength, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="3" Margin="8,0,0,0">
+                                            <TextBlock Text="Status" Foreground="{StaticResource MutedTextBrush}" />
+                                            <TextBlock Text="{Binding AutoMessageStatus}" FontWeight="Bold" TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Grid>
+                                    <TextBlock Text="Fallback bei keiner Challenge" Foreground="{StaticResource MutedTextBrush}" Margin="0,10,0,0" />
                                     <TextBox Text="{Binding Settings.AutoMessagesNoChallengeText, UpdateSourceTrigger=PropertyChanged}" />
                                 </StackPanel>
                             </Border>
-                            <Border Style="{StaticResource Card}">
-                                <StackPanel>
-                                    <TextBlock Text="Flow als JSON" FontSize="20" FontWeight="SemiBold" />
-                                    <TextBlock Text="Type=Challenges erzeugt aktuelle Challenge-Staende. Type=Text sendet den Text. MessageType ist optional pro Schritt: Yellow, White, Cyan, Green, Red, ServerMessage, Error." Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" Margin="0,4,0,12" />
-                                    <TextBox Text="{Binding Settings.AutoMessagesFlowJson, UpdateSourceTrigger=PropertyChanged}" FontFamily="Consolas" AcceptsReturn="True" TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" MinHeight="280" />
-                                </StackPanel>
-                            </Border>
+
+                            <ItemsControl ItemsSource="{Binding AutoMessageEditors}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Margin="0,0,12,12" Padding="16" CornerRadius="8" BorderThickness="1" Background="{StaticResource PanelBrush}">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="BorderBrush" Value="{StaticResource AppBorderBrush}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding MessageType}" Value="Yellow">
+                                                            <Setter Property="BorderBrush" Value="#D4BE4C" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding MessageType}" Value="Cyan">
+                                                            <Setter Property="BorderBrush" Value="#4DBAD4" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding MessageType}" Value="Green">
+                                                            <Setter Property="BorderBrush" Value="#52B86B" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding MessageType}" Value="Red">
+                                                            <Setter Property="BorderBrush" Value="#D3152A" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding MessageType}" Value="White">
+                                                            <Setter Property="BorderBrush" Value="#F4F4F6" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="2*" />
+                                                    <ColumnDefinition Width="1.1*" />
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Grid.Column="0" Margin="0,0,14,0">
+                                                    <DockPanel>
+                                                        <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" FontSize="18" FontWeight="SemiBold" DockPanel.Dock="Left" MinWidth="260" />
+                                                        <Button Content="{Binding DataContext.Texts[RemoveDelete], RelativeSource={RelativeSource AncestorType=Window}}" HorizontalAlignment="Right" Command="{Binding DataContext.RemoveAutoMessageCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                    </DockPanel>
+                                                    <CheckBox Content="Aktiv" IsChecked="{Binding Enabled}" />
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="130" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                                                            <TextBlock Text="Modus" Foreground="{StaticResource MutedTextBrush}" />
+                                                            <ComboBox ItemsSource="{Binding DataContext.AutoMessageModes, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding Mode}" />
+                                                        </StackPanel>
+                                                        <StackPanel Grid.Column="1" Margin="8,0,8,0">
+                                                            <TextBlock Text="Typ" Foreground="{StaticResource MutedTextBrush}" />
+                                                            <ComboBox ItemsSource="{Binding DataContext.AutoMessageTypes, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding Type}" />
+                                                        </StackPanel>
+                                                        <StackPanel Grid.Column="2" Margin="8,0,8,0">
+                                                            <TextBlock Text="Farbe" Foreground="{StaticResource MutedTextBrush}" />
+                                                            <ComboBox ItemsSource="{Binding DataContext.BroadcastMessageTypes, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding MessageType}" />
+                                                        </StackPanel>
+                                                        <StackPanel Grid.Column="3" Margin="8,0,0,0">
+                                                            <TextBlock Text="Minuten" Foreground="{StaticResource MutedTextBrush}" />
+                                                            <TextBox Text="{Binding IntervalMinutes, UpdateSourceTrigger=PropertyChanged}" />
+                                                        </StackPanel>
+                                                    </Grid>
+                                                    <TextBlock Text="Text" Foreground="{StaticResource MutedTextBrush}" />
+                                                    <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" MinHeight="86" TextWrapping="Wrap" />
+                                                </StackPanel>
+
+                                                <Border Grid.Column="1" Padding="12" CornerRadius="8" Background="#101016" BorderThickness="1">
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <Setter Property="BorderBrush" Value="{StaticResource AppBorderBrush}" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding MessageType}" Value="Yellow">
+                                                                    <Setter Property="BorderBrush" Value="#D4BE4C" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding MessageType}" Value="Cyan">
+                                                                    <Setter Property="BorderBrush" Value="#4DBAD4" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding MessageType}" Value="Green">
+                                                                    <Setter Property="BorderBrush" Value="#52B86B" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding MessageType}" Value="Red">
+                                                                    <Setter Property="BorderBrush" Value="#D3152A" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding MessageType}" Value="White">
+                                                                    <Setter Property="BorderBrush" Value="#F4F4F6" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding TimingLabel}" Foreground="{StaticResource MutedTextBrush}" />
+                                                        <TextBlock Text="{Binding Mode}" FontSize="18" FontWeight="SemiBold" />
+                                                        <TextBlock Text="{Binding MessageType}" Foreground="{StaticResource MutedTextBrush}" Margin="0,6,0,12" />
+                                                        <TextBlock Text="{Binding PreviewText}" TextWrapping="Wrap" FontSize="16">
+                                                            <TextBlock.Style>
+                                                                <Style TargetType="TextBlock">
+                                                                    <Setter Property="Foreground" Value="{StaticResource AppTextBrush}" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding MessageType}" Value="Yellow">
+                                                                            <Setter Property="Foreground" Value="#D4BE4C" />
+                                                                        </DataTrigger>
+                                                                        <DataTrigger Binding="{Binding MessageType}" Value="Cyan">
+                                                                            <Setter Property="Foreground" Value="#4DBAD4" />
+                                                                        </DataTrigger>
+                                                                        <DataTrigger Binding="{Binding MessageType}" Value="Green">
+                                                                            <Setter Property="Foreground" Value="#52B86B" />
+                                                                        </DataTrigger>
+                                                                        <DataTrigger Binding="{Binding MessageType}" Value="Red">
+                                                                            <Setter Property="Foreground" Value="#F35C69" />
+                                                                        </DataTrigger>
+                                                                        <DataTrigger Binding="{Binding MessageType}" Value="White">
+                                                                            <Setter Property="Foreground" Value="#F4F4F6" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </TextBlock.Style>
+                                                        </TextBlock>
+                                                    </StackPanel>
+                                                </Border>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                         </StackPanel>
                     </ScrollViewer>
                 </TabItem>
 
-                <TabItem Header="Script Editor">
+                <TabItem Header="Skriptzone">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="310" />
@@ -666,15 +878,16 @@
                         <Border Style="{StaticResource Card}" Margin="0,0,12,0">
                             <DockPanel>
                                 <StackPanel DockPanel.Dock="Top">
-                                    <TextBlock Text="Scripts" FontSize="26" FontWeight="Bold" />
+                                    <TextBlock Text="Skriptzone" FontSize="26" FontWeight="Bold" />
                                     <TextBlock Text="Ablaufbloecke statt Roh-JSON. JSON bleibt im Hintergrund kompatibel." Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" Margin="0,4,0,12" />
                                     <StackPanel Orientation="Horizontal">
-                                        <Button Content="Start" Command="{Binding StartScriptsCommand}" />
-                                        <Button Content="Stop" Command="{Binding StopScriptsCommand}" />
+                                        <Button Content="{Binding Texts[Start]}" Command="{Binding StartScriptsCommand}" />
+                                        <Button Content="{Binding Texts[Stop]}" Command="{Binding StopScriptsCommand}" />
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal">
-                                        <Button Content="Scan jetzt" Command="{Binding ScanScriptsCommand}" />
-                                        <Button Content="Aktualisieren" Command="{Binding RefreshScriptsCommand}" />
+                                        <Button Content="{Binding Texts[ScanNow]}" Command="{Binding ScanScriptsCommand}" />
+                                        <Button Content="{Binding Texts[CreateNew]}" Command="{Binding CreateScriptCommand}" />
+                                        <Button Content="{Binding Texts[Refresh]}" Command="{Binding RefreshScriptsCommand}" />
                                     </StackPanel>
                                     <TextBlock Text="Engine laeuft" Foreground="{StaticResource MutedTextBrush}" Margin="0,8,0,0" />
                                     <TextBlock Text="{Binding ScriptEngineRunning}" FontWeight="Bold" Margin="0,0,0,12" />
@@ -686,18 +899,468 @@
                         <Border Grid.Column="1" Style="{StaticResource Card}" Margin="0">
                             <DockPanel>
                                 <StackPanel DockPanel.Dock="Top">
-                                    <TextBlock Text="Script Ablauf Editor" FontSize="26" FontWeight="Bold" />
+                                    <TextBlock Text="Skriptzone" FontSize="26" FontWeight="Bold" />
                                     <TextBlock Text="{Binding ScriptValidation}" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" Margin="0,4,0,12" />
+                                    <TextBlock Text="{Binding ScriptDirtyStatus}" Foreground="{StaticResource AccentBrush}" TextWrapping="Wrap" Margin="0,0,0,12" />
                                     <StackPanel Orientation="Horizontal">
-                                        <Button Content="Speichern" Click="SaveScript_Click" />
-                                        <Button Content="Duplizieren" Click="DuplicateScript_Click" />
-                                        <Button Content="JSON validieren" Click="ValidateScript_Click" />
-                                        <Button Content="JSON formatieren" Click="FormatScript_Click" />
+                                        <Button Content="{Binding Texts[Save]}" Click="SaveScript_Click" />
+                                        <Button Content="{Binding Texts[Duplicate]}" Click="DuplicateScript_Click" />
+                                        <Button Content="{Binding Texts[ValidateJson]}" Click="ValidateScript_Click" />
+                                        <Button Content="{Binding Texts[FormatJson]}" Click="FormatScript_Click" />
                                     </StackPanel>
                                 </StackPanel>
 
-                                <TabControl>
-                                    <TabItem Header="Ablauf">
+                                <TabControl x:Name="ScriptEditorTabs">
+                                    <TabItem Header="Bausteinplan">
+                                        <TabItem.Resources>
+                                            <DataTemplate DataType="{x:Type viewModels:ScriptStructuredEditorViewModel}">
+                                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                                    <StackPanel>
+                                                        <TextBlock Text="Aktivierungszone" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="110" />
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="80" />
+                                                                <ColumnDefinition Width="*" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <Grid.RowDefinitions>
+                                                                <RowDefinition Height="Auto" />
+                                                                <RowDefinition Height="Auto" />
+                                                                <RowDefinition Height="Auto" />
+                                                                <RowDefinition Height="Auto" />
+                                                            </Grid.RowDefinitions>
+                                                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Name" Foreground="{StaticResource MutedTextBrush}" />
+                                                            <TextBox Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="3" Text="{Binding ZoneName, UpdateSourceTrigger=PropertyChanged}" />
+                                                            <TextBlock Grid.Row="1" Grid.Column="0" Text="X" Foreground="{StaticResource MutedTextBrush}" />
+                                                            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding ZoneX, UpdateSourceTrigger=PropertyChanged}" />
+                                                            <TextBlock Grid.Row="1" Grid.Column="2" Text="Y" Foreground="{StaticResource MutedTextBrush}" />
+                                                            <TextBox Grid.Row="1" Grid.Column="3" Text="{Binding ZoneY, UpdateSourceTrigger=PropertyChanged}" />
+                                                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Z" Foreground="{StaticResource MutedTextBrush}" />
+                                                            <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding ZoneZ, UpdateSourceTrigger=PropertyChanged}" />
+                                                            <TextBlock Grid.Row="2" Grid.Column="2" Text="Radius" Foreground="{StaticResource MutedTextBrush}" />
+                                                            <TextBox Grid.Row="2" Grid.Column="3" Text="{Binding ZoneRadius, UpdateSourceTrigger=PropertyChanged}" />
+                                                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Modus" Foreground="{StaticResource MutedTextBrush}" />
+                                                            <ComboBox Grid.Row="3" Grid.Column="1" ItemsSource="{Binding DataContext.ScriptModes, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding Mode}" />
+                                                            <TextBlock Grid.Row="3" Grid.Column="2" Text="Cooldown" Foreground="{StaticResource MutedTextBrush}" />
+                                                            <TextBox Grid.Row="3" Grid.Column="3" Text="{Binding CooldownMinutes, UpdateSourceTrigger=PropertyChanged}" />
+                                                        </Grid>
+                                                    </StackPanel>
+                                                </ScrollViewer>
+                                            </DataTemplate>
+
+                                            <DataTemplate DataType="{x:Type viewModels:ScriptBlockEditorViewModel}">
+                                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding Name}" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
+                                                        <CheckBox Content="Block aktiv" IsChecked="{Binding Enabled}" />
+                                                        <Button Content="{Binding DataContext.Texts[AddCommand], RelativeSource={RelativeSource AncestorType=Window}}" HorizontalAlignment="Left" Command="{Binding DataContext.AddScriptCommandCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                        <ItemsControl ItemsSource="{Binding Commands}">
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Border Margin="0,8,0,0" Padding="10" CornerRadius="8" BorderBrush="{StaticResource AppBorderBrush}" BorderThickness="1" Background="#101016">
+                                                                        <StackPanel>
+                                                                            <Grid>
+                                                                                <Grid.ColumnDefinitions>
+                                                                                    <ColumnDefinition Width="78" />
+                                                                                    <ColumnDefinition Width="*" />
+                                                                                    <ColumnDefinition Width="72" />
+                                                                                    <ColumnDefinition Width="84" />
+                                                                                </Grid.ColumnDefinitions>
+                                                                                <CheckBox Grid.Column="0" Content="Aktiv" IsChecked="{Binding Enabled}" />
+                                                                                <TextBox Grid.Column="1" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" />
+                                                                                <TextBox Grid.Column="2" Text="{Binding Repeat, UpdateSourceTrigger=PropertyChanged}" ToolTip="Repeat" />
+                                                                                <TextBox Grid.Column="3" Text="{Binding DelayMs, UpdateSourceTrigger=PropertyChanged}" ToolTip="Delay ms" />
+                                                                            </Grid>
+                                                                            <ComboBox IsEditable="True" ItemsSource="{Binding DataContext.ScumCommandSuggestions, RelativeSource={RelativeSource AncestorType=Window}}" Text="{Binding Command, UpdateSourceTrigger=PropertyChanged}" />
+                                                                            <Button Content="{Binding DataContext.Texts[RemoveCommand], RelativeSource={RelativeSource AncestorType=Window}}" HorizontalAlignment="Left" Command="{Binding DataContext.RemoveScriptCommandCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                                        </StackPanel>
+                                                                    </Border>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </StackPanel>
+                                                </ScrollViewer>
+                                            </DataTemplate>
+
+                                            <DataTemplate DataType="{x:Type viewModels:SpawnBlockEditorViewModel}">
+                                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                                    <StackPanel>
+                                                        <TextBlock Text="Spawn" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
+                                                        <CheckBox Content="Aktiv" IsChecked="{Binding Enabled}" />
+                                                        <TextBlock Text="Name" Foreground="{StaticResource MutedTextBrush}" />
+                                                        <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" />
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="96" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <ComboBox Grid.Column="0" ItemsSource="{Binding DataContext.SpawnBlockTypes, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding Type}" />
+                                                            <TextBox Grid.Column="1" Text="{Binding Quantity, UpdateSourceTrigger=PropertyChanged}" ToolTip="Menge" />
+                                                        </Grid>
+                                                        <TextBlock Text="Asset" Foreground="{StaticResource MutedTextBrush}" />
+                                                        <TextBox Text="{Binding Asset, UpdateSourceTrigger=PropertyChanged}" />
+                                                        <TextBlock Text="Location" Foreground="{StaticResource MutedTextBrush}" />
+                                                        <ComboBox IsEditable="True" ItemsSource="{Binding DataContext.ScriptEditorModel.LocationPlaceholders, RelativeSource={RelativeSource AncestorType=Window}}" Text="{Binding Location, UpdateSourceTrigger=PropertyChanged}" />
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="*" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <StackPanel Grid.Column="0" Margin="0,0,6,0">
+                                                                <TextBlock Text="Start Sek." Foreground="{StaticResource MutedTextBrush}" />
+                                                                <TextBox Text="{Binding StartDelaySeconds, UpdateSourceTrigger=PropertyChanged}" />
+                                                            </StackPanel>
+                                                            <StackPanel Grid.Column="1" Margin="6,0,0,0">
+                                                                <TextBlock Text="Loop Sek." Foreground="{StaticResource MutedTextBrush}" />
+                                                                <TextBox Text="{Binding RepeatEverySeconds, UpdateSourceTrigger=PropertyChanged}" />
+                                                            </StackPanel>
+                                                        </Grid>
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="*" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <StackPanel Grid.Column="0" Margin="0,0,6,0">
+                                                                <TextBlock Text="Repeat" Foreground="{StaticResource MutedTextBrush}" />
+                                                                <TextBox Text="{Binding Repeat, UpdateSourceTrigger=PropertyChanged}" />
+                                                            </StackPanel>
+                                                            <StackPanel Grid.Column="1" Margin="6,0,0,0">
+                                                                <TextBlock Text="Despawn Sek." Foreground="{StaticResource MutedTextBrush}" />
+                                                                <TextBox Text="{Binding DespawnLifetimeSeconds, UpdateSourceTrigger=PropertyChanged}" />
+                                                            </StackPanel>
+                                                        </Grid>
+                                                        <CheckBox Content="ExecAs Spieler" IsChecked="{Binding UseTriggerPlayer}" />
+                                                        <TextBlock Text="Extra" Foreground="{StaticResource MutedTextBrush}" />
+                                                        <TextBox Text="{Binding Extra, UpdateSourceTrigger=PropertyChanged}" />
+                                                        <Button Content="{Binding DataContext.Texts[RemoveSpawn], RelativeSource={RelativeSource AncestorType=Window}}" HorizontalAlignment="Left" Command="{Binding DataContext.RemoveSpawnBlockCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                    </StackPanel>
+                                                </ScrollViewer>
+                                            </DataTemplate>
+
+                                            <DataTemplate DataType="{x:Type viewModels:ScriptLootRandomBlockEditorViewModel}">
+                                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                                    <StackPanel>
+                                                        <TextBlock Text="Random Loot" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
+                                                        <TextBlock Text="Loot Auswahl" Foreground="{StaticResource MutedTextBrush}" />
+                                                        <ComboBox ItemsSource="{Binding DataContext.LootSpawnModes, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding LootPackSpawnMode}" />
+                                                        <Button Content="{Binding DataContext.Texts[AddLootPack], RelativeSource={RelativeSource AncestorType=Window}}" HorizontalAlignment="Left" Command="{Binding DataContext.AddLootPackCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                                        <ItemsControl ItemsSource="{Binding LootPacks}">
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Expander Header="{Binding Name}" Style="{StaticResource RedExpander}" IsExpanded="False">
+                                                                        <StackPanel Margin="0,8,0,0">
+                                                                            <CheckBox Content="Aktiv" IsChecked="{Binding Enabled}" />
+                                                                            <TextBlock Text="Name" Foreground="{StaticResource MutedTextBrush}" />
+                                                                            <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" />
+                                                                            <TextBlock Text="Gewicht" Foreground="{StaticResource MutedTextBrush}" />
+                                                                            <TextBox Text="{Binding Weight, UpdateSourceTrigger=PropertyChanged}" />
+                                                                            <TextBlock Text="Location" Foreground="{StaticResource MutedTextBrush}" />
+                                                                            <ComboBox IsEditable="True" ItemsSource="{Binding DataContext.ScriptEditorModel.LocationPlaceholders, RelativeSource={RelativeSource AncestorType=Window}}" Text="{Binding Location, UpdateSourceTrigger=PropertyChanged}" />
+                                                                            <Button Content="{Binding DataContext.Texts[AddItem], RelativeSource={RelativeSource AncestorType=Window}}" HorizontalAlignment="Left" Command="{Binding DataContext.AddLootItemCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                                            <ItemsControl ItemsSource="{Binding Items}">
+                                                                                <ItemsControl.ItemTemplate>
+                                                                                    <DataTemplate>
+                                                                                        <Grid Margin="0,6,0,0">
+                                                                                            <Grid.ColumnDefinitions>
+                                                                                                <ColumnDefinition Width="*" />
+                                                                                                <ColumnDefinition Width="70" />
+                                                                                                <ColumnDefinition Width="84" />
+                                                                                                <ColumnDefinition Width="86" />
+                                                                                            </Grid.ColumnDefinitions>
+                                                                                            <TextBox Grid.Column="0" Text="{Binding Item, UpdateSourceTrigger=PropertyChanged}" />
+                                                                                            <TextBox Grid.Column="1" Text="{Binding Quantity, UpdateSourceTrigger=PropertyChanged}" />
+                                                                                            <TextBox Grid.Column="2" Text="{Binding DelayMs, UpdateSourceTrigger=PropertyChanged}" />
+                                                                                            <Button Grid.Column="3" Content="{Binding DataContext.Texts[RemoveItem], RelativeSource={RelativeSource AncestorType=Window}}" Command="{Binding DataContext.RemoveLootItemCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                                                        </Grid>
+                                                                                    </DataTemplate>
+                                                                                </ItemsControl.ItemTemplate>
+                                                                            </ItemsControl>
+                                                                            <Button Content="{Binding DataContext.Texts[RemoveLootPack], RelativeSource={RelativeSource AncestorType=Window}}" HorizontalAlignment="Left" Command="{Binding DataContext.RemoveLootPackCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                                        </StackPanel>
+                                                                    </Expander>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </StackPanel>
+                                                </ScrollViewer>
+                                            </DataTemplate>
+
+                                            <DataTemplate DataType="{x:Type viewModels:LootPackEditorViewModel}">
+                                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                                    <StackPanel>
+                                                        <TextBlock Text="LootPack" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
+                                                        <CheckBox Content="Aktiv" IsChecked="{Binding Enabled}" />
+                                                        <TextBlock Text="Name" Foreground="{StaticResource MutedTextBrush}" />
+                                                        <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" />
+                                                        <TextBlock Text="Gewicht" Foreground="{StaticResource MutedTextBrush}" />
+                                                        <TextBox Text="{Binding Weight, UpdateSourceTrigger=PropertyChanged}" />
+                                                        <TextBlock Text="Location" Foreground="{StaticResource MutedTextBrush}" />
+                                                        <ComboBox IsEditable="True" ItemsSource="{Binding DataContext.ScriptEditorModel.LocationPlaceholders, RelativeSource={RelativeSource AncestorType=Window}}" Text="{Binding Location, UpdateSourceTrigger=PropertyChanged}" />
+                                                        <Button Content="{Binding DataContext.Texts[AddItem], RelativeSource={RelativeSource AncestorType=Window}}" HorizontalAlignment="Left" Command="{Binding DataContext.AddLootItemCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                        <ItemsControl ItemsSource="{Binding Items}">
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Grid Margin="0,6,0,0">
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition Width="*" />
+                                                                            <ColumnDefinition Width="70" />
+                                                                            <ColumnDefinition Width="86" />
+                                                                        </Grid.ColumnDefinitions>
+                                                                        <TextBox Grid.Column="0" Text="{Binding Item, UpdateSourceTrigger=PropertyChanged}" />
+                                                                        <TextBox Grid.Column="1" Text="{Binding Quantity, UpdateSourceTrigger=PropertyChanged}" />
+                                                                        <Button Grid.Column="2" Content="{Binding DataContext.Texts[RemoveItem], RelativeSource={RelativeSource AncestorType=Window}}" Command="{Binding DataContext.RemoveLootItemCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                                    </Grid>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                        <Button Content="{Binding DataContext.Texts[RemoveLootPack], RelativeSource={RelativeSource AncestorType=Window}}" HorizontalAlignment="Left" Command="{Binding DataContext.RemoveLootPackCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                    </StackPanel>
+                                                </ScrollViewer>
+                                            </DataTemplate>
+
+                                            <DataTemplate DataType="{x:Type viewModels:LootCommandPackEditorViewModel}">
+                                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                                    <StackPanel>
+                                                        <TextBlock Text="Loot Command" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
+                                                        <CheckBox Content="Aktiv" IsChecked="{Binding Enabled}" />
+                                                        <TextBlock Text="Name" Foreground="{StaticResource MutedTextBrush}" />
+                                                        <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" />
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="*" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <StackPanel Grid.Column="0" Margin="0,0,6,0">
+                                                                <TextBlock Text="Gewicht" Foreground="{StaticResource MutedTextBrush}" />
+                                                                <TextBox Text="{Binding Weight, UpdateSourceTrigger=PropertyChanged}" />
+                                                            </StackPanel>
+                                                            <StackPanel Grid.Column="1" Margin="6,0,0,0">
+                                                                <TextBlock Text="Delay ms" Foreground="{StaticResource MutedTextBrush}" />
+                                                                <TextBox Text="{Binding DelayMs, UpdateSourceTrigger=PropertyChanged}" />
+                                                            </StackPanel>
+                                                        </Grid>
+                                                        <TextBlock Text="Command" Foreground="{StaticResource MutedTextBrush}" />
+                                                        <ComboBox IsEditable="True" ItemsSource="{Binding DataContext.ScumCommandSuggestions, RelativeSource={RelativeSource AncestorType=Window}}" Text="{Binding Command, UpdateSourceTrigger=PropertyChanged}" />
+                                                        <TextBlock Text="Location" Foreground="{StaticResource MutedTextBrush}" />
+                                                        <ComboBox IsEditable="True" ItemsSource="{Binding DataContext.ScriptEditorModel.LocationPlaceholders, RelativeSource={RelativeSource AncestorType=Window}}" Text="{Binding Location, UpdateSourceTrigger=PropertyChanged}" />
+                                                        <Button Content="{Binding DataContext.Texts[RemoveLootCommand], RelativeSource={RelativeSource AncestorType=Window}}" HorizontalAlignment="Left" Command="{Binding DataContext.RemoveLootCommandPackCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                    </StackPanel>
+                                                </ScrollViewer>
+                                            </DataTemplate>
+                                        </TabItem.Resources>
+
+                                        <Grid DataContext="{Binding ScriptEditorModel}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="160" />
+                                                <ColumnDefinition Width="6" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="6" />
+                                                <ColumnDefinition Width="460" MinWidth="400" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <Border Background="#101016" BorderBrush="{StaticResource AppBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="10" Margin="0,0,8,0">
+                                                <StackPanel>
+                                                    <TextBlock Text="Palette" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,10" />
+                                                    <Button Content="{Binding DataContext.Texts[AddSpawn], RelativeSource={RelativeSource AncestorType=Window}}" Command="{Binding DataContext.AddSpawnBlockCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                                    <Button Content="{Binding DataContext.Texts[AddLootPack], RelativeSource={RelativeSource AncestorType=Window}}" Command="{Binding DataContext.AddLootPackCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                                    <Button Content="{Binding DataContext.Texts[AddLootCommand], RelativeSource={RelativeSource AncestorType=Window}}" Command="{Binding DataContext.AddLootCommandPackCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                                    <Button Content="{Binding DataContext.Texts[AddLiveCommand], RelativeSource={RelativeSource AncestorType=Window}}" Command="{Binding DataContext.AddScriptCommandCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding LiveBlock}" />
+                                                    <Separator Margin="0,8,0,10" Background="{StaticResource AppBorderBrush}" />
+                                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                                    <TextBlock Text="{Binding Mode}" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" />
+                                                </StackPanel>
+                                            </Border>
+
+                                            <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="{StaticResource AppBorderBrush}" />
+
+                                            <Border Grid.Column="2" Background="#09090D" BorderBrush="{StaticResource AppBorderBrush}" BorderThickness="1" CornerRadius="8" ClipToBounds="True">
+                                                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                                                    <Canvas x:Name="FlowCanvas" Width="1080" Height="700" Background="#09090D">
+                                                        <ItemsControl ItemsSource="{Binding FlowConnections}" IsHitTestVisible="False">
+                                                            <ItemsControl.ItemsPanel>
+                                                                <ItemsPanelTemplate>
+                                                                    <Canvas />
+                                                                </ItemsPanelTemplate>
+                                                            </ItemsControl.ItemsPanel>
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Line X1="{Binding X1}" Y1="{Binding Y1}" X2="{Binding X2}" Y2="{Binding Y2}" Stroke="{StaticResource AccentDarkBrush}" StrokeThickness="2" />
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+
+                                                        <ItemsControl ItemsSource="{Binding FlowNodes}">
+                                                            <ItemsControl.ItemsPanel>
+                                                                <ItemsPanelTemplate>
+                                                                    <Canvas />
+                                                                </ItemsPanelTemplate>
+                                                            </ItemsControl.ItemsPanel>
+                                                            <ItemsControl.ItemContainerStyle>
+                                                                <Style TargetType="ContentPresenter">
+                                                                    <Setter Property="Canvas.Left" Value="{Binding X}" />
+                                                                    <Setter Property="Canvas.Top" Value="{Binding Y}" />
+                                                                </Style>
+                                                            </ItemsControl.ItemContainerStyle>
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Border Width="176" Height="84" CornerRadius="8" Padding="10" BorderThickness="1" Cursor="Hand"
+                                                                            PreviewMouseLeftButtonDown="FlowNode_MouseLeftButtonDown"
+                                                                            PreviewMouseMove="FlowNode_MouseMove"
+                                                                            PreviewMouseLeftButtonUp="FlowNode_MouseLeftButtonUp">
+                                                                        <Border.Style>
+                                                                            <Style TargetType="Border">
+                                                                                <Setter Property="Background" Value="#15151B" />
+                                                                                <Setter Property="BorderBrush" Value="{StaticResource AppBorderBrush}" />
+                                                                                <Style.Triggers>
+                                                                                    <DataTrigger Binding="{Binding Kind}" Value="Trigger">
+                                                                                        <Setter Property="BorderBrush" Value="#C1B85C" />
+                                                                                    </DataTrigger>
+                                                                                    <DataTrigger Binding="{Binding Kind}" Value="Spawn">
+                                                                                        <Setter Property="BorderBrush" Value="#D3152A" />
+                                                                                    </DataTrigger>
+                                                                                    <DataTrigger Binding="{Binding Kind}" Value="Loot">
+                                                                                        <Setter Property="BorderBrush" Value="#3E9F78" />
+                                                                                    </DataTrigger>
+                                                                                    <DataTrigger Binding="{Binding Kind}" Value="Random">
+                                                                                        <Setter Property="BorderBrush" Value="#C1B85C" />
+                                                                                    </DataTrigger>
+                                                                                    <DataTrigger Binding="{Binding Kind}" Value="LootPack">
+                                                                                        <Setter Property="BorderBrush" Value="#3E9F78" />
+                                                                                    </DataTrigger>
+                                                                                    <DataTrigger Binding="{Binding Kind}" Value="Command">
+                                                                                        <Setter Property="BorderBrush" Value="#5B8FD8" />
+                                                                                    </DataTrigger>
+                                                                                    <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                                                        <Setter Property="Background" Value="#241117" />
+                                                                                        <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                                                                                        <Setter Property="BorderThickness" Value="2" />
+                                                                                    </DataTrigger>
+                                                                                </Style.Triggers>
+                                                                            </Style>
+                                                                        </Border.Style>
+                                                                        <StackPanel>
+                                                                            <DockPanel>
+                                                                                <TextBlock Text="{Binding Kind}" Foreground="{StaticResource MutedTextBrush}" DockPanel.Dock="Left" />
+                                                                                <TextBlock Text=">" Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Right" />
+                                                                            </DockPanel>
+                                                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                                            <TextBlock Text="{Binding Subtitle}" Foreground="{StaticResource MutedTextBrush}" TextTrimming="CharacterEllipsis" />
+                                                                        </StackPanel>
+                                                                    </Border>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </Canvas>
+                                                </ScrollViewer>
+                                            </Border>
+
+                                            <GridSplitter Grid.Column="3" Width="6" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="{StaticResource AppBorderBrush}" />
+
+                                            <Border Grid.Column="4" Background="#101016" BorderBrush="{StaticResource AppBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="8,0,0,0">
+                                                <DockPanel>
+                                                    <StackPanel DockPanel.Dock="Top">
+                                                        <TextBlock Text="{Binding SelectedFlowTitle}" FontSize="20" FontWeight="SemiBold" />
+                                                        <TextBlock Text="{Binding SelectedFlowSubtitle}" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" Margin="0,4,0,12" />
+                                                    </StackPanel>
+                                                    <ContentControl Content="{Binding SelectedFlowTarget}" />
+                                                </DockPanel>
+                                            </Border>
+                                        </Grid>
+                                    </TabItem>
+
+                                    <TabItem Header="Variablen">
+                                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                            <StackPanel DataContext="{Binding ScriptEditorModel}">
+                                                <Expander Header="Triggerzone" IsExpanded="True" Style="{StaticResource RedExpander}">
+                                                    <Grid Margin="0,10,0,0">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="120" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="90" />
+                                                            <ColumnDefinition Width="*" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <Grid.RowDefinitions>
+                                                            <RowDefinition Height="Auto" />
+                                                            <RowDefinition Height="Auto" />
+                                                            <RowDefinition Height="Auto" />
+                                                        </Grid.RowDefinitions>
+                                                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Name" Foreground="{StaticResource MutedTextBrush}" />
+                                                        <TextBox Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="3" Text="{Binding ZoneName, UpdateSourceTrigger=PropertyChanged}" />
+                                                        <TextBlock Grid.Row="1" Grid.Column="0" Text="X" Foreground="{StaticResource MutedTextBrush}" />
+                                                        <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding ZoneX, UpdateSourceTrigger=PropertyChanged}" />
+                                                        <TextBlock Grid.Row="1" Grid.Column="2" Text="Y" Foreground="{StaticResource MutedTextBrush}" />
+                                                        <TextBox Grid.Row="1" Grid.Column="3" Text="{Binding ZoneY, UpdateSourceTrigger=PropertyChanged}" />
+                                                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Z" Foreground="{StaticResource MutedTextBrush}" />
+                                                        <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding ZoneZ, UpdateSourceTrigger=PropertyChanged}" />
+                                                        <TextBlock Grid.Row="2" Grid.Column="2" Text="Radius" Foreground="{StaticResource MutedTextBrush}" />
+                                                        <TextBox Grid.Row="2" Grid.Column="3" Text="{Binding ZoneRadius, UpdateSourceTrigger=PropertyChanged}" />
+                                                    </Grid>
+                                                </Expander>
+
+                                                <Expander Header="Initiatornachricht" IsExpanded="True" Style="{StaticResource RedExpander}">
+                                                    <StackPanel Margin="0,10,0,0">
+                                                        <TextBox Text="{Binding InitiatorMessage, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" MinHeight="60" TextWrapping="Wrap" />
+                                                        <TextBlock Text="Platzhalter: {initiatorMessage}" Foreground="{StaticResource MutedTextBrush}" />
+                                                    </StackPanel>
+                                                </Expander>
+
+                                                <Expander Header="Lootspawn Koordinaten" IsExpanded="True" Style="{StaticResource RedExpander}">
+                                                    <StackPanel Margin="0,10,0,0">
+                                                        <Button Content="{Binding DataContext.Texts[AddLootCoordinate], RelativeSource={RelativeSource AncestorType=Window}}" HorizontalAlignment="Left" Command="{Binding DataContext.AddLootLocationVariableCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                                        <ItemsControl ItemsSource="{Binding LootSpawnLocations}">
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Border Margin="0,8,0,0" Padding="10" CornerRadius="8" BorderBrush="{StaticResource AppBorderBrush}" BorderThickness="1" Background="#101016">
+                                                                        <Grid>
+                                                                            <Grid.ColumnDefinitions>
+                                                                                <ColumnDefinition Width="170" />
+                                                                                <ColumnDefinition Width="*" />
+                                                                                <ColumnDefinition Width="170" />
+                                                                                <ColumnDefinition Width="100" />
+                                                                            </Grid.ColumnDefinitions>
+                                                                            <TextBox Grid.Column="0" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" ToolTip="Variablenname" />
+                                                                            <TextBox Grid.Column="1" Text="{Binding Location, UpdateSourceTrigger=PropertyChanged}" ToolTip="SCUM Location" />
+                                                                            <TextBox Grid.Column="2" Text="{Binding Placeholder, Mode=OneWay}" IsReadOnly="True" />
+                                                                            <Button Grid.Column="3" Content="{Binding DataContext.Texts[Remove], RelativeSource={RelativeSource AncestorType=Window}}" Command="{Binding DataContext.RemoveLocationVariableCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                                        </Grid>
+                                                                    </Border>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </StackPanel>
+                                                </Expander>
+
+                                                <Expander Header="NPCSpawn Koordinaten" IsExpanded="True" Style="{StaticResource RedExpander}">
+                                                    <StackPanel Margin="0,10,0,0">
+                                                        <Button Content="{Binding DataContext.Texts[AddNpcCoordinate], RelativeSource={RelativeSource AncestorType=Window}}" HorizontalAlignment="Left" Command="{Binding DataContext.AddNpcLocationVariableCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                                        <ItemsControl ItemsSource="{Binding NpcSpawnLocations}">
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Border Margin="0,8,0,0" Padding="10" CornerRadius="8" BorderBrush="{StaticResource AppBorderBrush}" BorderThickness="1" Background="#101016">
+                                                                        <Grid>
+                                                                            <Grid.ColumnDefinitions>
+                                                                                <ColumnDefinition Width="170" />
+                                                                                <ColumnDefinition Width="*" />
+                                                                                <ColumnDefinition Width="170" />
+                                                                                <ColumnDefinition Width="100" />
+                                                                            </Grid.ColumnDefinitions>
+                                                                            <TextBox Grid.Column="0" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" ToolTip="Variablenname" />
+                                                                            <TextBox Grid.Column="1" Text="{Binding Location, UpdateSourceTrigger=PropertyChanged}" ToolTip="SCUM Location" />
+                                                                            <TextBox Grid.Column="2" Text="{Binding Placeholder, Mode=OneWay}" IsReadOnly="True" />
+                                                                            <Button Grid.Column="3" Content="{Binding DataContext.Texts[Remove], RelativeSource={RelativeSource AncestorType=Window}}" Command="{Binding DataContext.RemoveLocationVariableCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                                        </Grid>
+                                                                    </Border>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </StackPanel>
+                                                </Expander>
+                                            </StackPanel>
+                                        </ScrollViewer>
+                                    </TabItem>
+
+                                    <TabItem Header="Ablauf" Visibility="Collapsed">
                                         <ScrollViewer VerticalScrollBarVisibility="Auto">
                                             <StackPanel DataContext="{Binding ScriptEditorModel}">
                                                 <Expander Header="Titel / Main Einstellungen" IsExpanded="True" Style="{StaticResource RedExpander}">
@@ -775,7 +1438,7 @@
                                                             <Expander Header="{Binding Name}" IsExpanded="False" Style="{StaticResource RedExpander}">
                                                                 <StackPanel Margin="0,10,0,0">
                                                                     <CheckBox Content="Block aktiv" IsChecked="{Binding Enabled}" />
-                                                                    <Button Content="+ Command" Width="110" HorizontalAlignment="Left" Command="{Binding DataContext.AddScriptCommandCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                                    <Button Content="{Binding DataContext.Texts[AddCommand], RelativeSource={RelativeSource AncestorType=Window}}" Width="110" HorizontalAlignment="Left" Command="{Binding DataContext.AddScriptCommandCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
                                                                     <ItemsControl ItemsSource="{Binding Commands}">
                                                                         <ItemsControl.ItemTemplate>
                                                                             <DataTemplate>
@@ -788,7 +1451,7 @@
                                                                                         <TextBox Grid.Row="0" Grid.Column="2" Text="{Binding Repeat, UpdateSourceTrigger=PropertyChanged}" />
                                                                                         <TextBox Grid.Row="0" Grid.Column="3" Text="{Binding DelayMs, UpdateSourceTrigger=PropertyChanged}" />
                                                                                         <TextBlock Grid.Row="0" Grid.Column="4" Text="ms Delay" VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}" />
-                                                                                        <Button Grid.Row="0" Grid.Column="5" Content="- Loeschen" Command="{Binding DataContext.RemoveScriptCommandCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                                                        <Button Grid.Row="0" Grid.Column="5" Content="{Binding DataContext.Texts[RemoveDelete], RelativeSource={RelativeSource AncestorType=Window}}" Command="{Binding DataContext.RemoveScriptCommandCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
                                                                                         <ComboBox Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="5" Margin="0,8,0,0" IsEditable="True" ItemsSource="{Binding DataContext.ScumCommandSuggestions, RelativeSource={RelativeSource AncestorType=Window}}" Text="{Binding Command, UpdateSourceTrigger=PropertyChanged}" />
                                                                                     </Grid>
                                                                                 </Border>
@@ -801,12 +1464,80 @@
                                                     </ItemsControl.ItemTemplate>
                                                 </ItemsControl>
 
+                                                <Expander Header="Liveblock - Spawn Bausteine" IsExpanded="True" Style="{StaticResource RedExpander}">
+                                                    <StackPanel Margin="0,10,0,0">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <Button Content="{Binding DataContext.Texts[AddSpawn], RelativeSource={RelativeSource AncestorType=Window}}" Command="{Binding DataContext.AddSpawnBlockCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                                        </StackPanel>
+                                                        <ItemsControl ItemsSource="{Binding SpawnBlocks}">
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Border Margin="0,8,0,0" Padding="10" CornerRadius="10" BorderBrush="{StaticResource AppBorderBrush}" BorderThickness="1" Background="#101016">
+                                                                        <StackPanel>
+                                                                            <Grid>
+                                                                                <Grid.ColumnDefinitions>
+                                                                                    <ColumnDefinition Width="78" />
+                                                                                    <ColumnDefinition Width="*" />
+                                                                                    <ColumnDefinition Width="105" />
+                                                                                    <ColumnDefinition Width="150" />
+                                                                                    <ColumnDefinition Width="90" />
+                                                                                    <ColumnDefinition Width="90" />
+                                                                                    <ColumnDefinition Width="105" />
+                                                                                </Grid.ColumnDefinitions>
+                                                                                <CheckBox Grid.Column="0" Content="Aktiv" IsChecked="{Binding Enabled}" />
+                                                                                <TextBox Grid.Column="1" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" ToolTip="Name des Bausteins" />
+                                                                                <ComboBox Grid.Column="2" ItemsSource="{Binding DataContext.SpawnBlockTypes, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding Type}" />
+                                                                                <TextBox Grid.Column="3" Text="{Binding Asset, UpdateSourceTrigger=PropertyChanged}" ToolTip="Item, NPC Blueprint oder Vehicle Blueprint" />
+                                                                                <TextBox Grid.Column="4" Text="{Binding Quantity, UpdateSourceTrigger=PropertyChanged}" ToolTip="Menge" />
+                                                                                <TextBox Grid.Column="5" Text="{Binding DelayMs, UpdateSourceTrigger=PropertyChanged}" ToolTip="Delay nach dem RCON-Befehl in Millisekunden" />
+                                                                                <Button Grid.Column="6" Content="{Binding DataContext.Texts[RemoveDelete], RelativeSource={RelativeSource AncestorType=Window}}" Command="{Binding DataContext.RemoveSpawnBlockCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                                            </Grid>
+                                                                            <TextBox Text="{Binding Location, UpdateSourceTrigger=PropertyChanged}" Margin="0,8,0,0" ToolTip="SCUM Location, z. B. [{X=... Y=... Z=...|P=... Y=... R=...}]" />
+                                                                            <Grid Margin="0,4,0,0">
+                                                                                <Grid.ColumnDefinitions>
+                                                                                    <ColumnDefinition Width="130" />
+                                                                                    <ColumnDefinition Width="110" />
+                                                                                    <ColumnDefinition Width="110" />
+                                                                                    <ColumnDefinition Width="110" />
+                                                                                    <ColumnDefinition Width="130" />
+                                                                                    <ColumnDefinition Width="*" />
+                                                                                </Grid.ColumnDefinitions>
+                                                                                <TextBox Grid.Column="0" Text="{Binding DespawnLifetimeSeconds, UpdateSourceTrigger=PropertyChanged}" ToolTip="DespawnLifetime in Sekunden, 0 = nicht anhaengen" />
+                                                                                <TextBox Grid.Column="1" Text="{Binding StartDelaySeconds, UpdateSourceTrigger=PropertyChanged}" ToolTip="Startdelay in Sekunden" />
+                                                                                <TextBox Grid.Column="2" Text="{Binding Repeat, UpdateSourceTrigger=PropertyChanged}" ToolTip="Anzahl Spawn-Durchlaeufe" />
+                                                                                <TextBox Grid.Column="3" Text="{Binding RepeatEverySeconds, UpdateSourceTrigger=PropertyChanged}" ToolTip="Sekunden zwischen Wiederholungen" />
+                                                                                <CheckBox Grid.Column="4" Content="ExecAs Spieler" IsChecked="{Binding UseTriggerPlayer}" VerticalAlignment="Center" />
+                                                                                <TextBox Grid.Column="5" Text="{Binding Extra, UpdateSourceTrigger=PropertyChanged}" ToolTip="Optionaler Zusatz, z. B. Modifier minimalfunctional" />
+                                                                            </Grid>
+                                                                            <Grid Margin="0,0,0,2">
+                                                                                <Grid.ColumnDefinitions>
+                                                                                    <ColumnDefinition Width="130" />
+                                                                                    <ColumnDefinition Width="110" />
+                                                                                    <ColumnDefinition Width="110" />
+                                                                                    <ColumnDefinition Width="110" />
+                                                                                    <ColumnDefinition Width="130" />
+                                                                                    <ColumnDefinition Width="*" />
+                                                                                </Grid.ColumnDefinitions>
+                                                                                <TextBlock Grid.Column="0" Text="Despawn Sek." Foreground="{StaticResource MutedTextBrush}" />
+                                                                                <TextBlock Grid.Column="1" Text="Start Sek." Foreground="{StaticResource MutedTextBrush}" />
+                                                                                <TextBlock Grid.Column="2" Text="Repeat" Foreground="{StaticResource MutedTextBrush}" />
+                                                                                <TextBlock Grid.Column="3" Text="Loop Sek." Foreground="{StaticResource MutedTextBrush}" />
+                                                                                <TextBlock Grid.Column="5" Text="Extra" Foreground="{StaticResource MutedTextBrush}" />
+                                                                            </Grid>
+                                                                        </StackPanel>
+                                                                    </Border>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </StackPanel>
+                                                </Expander>
+
                                                 <Expander Header="Liveblock - Loot Spawn" IsExpanded="False" Style="{StaticResource RedExpander}">
                                                     <StackPanel Margin="0,10,0,0">
                                                         <StackPanel Orientation="Horizontal">
                                                             <TextBlock Text="Loot Auswahl" VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}" Margin="0,0,10,0" />
                                                             <ComboBox Width="180" ItemsSource="{Binding DataContext.LootSpawnModes, RelativeSource={RelativeSource AncestorType=Window}}" SelectedItem="{Binding LootPackSpawnMode}" />
-                                                            <Button Content="+ LootPack" Command="{Binding DataContext.AddLootPackCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                                            <Button Content="{Binding DataContext.Texts[AddLootPack], RelativeSource={RelativeSource AncestorType=Window}}" Command="{Binding DataContext.AddLootPackCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
                                                         </StackPanel>
                                                         <ItemsControl ItemsSource="{Binding LootPacks}">
                                                             <ItemsControl.ItemTemplate>
@@ -818,10 +1549,10 @@
                                                                                 <CheckBox Grid.Column="0" Content="Aktiv" IsChecked="{Binding Enabled}" />
                                                                                 <TextBox Grid.Column="1" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" />
                                                                                 <TextBox Grid.Column="2" Text="{Binding Weight, UpdateSourceTrigger=PropertyChanged}" />
-                                                                                <Button Grid.Column="4" Content="- Pack" Command="{Binding DataContext.RemoveLootPackCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                                                <Button Grid.Column="4" Content="{Binding DataContext.Texts[RemovePack], RelativeSource={RelativeSource AncestorType=Window}}" Command="{Binding DataContext.RemoveLootPackCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
                                                                             </Grid>
                                                                             <TextBox Text="{Binding Location, UpdateSourceTrigger=PropertyChanged}" Margin="0,8,0,0" ToolTip="Location String" />
-                                                                            <Button Content="+ Item" Width="90" HorizontalAlignment="Left" Command="{Binding DataContext.AddLootItemCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                                            <Button Content="{Binding DataContext.Texts[AddItem], RelativeSource={RelativeSource AncestorType=Window}}" Width="90" HorizontalAlignment="Left" Command="{Binding DataContext.AddLootItemCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
                                                                             <ItemsControl ItemsSource="{Binding Items}">
                                                                                 <ItemsControl.ItemTemplate>
                                                                                     <DataTemplate>
@@ -830,7 +1561,7 @@
                                                                                             <ComboBox Grid.Column="0" IsEditable="True" ItemsSource="{Binding DataContext.ScumCommandSuggestions, RelativeSource={RelativeSource AncestorType=Window}}" Text="{Binding Item, UpdateSourceTrigger=PropertyChanged}" />
                                                                                             <TextBox Grid.Column="1" Text="{Binding Quantity, UpdateSourceTrigger=PropertyChanged}" />
                                                                                             <TextBox Grid.Column="2" Text="{Binding DelayMs, UpdateSourceTrigger=PropertyChanged}" />
-                                                                                            <Button Grid.Column="3" Content="- Item" Command="{Binding DataContext.RemoveLootItemCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                                                            <Button Grid.Column="3" Content="{Binding DataContext.Texts[RemoveItem], RelativeSource={RelativeSource AncestorType=Window}}" Command="{Binding DataContext.RemoveLootItemCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
                                                                                         </Grid>
                                                                                     </DataTemplate>
                                                                                 </ItemsControl.ItemTemplate>
@@ -845,7 +1576,7 @@
 
                                                 <Expander Header="Liveblock - NPC Spawn / komplette Loot Commands" IsExpanded="False" Style="{StaticResource RedExpander}">
                                                     <StackPanel Margin="0,10,0,0">
-                                                        <Button Content="+ NPC/Loot CommandPack" Width="170" HorizontalAlignment="Left" Command="{Binding DataContext.AddLootCommandPackCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                                        <Button Content="{Binding DataContext.Texts[AddNpcLootCommandPack], RelativeSource={RelativeSource AncestorType=Window}}" Width="170" HorizontalAlignment="Left" Command="{Binding DataContext.AddLootCommandPackCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
                                                         <ItemsControl ItemsSource="{Binding LootCommandPacks}">
                                                             <ItemsControl.ItemTemplate>
                                                                 <DataTemplate>
@@ -857,7 +1588,7 @@
                                                                                 <TextBox Grid.Column="1" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" />
                                                                                 <TextBox Grid.Column="2" Text="{Binding Weight, UpdateSourceTrigger=PropertyChanged}" />
                                                                                 <TextBox Grid.Column="3" Text="{Binding DelayMs, UpdateSourceTrigger=PropertyChanged}" />
-                                                                                <Button Grid.Column="4" Content="- Loeschen" Command="{Binding DataContext.RemoveLootCommandPackCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                                                <Button Grid.Column="4" Content="{Binding DataContext.Texts[RemoveDelete], RelativeSource={RelativeSource AncestorType=Window}}" Command="{Binding DataContext.RemoveLootCommandPackCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
                                                                             </Grid>
                                                                             <ComboBox Margin="0,8,0,0" IsEditable="True" ItemsSource="{Binding DataContext.ScumCommandSuggestions, RelativeSource={RelativeSource AncestorType=Window}}" Text="{Binding Command, UpdateSourceTrigger=PropertyChanged}" />
                                                                             <TextBox Margin="0,8,0,0" Text="{Binding Location, UpdateSourceTrigger=PropertyChanged}" ToolTip="Optionale Location, falls im Command keine Location steht" />
@@ -902,8 +1633,8 @@
                                 <TextBlock Text="Logdatei" Foreground="{StaticResource MutedTextBrush}" />
                                 <TextBox Text="{Binding LogFilePath, Mode=OneWay}" IsReadOnly="True" />
                                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                    <Button Content="Log-Ordner öffnen" Command="{Binding OpenLogFolderCommand}" />
-                                    <Button Content="Anzeige + Datei leeren" Command="{Binding ClearLogCommand}" />
+                                    <Button Content="{Binding Texts[OpenLogFolder]}" Command="{Binding OpenLogFolderCommand}" />
+                                    <Button Content="{Binding Texts[ClearLogDisplayAndFile]}" Command="{Binding ClearLogCommand}" />
                                 </StackPanel>
                             </StackPanel>
                         </Border>
@@ -946,14 +1677,32 @@
                                     <TextBox Text="{Binding Settings.FtpRemoteDirectory, UpdateSourceTrigger=PropertyChanged}" />
                                     <TextBlock Text="Chatlog Pattern" Foreground="{StaticResource MutedTextBrush}" />
                                     <TextBox Text="{Binding Settings.FtpChatLogPattern, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Text="Vehicle-Destruction Log Pattern" Foreground="{StaticResource MutedTextBrush}" />
+                                    <TextBox Text="{Binding Settings.FtpVehicleDestructionLogPattern, UpdateSourceTrigger=PropertyChanged}" />
                                     <TextBlock Text="Loginlog Pattern" Foreground="{StaticResource MutedTextBrush}" />
                                     <TextBox Text="{Binding Settings.FtpLoginLogPattern, UpdateSourceTrigger=PropertyChanged}" />
                                     <CheckBox Content="Scripts automatisch starten" IsChecked="{Binding Settings.AutoStartScripts}" />
                                     <CheckBox Content="Discord Chatlogs automatisch starten" IsChecked="{Binding Settings.AutoStartDiscordChatLogs}" />
-                                    <CheckBox Content="Discord Status automatisch starten" IsChecked="{Binding Settings.AutoStartDiscordStatus}" />
-                                    <CheckBox Content="Discord Playerlist automatisch aktualisieren" IsChecked="{Binding Settings.AutoStartDiscordPlayerList}" />
-                                    <CheckBox Content="Aktive Random Events im Playerlist-Channel anzeigen" IsChecked="{Binding Settings.AutoStartDiscordRandomEvents}" />
+                                    <CheckBox Content="Discord Serverstatus-Nachricht automatisch aktualisieren" IsChecked="{Binding Settings.AutoStartDiscordServerStatusMessage}" />
+                                    <CheckBox Content="Discord Botstatus automatisch aktualisieren" IsChecked="{Binding Settings.AutoStartDiscordBotStatus}" />
+                                    <CheckBox Content="Updates beim Start pruefen" IsChecked="{Binding Settings.AutoCheckForUpdates}" />
+                                    <TextBlock Text="Update latest.json URL" Foreground="{StaticResource MutedTextBrush}" Margin="0,10,0,0" />
+                                    <TextBox Text="{Binding Settings.UpdateLatestJsonUrl, UpdateSourceTrigger=PropertyChanged}" />
                                     <CheckBox Content="Chat Commands automatisch starten" IsChecked="{Binding Settings.AutoStartChatCommands}" />
+                                    <CheckBox Content="Chat Commands via ggCON HTTP Logs lesen" IsChecked="{Binding Settings.UseGgconLogsForChatCommands}" />
+                                    <TextBlock Text="ggCON Chat Command Poll Sekunden" Foreground="{StaticResource MutedTextBrush}" />
+                                    <TextBox Text="{Binding Settings.GgconChatCommandPollSeconds, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Text="ggCON Chat Initial Backfill Sekunden" Foreground="{StaticResource MutedTextBrush}" />
+                                    <TextBox Text="{Binding Settings.GgconChatCommandInitialBackfillSeconds, UpdateSourceTrigger=PropertyChanged}" />
+                                    <CheckBox Content="Votes mit Ingamegeld kaufen" IsChecked="{Binding Settings.PaidVotesEnabled}" />
+                                    <TextBlock Text="Vote-Kaufpreis" Foreground="{StaticResource MutedTextBrush}" />
+                                    <TextBox Text="{Binding Settings.VotePrice, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Text="Vote-Bestaetigung Sekunden" Foreground="{StaticResource MutedTextBrush}" />
+                                    <TextBox Text="{Binding Settings.VoteConfirmationTimeoutSeconds, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Text="Vote Kauf-Anfrage" Foreground="{StaticResource MutedTextBrush}" />
+                                    <TextBox Text="{Binding Settings.VotePurchasePromptResponse, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" />
+                                    <TextBlock Text="Vote Nicht-genug-Geld-Antwort" Foreground="{StaticResource MutedTextBrush}" />
+                                    <TextBox Text="{Binding Settings.VoteInsufficientFundsResponse, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" />
                                     <CheckBox Content="Join Commands automatisch starten" IsChecked="{Binding Settings.AutoStartJoinCommands}" />
                                     <CheckBox Content="Killfeed automatisch starten" IsChecked="{Binding Settings.AutoStartKillFeed}" />
                                     <CheckBox Content="Weekly Tasks automatisch starten" IsChecked="{Binding Settings.AutoStartWeeklyTasks}" />
@@ -976,7 +1725,7 @@
                                     <TextBox Text="{Binding Settings.RandomQuestIntervalMinutes, UpdateSourceTrigger=PropertyChanged}" />
                                     <TextBlock Text="Random Quest Startverzögerung nach Restart Minuten" Foreground="{StaticResource MutedTextBrush}" />
                                     <TextBox Text="{Binding Settings.RandomQuestStartDelayMinutes, UpdateSourceTrigger=PropertyChanged}" />
-                                    <Button Content="Speichern" Command="{Binding SaveSettingsCommand}" />
+                                    <Button Content="{Binding Texts[Save]}" Command="{Binding SaveSettingsCommand}" />
                                 </StackPanel>
                             </Border>
                         </StackPanel>

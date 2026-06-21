@@ -188,21 +188,33 @@ public sealed class WeeklyCommunityTaskService
             return new List<WeeklyCommunityTaskProgress>();
         }
 
-        var result = new List<WeeklyCommunityTaskProgress>();
-        foreach (var definition in definitions)
+        try
         {
-            try
+            var result = new List<WeeklyCommunityTaskProgress>();
+            foreach (var definition in definitions)
             {
-                result.Add(ScanDefinitionFromLocalDb(localDb, definition, resetBaseline));
+                try
+                {
+                    result.Add(ScanDefinitionFromLocalDb(localDb, definition, resetBaseline));
+                }
+                catch (Exception ex)
+                {
+                    _log($"Weekly/Daily Task Fehler bei '{definition.Id}': {ex.Message}");
+                    AppLogService.WriteException("WeeklyCommunityTask " + definition.Id, ex);
+                }
             }
-            catch (Exception ex)
-            {
-                _log($"Weekly/Daily Task Fehler bei '{definition.Id}': {ex.Message}");
-                AppLogService.WriteException("WeeklyCommunityTask " + definition.Id, ex);
-            }
-        }
 
-        return result;
+            return result;
+        }
+        finally
+        {
+            // Die SCUM.db wird nur zum aktuellen Auslesen gebraucht. Nicht lokal archivieren,
+            // sonst entsteht bei jedem Poll eine weitere grosse DB-Kopie.
+            var weeklyDbDirectory = SftpLogService.GetAppDataLocalDirectory(Path.Combine("WeeklyTasks", "Db"));
+            LocalRetentionService.TryDeleteFile(localDb);
+            LocalRetentionService.TryDeleteFiles(weeklyDbDirectory, "*.db");
+            LocalRetentionService.CleanupDirectory(weeklyDbDirectory);
+        }
     }
 
     public async Task<WeeklyCommunityTaskProgress?> ScanOnceAsync(BotSettings settings, CancellationToken cancellationToken = default, bool resetBaseline = false)

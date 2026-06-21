@@ -154,6 +154,18 @@ public static class EventDefinitionStore
                 CenterZ = 0,
                 Radius = 50000
             },
+            LocalVariables = new ScriptLocalVariables
+            {
+                InitiatorMessage = "Event wurde gesichtet.",
+                LootSpawnLocations = new List<ScriptLocationVariable>
+                {
+                    new() { Name = "loot_1", Location = "[{X=0 Y=0 Z=0|P=0 Y=0 R=0}]" }
+                },
+                NpcSpawnLocations = new List<ScriptLocationVariable>
+                {
+                    new() { Name = "npc_1", Location = "[{X=0 Y=0 Z=0|P=0 Y=0 R=0}]" }
+                }
+            },
             InitiatorBlock = new ScriptBlock
             {
                 Name = "InitiatorBlock",
@@ -167,6 +179,22 @@ public static class EventDefinitionStore
                 Commands = new List<EventCommand>
                 {
                     new() { Name = "Eventzone started", Command = "#Broadcast Red Eventzone started", DelayMs = 50 }
+                }
+            },
+            SpawnBlocks = new List<SpawnBlock>
+            {
+                new()
+                {
+                    Name = "NPC Spawn",
+                    Enabled = true,
+                    Type = "ArmedNPC",
+                    Asset = "BP_Guard_Lvl_1",
+                    Quantity = 1,
+                    Location = "[{X=0 Y=0 Z=0|P=0 Y=0 R=0}]",
+                    DespawnLifetimeSeconds = 600,
+                    Repeat = 1,
+                    DelayMs = 250,
+                    UseTriggerPlayer = true
                 }
             },
             EmptyBlock = new ScriptBlock

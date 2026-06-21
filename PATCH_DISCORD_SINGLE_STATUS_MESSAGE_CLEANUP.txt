@@ -1,0 +1,52 @@
+PATCH: Discord Status komplett auf eine einzige Nachricht reduziert
+
+Ziel
+- Kein Wetter-/Uhrzeit-Channelname mehr.
+- Kein Playercount im Channelnamen mehr.
+- Keine separate Playerlist-Nachricht mehr.
+- Keine separate aktive Random-Events-Nachricht mehr.
+- Keine separaten Discord-Rename-Methoden mehr.
+- Spieler, Wetter/Zeit, Servername/IP und aktive Events laufen nur noch ueber eine editierte Serverstatus-Nachricht.
+
+Relevante Settings
+- DiscordServerStatusChannelId
+- AutoStartDiscordServerStatusMessage
+- DiscordServerStatusTitle
+- DiscordServerName
+- DiscordServerAddress
+- GgconHttpBaseUrl
+- GgconHttpPort
+- GgconHttpPassword
+- DiscordPollSeconds
+- DiscordMaxPlayers
+
+Entfernte/aus der UI entfernte Alt-Funktionen
+- DiscordPlayerListChannelId
+- DiscordRenamePlayerListChannelEnabled
+- DiscordPlayerListChannelNameTemplate
+- DiscordWeatherChannelId
+- AutoStartDiscordWeatherChannel
+- DiscordWeatherChannelNameTemplate
+- DiscordWeatherChannelRenameMinutes
+- AutoStartDiscordStatus
+- AutoStartDiscordPlayerList
+- AutoStartDiscordRandomEvents
+- DiscordStatusTemplate
+
+Migration
+- Alte Settings-Dateien werden beim Laden migriert.
+- Falls DiscordServerStatusChannelId leer ist und frueher DiscordPlayerListChannelId gesetzt war, wird dieser Wert uebernommen.
+- Falls eine alte Playerlist-/Wetter-/Rename-Autostart-Funktion aktiv war, wird AutoStartDiscordServerStatusMessage aktiviert.
+- Beim naechsten Speichern werden die alten Settings nicht mehr in settings.json geschrieben.
+
+Discord-Aufraeumen
+- Beim ersten Serverstatus-Update in einem Channel loescht der Bot eigene alte Embed-Nachrichten mit den Titeln:
+  - Aktuell verbundene Spieler
+  - Aktive Random Events
+
+Betroffene Dateien
+- BotSettings.cs
+- SettingsStore.cs
+- MainWindow.xaml
+- ViewModels/MainViewModel.cs
+- Services/DiscordBridgeService.cs

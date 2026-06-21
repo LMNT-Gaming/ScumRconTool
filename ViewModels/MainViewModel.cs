@@ -6,6 +6,9 @@ using ScumRconTool.Models;
 using System.IO;
 using System.Diagnostics;
 using System.Threading;
+using System.Windows;
+using System.Windows.Controls;
+using System.Runtime.CompilerServices;
 
 namespace ScumRconTool.ViewModels;
 
@@ -20,7 +23,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private WeeklyCommunityTaskService? _weeklyTasks;
     private AutoMessageService? _autoMessages;
     private EventEngine? _eventEngine;
-    private CancellationTokenSource? _discordStatusCts;
+    private CancellationTokenSource? _discordServerStatusMessageCts;
+    private readonly SemaphoreSlim _discordStartLock = new(1, 1);
+    private bool _discordServerStatusMessageLoopStarted;
     private bool _chatForwarderRequested;
     private readonly SemaphoreSlim _playerScanLock = new(1, 1);
     private List<ScumPlayer> _cachedPlayers = new();
@@ -28,17 +33,22 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly TimeSpan _playerCacheDuration = TimeSpan.FromSeconds(25);
 
     public BotSettings Settings { get; } = SettingsStore.Load();
+    public UiTextProvider Texts { get; }
     public ObservableCollection<string> LogLines { get; } = new();
     public ObservableCollection<ScriptFileViewModel> Scripts { get; } = new();
     public ObservableCollection<ScriptRuntimeStatusViewModel> ScriptRuntimeStatuses { get; } = new();
     public ObservableCollection<ScriptZoneMapItemViewModel> ScriptZoneMapItems { get; } = new();
     public ObservableCollection<ChatCommandRuleEditorViewModel> ChatCommandRules { get; } = new();
     public ObservableCollection<JoinCommandRuleEditorViewModel> JoinCommandRules { get; } = new();
+    public ObservableCollection<AutoMessageEditorViewModel> AutoMessageEditors { get; } = new();
     public IReadOnlyList<string> ChatMatchModes { get; } = new[] { "equals", "startswith", "contains", "regex" };
     public IReadOnlyList<string> ChatCooldownScopes { get; } = new[] { "player", "global" };
     public IReadOnlyList<string> ScumCommandSuggestions { get; } = ScumCommandCatalog.Commands;
     public IReadOnlyList<string> BroadcastMessageTypes { get; } = new[] { "Yellow", "White", "Cyan", "Green", "Red", "ServerMessage", "Error" };
+    public IReadOnlyList<string> AutoMessageModes { get; } = new[] { "Queue", "Standalone" };
+    public IReadOnlyList<string> AutoMessageTypes { get; } = new[] { "Text", "Challenges" };
     public IReadOnlyList<string> ScriptModes { get; } = new[] { "RandomAnnouncedZone", "SilentZone", "DirectLive" };
+    public IReadOnlyList<string> SpawnBlockTypes { get; } = new[] { "ArmedNPC", "NPC", "Zombie", "Vehicle", "Item" };
     public IReadOnlyList<string> LootSpawnModes { get; } = new[] { "OneTotal", "OnePerLocation" };
     public IReadOnlyList<WeeklyCommunityTaskStatTarget> WeeklyTaskStatTargets { get; } = WeeklyCommunityTaskService.AvailableStatTargets;
 
@@ -109,6 +119,13 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         get => _selectedScript;
         set
         {
+            if (ReferenceEquals(_selectedScript, value)) return;
+            if (_selectedScript is not null && !ConfirmScriptChangeAllowed())
+            {
+                OnPropertyChanged(nameof(SelectedScript));
+                return;
+            }
+
             if (SetProperty(ref _selectedScript, value)) LoadSelectedScript();
         }
     }
@@ -124,7 +141,13 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public ScriptStructuredEditorViewModel? ScriptEditorModel
     {
         get => _scriptEditorModel;
-        set => SetProperty(ref _scriptEditorModel, value);
+        set
+        {
+            if (SetProperty(ref _scriptEditorModel, value))
+            {
+                _scriptEditorModel?.RebuildFlow();
+            }
+        }
     }
 
     private string _scriptValidation = "Noch nicht validiert.";
@@ -133,6 +156,23 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         get => _scriptValidation;
         set => SetProperty(ref _scriptValidation, value);
     }
+
+    private bool _scriptHasUnsavedChanges;
+    public bool ScriptHasUnsavedChanges
+    {
+        get => _scriptHasUnsavedChanges;
+        set
+        {
+            if (SetProperty(ref _scriptHasUnsavedChanges, value))
+            {
+                OnPropertyChanged(nameof(ScriptDirtyStatus));
+            }
+        }
+    }
+
+    public string ScriptDirtyStatus => ScriptHasUnsavedChanges
+        ? "Ungespeicherte Aenderungen im geladenen Script."
+        : "Script-Ansicht ist gespeichert.";
 
     private string _rconCommand = "#ListPlayersJson";
     public string RconCommand
@@ -234,11 +274,42 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         set => SetProperty(ref _scriptEngineRunning, value);
     }
 
+    private string _versionText = "Version " + UpdateService.GetCurrentVersionText();
+    public string VersionText
+    {
+        get => _versionText;
+        set => SetProperty(ref _versionText, value);
+    }
+
+    private string _updateStatusText = "Update: noch nicht geprueft";
+    public string UpdateStatusText
+    {
+        get => _updateStatusText;
+        set => SetProperty(ref _updateStatusText, value);
+    }
+
+    private string _updateButtonText = "Update pruefen";
+    public string UpdateButtonText
+    {
+        get => _updateButtonText;
+        set => SetProperty(ref _updateButtonText, value);
+    }
+
+    private bool _updateAvailable;
+    public bool UpdateAvailable
+    {
+        get => _updateAvailable;
+        set => SetProperty(ref _updateAvailable, value);
+    }
+
+    private string? _updateDownloadUrl;
+    private string? _updatePatchNotesUrl;
+
     public ICommand SaveSettingsCommand { get; }
     public ICommand ConnectRconCommand { get; }
     public ICommand SendRconCommand { get; }
     public ICommand StartDiscordCommand { get; }
-    public ICommand UpdatePlayerListCommand { get; }
+    public ICommand UpdateServerStatusCommand { get; }
     public ICommand ScanChatLogCommand { get; }
     public ICommand StartChatLogForwarderCommand { get; }
     public ICommand StopChatLogForwarderCommand { get; }
@@ -274,6 +345,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public ICommand SendAutoMessageNowCommand { get; }
     public ICommand InsertDefaultAutoMessagesCommand { get; }
     public ICommand ResetAutoMessageFlowCommand { get; }
+    public ICommand AddAutoMessageCommand { get; }
+    public ICommand RemoveAutoMessageCommand { get; }
+    public ICommand ReloadAutoMessagesCommand { get; }
     public ICommand StartScriptsCommand { get; }
     public ICommand StopScriptsCommand { get; }
     public ICommand ScanScriptsCommand { get; }
@@ -281,9 +355,15 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public ICommand ValidateScriptCommand { get; }
     public ICommand FormatScriptCommand { get; }
     public ICommand SaveScriptCommand { get; }
+    public ICommand CreateScriptCommand { get; }
     public ICommand DuplicateScriptCommand { get; }
     public ICommand AddScriptCommandCommand { get; }
     public ICommand RemoveScriptCommandCommand { get; }
+    public ICommand AddSpawnBlockCommand { get; }
+    public ICommand RemoveSpawnBlockCommand { get; }
+    public ICommand AddLootLocationVariableCommand { get; }
+    public ICommand AddNpcLocationVariableCommand { get; }
+    public ICommand RemoveLocationVariableCommand { get; }
     public ICommand AddLootPackCommand { get; }
     public ICommand RemoveLootPackCommand { get; }
     public ICommand AddLootItemCommand { get; }
@@ -292,14 +372,20 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public ICommand RemoveLootCommandPackCommand { get; }
     public ICommand ClearLogCommand { get; }
     public ICommand OpenLogFolderCommand { get; }
+    public ICommand CheckForUpdatesCommand { get; }
+    public ICommand OpenUpdateDownloadCommand { get; }
+    public ICommand OpenGgconDocsCommand { get; }
+    public ICommand SwitchLanguageCommand { get; }
 
     public MainViewModel()
     {
+        Texts = new UiTextProvider(Settings.UiLanguage);
+        UpdateButtonText = Texts["CheckUpdate"];
         SaveSettingsCommand = new RelayCommand(_ => SaveSettings());
         ConnectRconCommand = new RelayCommand(async _ => await ConnectRconAsync());
         SendRconCommand = new RelayCommand(async _ => await SendRconAsync());
         StartDiscordCommand = new RelayCommand(async _ => await StartDiscordAsync());
-        UpdatePlayerListCommand = new RelayCommand(async _ => await UpdateDiscordPlayerListOnceAsync());
+        UpdateServerStatusCommand = new RelayCommand(async _ => await UpdateDiscordServerStatusMessageManualAsync());
         ScanChatLogCommand = new RelayCommand(async _ => await ScanChatLogAsync());
         StartChatLogForwarderCommand = new RelayCommand(async _ => await StartChatLogForwarderAsync());
         StopChatLogForwarderCommand = new RelayCommand(_ => StopChatLogForwarder());
@@ -335,6 +421,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         SendAutoMessageNowCommand = new RelayCommand(async _ => await SendAutoMessageNowAsync());
         InsertDefaultAutoMessagesCommand = new RelayCommand(_ => InsertDefaultAutoMessages());
         ResetAutoMessageFlowCommand = new RelayCommand(_ => ResetAutoMessageFlow());
+        AddAutoMessageCommand = new RelayCommand(_ => AddAutoMessage());
+        RemoveAutoMessageCommand = new RelayCommand(message => RemoveAutoMessage(message as AutoMessageEditorViewModel));
+        ReloadAutoMessagesCommand = new RelayCommand(_ => LoadAutoMessageEditorsFromSettings());
         StartScriptsCommand = new RelayCommand(async _ => await StartScriptsAsync());
         StopScriptsCommand = new RelayCommand(_ => StopScripts());
         ScanScriptsCommand = new RelayCommand(async _ => await ScanScriptsOnceAsync());
@@ -342,9 +431,15 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         ValidateScriptCommand = new RelayCommand(_ => ValidateScript());
         FormatScriptCommand = new RelayCommand(_ => FormatScript());
         SaveScriptCommand = new RelayCommand(_ => SaveScript());
+        CreateScriptCommand = new RelayCommand(_ => CreateScript());
         DuplicateScriptCommand = new RelayCommand(_ => DuplicateScript());
         AddScriptCommandCommand = new RelayCommand(block => AddScriptCommand(block as ScriptBlockEditorViewModel));
         RemoveScriptCommandCommand = new RelayCommand(command => RemoveScriptCommand(command as ScriptCommandEditorViewModel));
+        AddSpawnBlockCommand = new RelayCommand(_ => AddSpawnBlock());
+        RemoveSpawnBlockCommand = new RelayCommand(block => RemoveSpawnBlock(block as SpawnBlockEditorViewModel));
+        AddLootLocationVariableCommand = new RelayCommand(_ => AddLootLocationVariable());
+        AddNpcLocationVariableCommand = new RelayCommand(_ => AddNpcLocationVariable());
+        RemoveLocationVariableCommand = new RelayCommand(location => RemoveLocationVariable(location as ScriptLocationVariableEditorViewModel));
         AddLootPackCommand = new RelayCommand(_ => AddLootPack());
         RemoveLootPackCommand = new RelayCommand(pack => RemoveLootPack(pack as LootPackEditorViewModel));
         AddLootItemCommand = new RelayCommand(pack => AddLootItem(pack as LootPackEditorViewModel));
@@ -353,6 +448,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         RemoveLootCommandPackCommand = new RelayCommand(pack => RemoveLootCommandPack(pack as LootCommandPackEditorViewModel));
         ClearLogCommand = new RelayCommand(_ => ClearLog());
         OpenLogFolderCommand = new RelayCommand(_ => OpenLogFolder());
+        CheckForUpdatesCommand = new RelayCommand(async _ => await CheckForUpdatesAsync(showMessage: true));
+        OpenUpdateDownloadCommand = new RelayCommand(_ => OpenUpdateDownload());
+        OpenGgconDocsCommand = new RelayCommand(_ => OpenGgconDocs());
+        SwitchLanguageCommand = new RelayCommand(_ => SwitchLanguage());
 
         EnsureLogDirectory();
         EnsureLocalLogDirectories();
@@ -360,7 +459,128 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         LoadChatCommandRulesFromSettings();
         LoadJoinCommandRulesFromSettings();
         LoadWeeklyTaskEditorsFromSettings();
+        LoadAutoMessageEditorsFromSettings();
         Log("Red Raven Rcon Tool geladen. Logdatei: " + LogFilePath);
+    }
+
+
+    public async Task CheckForUpdatesAsync(bool showMessage = false, bool silentIfCurrent = false, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            VersionText = "Version " + UpdateService.GetCurrentVersionText();
+
+            if (string.IsNullOrWhiteSpace(Settings.UpdateLatestJsonUrl))
+            {
+                UpdateAvailable = false;
+                UpdateButtonText = Texts["CheckUpdate"];
+                UpdateStatusText = "Update: keine Update-URL konfiguriert";
+                if (showMessage && !silentIfCurrent)
+                {
+                    MessageBox.Show("Keine Update-URL konfiguriert.", "Red Raven Rcon Tool Update", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                return;
+            }
+
+            UpdateStatusText = "Update: pruefe...";
+            var updater = new UpdateService();
+            var latest = await updater.GetLatestAsync(Settings.UpdateLatestJsonUrl, cancellationToken);
+
+            if (latest is null || string.IsNullOrWhiteSpace(latest.version))
+            {
+                UpdateAvailable = false;
+                UpdateButtonText = Texts["CheckUpdate"];
+                UpdateStatusText = "Update: keine gueltige Antwort";
+                if (showMessage && !silentIfCurrent)
+                {
+                    MessageBox.Show("Update-Check lieferte keine gueltige Antwort.", "Red Raven Rcon Tool Update", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                return;
+            }
+
+            _updateDownloadUrl = latest.downloadUrl;
+            _updatePatchNotesUrl = latest.patchNotesUrl;
+
+            if (!UpdateService.IsNewer(latest.version))
+            {
+                UpdateAvailable = false;
+                UpdateButtonText = Texts["CheckUpdate"];
+                UpdateStatusText = $"Update: aktuell ({UpdateService.GetCurrentVersionText()})";
+                if (showMessage && !silentIfCurrent)
+                {
+                    MessageBox.Show($"Du nutzt bereits die aktuelle Version {UpdateService.GetCurrentVersionText()}.", "Red Raven Rcon Tool Update", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                return;
+            }
+
+            UpdateAvailable = true;
+            UpdateButtonText = Texts["DownloadUpdate"];
+            UpdateStatusText = latest.mandatory
+                ? $"Pflichtupdate verfuegbar: v{latest.version}"
+                : $"Update verfuegbar: v{latest.version}";
+            Log(UpdateStatusText);
+
+            if (showMessage)
+            {
+                var result = MessageBox.Show(
+                    $"Neue Version gefunden: v{latest.version}\nAktuell installiert: v{UpdateService.GetCurrentVersionText()}\n\nDownload jetzt oeffnen?",
+                    "Red Raven Rcon Tool Update",
+                    MessageBoxButton.YesNo,
+                    latest.mandatory ? MessageBoxImage.Warning : MessageBoxImage.Information);
+
+                if (result == MessageBoxResult.Yes)
+                {
+                    OpenUpdateDownload();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            UpdateAvailable = false;
+            UpdateButtonText = Texts["CheckUpdate"];
+            UpdateStatusText = "Update: Pruefung fehlgeschlagen";
+            Log("Update-Check Fehler: " + ex.Message);
+
+            if (showMessage && !silentIfCurrent)
+            {
+                MessageBox.Show("Update-Check fehlgeschlagen: " + ex.Message, "Red Raven Rcon Tool Update", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+    }
+
+    private void OpenUpdateDownload()
+    {
+        var url = !string.IsNullOrWhiteSpace(_updateDownloadUrl)
+            ? _updateDownloadUrl
+            : _updatePatchNotesUrl;
+
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            MessageBox.Show("Es ist kein Download-Link fuer das Update vorhanden.", "Red Raven Rcon Tool Update", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        Process.Start(new ProcessStartInfo(url)
+        {
+            UseShellExecute = true
+        });
+    }
+
+    private static void OpenGgconDocs()
+    {
+        Process.Start(new ProcessStartInfo("https://ggcon.gghost.games/docs/")
+        {
+            UseShellExecute = true
+        });
+    }
+
+    private void SwitchLanguage()
+    {
+        Texts.Toggle();
+        Settings.UiLanguage = Texts.Language;
+        SettingsStore.SaveUiLanguage(Settings.UiLanguage);
+        UpdateButtonText = UpdateAvailable ? Texts["DownloadUpdate"] : Texts["CheckUpdate"];
+        Log(Texts.IsGerman ? "Sprache auf Deutsch umgestellt." : "Language switched to English.");
     }
 
     private void SaveSettings()
@@ -368,6 +588,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         SyncChatCommandRulesToSettings();
         SyncJoinCommandRulesToSettings();
         SyncWeeklyTaskEditorsToSettings();
+        SyncAutoMessageEditorsToSettings();
         SettingsStore.Save(Settings);
         Log("Einstellungen gespeichert.");
     }
@@ -379,8 +600,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             // Bei geaenderten RCON-Zugangsdaten alle RCON-Nutzer zuerst stoppen,
             // damit keine alte Client-Instanz weiter pollt und ggCON mit Auth-Versuchen flutet.
             StopScripts();
-            StopAutoMessages();
-            StopWeeklyTasks();
+            StopAutoMessages(persistAutoStart: false);
+            StopWeeklyTasks(persistAutoStart: false);
             await _rcon.DisposeAsync();
             _rcon = null;
             RconConnected = false;
@@ -407,77 +628,110 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     private async Task StartDiscordAsync()
     {
-        if (_discord is not null) await _discord.DisposeAsync();
-        _discord = new DiscordBridgeService(Log, isReady =>
+        await _discordStartLock.WaitAsync();
+        try
         {
-            App.Current?.Dispatcher.Invoke(() =>
+            if (_discord is not null && _discord.IsStarted)
             {
-                DiscordConnected = isReady;
-                DiscordStatus = isReady ? "Online" : "Nicht bereit";
+                DiscordConnected = _discord.IsReady;
+                DiscordStatus = _discord.IsReady ? "Online" : "Gestartet, nicht bereit";
+                StartDiscordDependentLoops();
+                return;
+            }
+
+            if (_discord is not null) await _discord.DisposeAsync();
+            _discord = new DiscordBridgeService(Log, isReady =>
+            {
+                App.Current?.Dispatcher.Invoke(() =>
+                {
+                    DiscordConnected = isReady;
+                    DiscordStatus = isReady ? "Online" : "Nicht bereit";
+                });
+
+                if (isReady)
+                {
+                    StartDiscordDependentLoops();
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            if (Settings.AutoStartDiscordServerStatusMessage || Settings.AutoStartDiscordBotStatus)
+                            {
+                                await UpdateDiscordServerStatusMessageAsync();
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Log("Discord Ready Initial-Update Fehler: " + ex.Message);
+                            AppLogService.WriteException("DiscordReadyInitialUpdate", ex);
+                        }
+                    });
+                }
+                else
+                {
+                    Log("Discord: Verbindung aktuell nicht bereit. Loops bleiben aktiv und versuchen beim naechsten Poll weiter.");
+                }
             });
 
-            if (isReady)
-            {
-                _ = Task.Run(async () =>
+            await _discord.StartAsync(
+                Settings.DiscordBotToken,
+                Settings.DiscordGameBridgeEnabled ? Settings.DiscordGameBridgeChannelId : 0,
+                async command =>
                 {
-                    try
-                    {
-                        if (Settings.AutoStartDiscordStatus || Settings.AutoStartDiscordPlayerList)
-                        {
-                            await UpdateDiscordStatusAndPlayerListOnceAsync();
-                            StartDiscordStatusLoop();
-                        }
+                    if (_rcon is null || !_rcon.IsConnected) await ConnectRconAsync();
+                    if (_rcon is not null) await _rcon.SendCommandAsync(command);
+                },
+                Settings.DiscordGameBridgeMessageType);
 
-                        if ((Settings.AutoStartDiscordChatLogs || _chatForwarderRequested) && Settings.DiscordChatLogEmbedsEnabled)
-                        {
-                            StartChatForwarder();
-                        }
+            DiscordConnected = _discord.IsReady;
+            DiscordStatus = _discord.IsReady ? "Online" : "Gestartet, nicht bereit";
+            StartDiscordDependentLoops();
 
-                        if (Settings.AutoStartWeeklyTasks && !WeeklyTasksRunning)
-                        {
-                            await StartWeeklyTasksAsync(persistAutoStart: false);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Log("Discord Ready-Aktion Fehler: " + ex.Message);
-                        AppLogService.WriteException("DiscordReadyAction", ex);
-                    }
-                });
-            }
-            else
+            // Nicht awaiten: Discord-Ready und Message-Updates duerfen den App-Autostart niemals blockieren.
+            _ = Task.Run(async () =>
             {
-                Log("Discord: Verbindung aktuell nicht bereit. Status-Loop bleibt aktiv und versucht beim naechsten Poll weiter.");
-            }
-        });
+                try
+                {
+                    if (Settings.AutoStartDiscordServerStatusMessage || Settings.AutoStartDiscordBotStatus)
+                    {
+                        await UpdateDiscordServerStatusMessageAsync();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log("Discord Start Initial-Update Fehler: " + ex.Message);
+                    AppLogService.WriteException("DiscordStartInitialUpdate", ex);
+                }
+            });
 
-        await _discord.StartAsync(
-            Settings.DiscordBotToken,
-            Settings.DiscordGameBridgeEnabled ? Settings.DiscordGameBridgeChannelId : 0,
-            async command =>
-            {
-                if (_rcon is null || !_rcon.IsConnected) await ConnectRconAsync();
-                if (_rcon is not null) await _rcon.SendCommandAsync(command);
-            },
-            Settings.DiscordGameBridgeMessageType);
-
-        DiscordConnected = _discord.IsReady;
-        DiscordStatus = _discord.IsReady ? "Online" : "Gestartet, nicht bereit";
-        if (_discord.IsReady && (Settings.AutoStartDiscordStatus || Settings.AutoStartDiscordPlayerList))
-        {
-            await UpdateDiscordStatusAndPlayerListOnceAsync();
-            StartDiscordStatusLoop();
+            Log(_discord.IsReady ? "Discord Bot verbunden." : "Discord Bot gestartet, wartet aber noch auf Ready. Details stehen im Debug Log.");
         }
-        Log(_discord.IsReady ? "Discord Bot verbunden." : "Discord Bot gestartet, wartet aber noch auf Ready. Details stehen im Debug Log.");
-
-        if ((Settings.AutoStartDiscordChatLogs || _chatForwarderRequested) && Settings.DiscordChatLogEmbedsEnabled)
+        finally
         {
-            StartChatForwarder();
+            _discordStartLock.Release();
+        }
+    }
+
+    private void StartDiscordDependentLoops()
+    {
+
+        if (Settings.AutoStartDiscordServerStatusMessage || Settings.AutoStartDiscordBotStatus)
+        {
+            StartDiscordServerStatusMessageLoop();
         }
 
-        if (Settings.AutoStartWeeklyTasks && _discord.IsReady && !WeeklyTasksRunning)
+        if ((Settings.AutoStartDiscordChatLogs || _chatForwarderRequested) &&
+            (Settings.DiscordChatLogEmbedsEnabled || Settings.DiscordVehicleLogEmbedsEnabled))
         {
-            await StartWeeklyTasksAsync(persistAutoStart: false);
+            try
+            {
+                StartChatForwarder();
+            }
+            catch (Exception ex)
+            {
+                Log("Discord Chatlog Forwarder Start Fehler: " + ex.Message);
+                AppLogService.WriteException("DiscordChatForwarderStart", ex);
+            }
         }
     }
 
@@ -493,20 +747,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public async Task AutoStartConfiguredAsync()
     {
         EnsureLocalLogDirectories();
+        LogAutoStartFlags();
 
-        if (Settings.AutoStartDiscordStatus || Settings.AutoStartDiscordPlayerList || Settings.AutoStartDiscordChatLogs || Settings.DiscordGameBridgeEnabled || Settings.AutoStartWeeklyTasks)
-        {
-            try
-            {
-                await StartDiscordAsync();
-            }
-            catch (Exception ex)
-            {
-                Log("AutoStart Discord Fehler: " + ex.Message);
-                AppLogService.WriteException("AutoStartDiscord", ex);
-            }
-        }
-
+        // RCON-/SFTP-basierte Dienste zuerst starten. Discord darf diese Dienste nicht blockieren,
+        // weil Discord-Ready oder Message-Updates serverseitig warten koennen.
         if (Settings.AutoStartScripts)
         {
             try
@@ -584,22 +828,68 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 AppLogService.WriteException("AutoStartAutoMessages", ex);
             }
         }
+
+
+        var needsDiscord = Settings.AutoStartDiscordServerStatusMessage ||
+                           Settings.AutoStartDiscordBotStatus ||
+                           Settings.AutoStartDiscordChatLogs ||
+                           Settings.DiscordGameBridgeEnabled;
+
+        if (needsDiscord)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await StartDiscordAsync();
+                }
+                catch (Exception ex)
+                {
+                    Log("AutoStart Discord Fehler: " + ex.Message);
+                    AppLogService.WriteException("AutoStartDiscord", ex);
+                }
+            });
+        }
     }
 
 
-    private void StartDiscordStatusLoop()
+    private void LogAutoStartFlags()
     {
-        _discordStatusCts?.Cancel();
-        _discordStatusCts = new CancellationTokenSource();
-        var token = _discordStatusCts.Token;
+        Log("AutoStart Flags: " +
+            $"ServerStatusMessage={Settings.AutoStartDiscordServerStatusMessage}, " +
+            $"BotStatus={Settings.AutoStartDiscordBotStatus}, " +
+            $"ChatLogs={Settings.AutoStartDiscordChatLogs}, " +
+            $"GameBridge={Settings.DiscordGameBridgeEnabled}, " +
+            $"ChatCommands={Settings.AutoStartChatCommands}, " +
+            $"JoinCommands={Settings.AutoStartJoinCommands}, " +
+            $"KillFeed={Settings.AutoStartKillFeed}, " +
+            $"WeeklyTasks={Settings.AutoStartWeeklyTasks}, " +
+            $"AutoMessages={Settings.AutoStartAutoMessages}, " +
+            $"Scripts={Settings.AutoStartScripts}");
+    }
+
+    private void StartDiscordServerStatusMessageLoop()
+    {
+        if (_discordServerStatusMessageLoopStarted && _discordServerStatusMessageCts is not null && !_discordServerStatusMessageCts.IsCancellationRequested)
+        {
+            return;
+        }
+
+        _discordServerStatusMessageCts?.Cancel();
+        _discordServerStatusMessageCts = new CancellationTokenSource();
+        _discordServerStatusMessageLoopStarted = true;
+        var token = _discordServerStatusMessageCts.Token;
+        var intervalSeconds = Math.Max(60, Settings.DiscordPollSeconds <= 0 ? 60 : Settings.DiscordPollSeconds);
+        Log($"Discord Serverstatus/Botstatus Loop gestartet. Poll: {intervalSeconds}s.");
+
         _ = Task.Run(async () =>
         {
             while (!token.IsCancellationRequested)
             {
                 try
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(Math.Max(30, Settings.DiscordPollSeconds <= 0 ? 60 : Settings.DiscordPollSeconds)), token);
-                    await UpdateDiscordStatusAndPlayerListOnceAsync(token);
+                    await UpdateDiscordServerStatusMessageAsync(token);
+                    await Task.Delay(TimeSpan.FromSeconds(intervalSeconds), token);
                 }
                 catch (OperationCanceledException) when (token.IsCancellationRequested)
                 {
@@ -607,71 +897,123 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 }
                 catch (Exception ex)
                 {
-                    Log("Discord Status Update Fehler: " + ex.Message);
-                    AppLogService.WriteException("DiscordStatusLoop", ex);
+                    Log("Discord Serverstatus/Botstatus Loop Fehler: " + ex.Message);
+                    AppLogService.WriteException("DiscordServerStatusMessageLoop", ex);
+                    await SafeDelayAsync(TimeSpan.FromSeconds(10), token);
                 }
             }
         }, token);
     }
 
-    private async Task UpdateDiscordStatusAndPlayerListOnceAsync(CancellationToken cancellationToken = default)
+    private static async Task SafeDelayAsync(TimeSpan delay, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(delay, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+
+
+    private async Task UpdateDiscordServerStatusMessageManualAsync(CancellationToken cancellationToken = default)
+    {
+        if (_discord is null || !_discord.IsReady)
+        {
+            await StartDiscordAsync();
+        }
+
+        await UpdateDiscordServerStatusMessageAsync(cancellationToken);
+    }
+
+    private async Task UpdateDiscordServerStatusMessageAsync(CancellationToken cancellationToken = default)
     {
         if (_discord is null || !_discord.IsReady) return;
 
-        var players = new List<ScumPlayer>();
+        IReadOnlyCollection<ScumPlayer> players = Array.Empty<ScumPlayer>();
         try
         {
             players = await FetchPlayersAsync(cancellationToken);
         }
         catch (Exception ex)
         {
-            Log("Discord: Spieler konnten nicht gelesen werden: " + ex.Message);
-            AppLogService.WriteException("DiscordFetchPlayers", ex);
+            Log("Discord Serverstatus: Spieler konnten nicht gelesen werden: " + ex.Message);
+            AppLogService.WriteException("DiscordServerStatusPlayers", ex);
+        }
+
+        GgconWeatherResponse? weather = null;
+        try
+        {
+            var weatherService = new GgconHttpApiService(Settings);
+            weather = await weatherService.GetWeatherAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            Log("Discord Serverstatus: Wetter konnte nicht gelesen werden: " + ex.Message);
+            AppLogService.WriteException("DiscordServerStatusWeather", ex);
         }
 
         var maxPlayers = Settings.DiscordMaxPlayers > 0 ? Settings.DiscordMaxPlayers : 64;
+        var serverName = string.IsNullOrWhiteSpace(Settings.DiscordServerName) ? "SCUM Server" : Settings.DiscordServerName;
+        var serverAddress = !string.IsNullOrWhiteSpace(Settings.DiscordServerAddress)
+            ? Settings.DiscordServerAddress.Trim()
+            : Settings.Host;
 
-        if (Settings.AutoStartDiscordStatus)
+        if (Settings.AutoStartDiscordBotStatus)
         {
-            var statusText = DiscordBridgeService.FormatStatus(Settings.DiscordStatusTemplate, players.Count, maxPlayers, DateTime.Now);
-            await _discord.SetStatusAsync(statusText);
-            Log("Discord Status gesetzt: " + statusText);
+            try
+            {
+                var statusText = FormatDiscordBotStatus(Settings.DiscordBotStatusTemplate, players.Count, maxPlayers, serverName);
+                await _discord.SetStatusAsync(statusText);
+                Log($"Discord Botstatus aktualisiert: {statusText}");
+            }
+            catch (Exception ex)
+            {
+                Log("Discord Botstatus konnte nicht aktualisiert werden: " + ex.Message);
+                AppLogService.WriteException("DiscordBotStatusUpdate", ex);
+            }
         }
 
-        if (Settings.AutoStartDiscordPlayerList)
+        if (Settings.AutoStartDiscordServerStatusMessage)
         {
-            if (Settings.DiscordPlayerListChannelId == 0)
+            if (Settings.DiscordServerStatusChannelId == 0)
             {
-                Log("Discord Playerlist: Channel-ID fehlt.");
+                Log("Discord Serverstatus: Channel-ID fehlt.");
             }
             else
             {
-                await _discord.SendOrUpdatePlayerListAsync(Settings.DiscordPlayerListChannelId, players, maxPlayers);
-                Log($"Discord Playerlist aktualisiert: {players.Count}/{maxPlayers} Spieler, ohne Steam IDs.");
+                await _discord.SendOrUpdateServerStatusAsync(
+                    Settings.DiscordServerStatusChannelId,
+                    Settings.DiscordServerStatusTitle,
+                    serverName,
+                    serverAddress,
+                    players,
+                    maxPlayers,
+                    weather,
+                    _eventEngine?.Events ?? Array.Empty<EventRuntime>());
 
-                if (Settings.AutoStartDiscordRandomEvents)
-                {
-                    await _discord.SendOrUpdateRandomEventsAsync(Settings.DiscordPlayerListChannelId, _eventEngine?.Events ?? Array.Empty<EventRuntime>());
-                    Log("Discord Random-Events aktualisiert.");
-                }
+                Log($"Discord Serverstatus-Nachricht aktualisiert: {players.Count}/{maxPlayers} Spieler, Wetter={(weather is null ? "n/a" : weather.GetWeatherScore().ToString("0.00", System.Globalization.CultureInfo.InvariantCulture))}.");
             }
         }
     }
 
-    private async Task UpdateDiscordPlayerListOnceAsync(CancellationToken cancellationToken = default)
+    private static string FormatDiscordBotStatus(string template, int players, int maxPlayers, string serverName)
     {
-        if (_discord is null || !_discord.IsReady) await StartDiscordAsync();
-        if (_discord is null || !_discord.IsReady) return;
-
-        var players = await FetchPlayersAsync(cancellationToken);
-        var maxPlayers = Settings.DiscordMaxPlayers > 0 ? Settings.DiscordMaxPlayers : 64;
-        await _discord.SendOrUpdatePlayerListAsync(Settings.DiscordPlayerListChannelId, players, maxPlayers);
-        if (Settings.AutoStartDiscordRandomEvents)
+        if (string.IsNullOrWhiteSpace(template))
         {
-            await _discord.SendOrUpdateRandomEventsAsync(Settings.DiscordPlayerListChannelId, _eventEngine?.Events ?? Array.Empty<EventRuntime>());
-            Log("Discord Random-Events manuell aktualisiert.");
+            template = "SCUM {players}/{max} Spieler online";
         }
-        Log($"Discord Playerlist manuell aktualisiert: {players.Count}/{maxPlayers} Spieler, ohne Steam IDs.");
+
+        var text = template
+            .Replace("{players}", players.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase)
+            .Replace("{playeramount}", players.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase)
+            .Replace("{max}", maxPlayers.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase)
+            .Replace("{maxplayers}", maxPlayers.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase)
+            .Replace("{servername}", serverName, StringComparison.OrdinalIgnoreCase)
+            .Trim();
+
+        return string.IsNullOrWhiteSpace(text) ? $"SCUM {players}/{maxPlayers} Spieler online" : text;
     }
 
     private async Task<List<ScumPlayer>> FetchPlayersAsync(CancellationToken cancellationToken = default)
@@ -755,10 +1097,13 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         Log("Chat Commands AutoStart: " + Settings.AutoStartChatCommands);
     }
 
-    private void StopChatCommands()
+    private void StopChatCommands(bool persistAutoStart = true)
     {
-        Settings.AutoStartChatCommands = false;
-        SettingsStore.Save(Settings);
+        if (persistAutoStart)
+        {
+            Settings.AutoStartChatCommands = false;
+            SettingsStore.Save(Settings);
+        }
         _chatCommands?.Stop();
         _chatCommands = null;
         ChatCommandsRunning = false;
@@ -903,10 +1248,13 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         Log("Join Commands AutoStart: " + Settings.AutoStartJoinCommands);
     }
 
-    private void StopJoinCommands()
+    private void StopJoinCommands(bool persistAutoStart = true)
     {
-        Settings.AutoStartJoinCommands = false;
-        SettingsStore.Save(Settings);
+        if (persistAutoStart)
+        {
+            Settings.AutoStartJoinCommands = false;
+            SettingsStore.Save(Settings);
+        }
         _joinCommands?.Stop();
         _joinCommands = null;
         JoinCommandsRunning = false;
@@ -1057,10 +1405,13 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         Log("Killfeed AutoStart: " + Settings.AutoStartKillFeed);
     }
 
-    private void StopKillFeed()
+    private void StopKillFeed(bool persistAutoStart = true)
     {
-        Settings.AutoStartKillFeed = false;
-        SettingsStore.Save(Settings);
+        if (persistAutoStart)
+        {
+            Settings.AutoStartKillFeed = false;
+            SettingsStore.Save(Settings);
+        }
         _killFeed?.Stop();
         _killFeed = null;
         KillFeedRunning = false;
@@ -1097,9 +1448,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
         if (_discord is null || !_discord.IsReady)
         {
-            Log("Weekly Tasks: Discord ist noch nicht bereit, starte Bot...");
-            await StartDiscordAsync();
-            if (WeeklyTasksRunning) return;
+            Log("Weekly Tasks: Discord ist noch nicht bereit. Scan startet trotzdem; Discord-Posts werden gesendet, sobald der Bot bereit ist.");
         }
 
         _weeklyTasks?.Stop();
@@ -1122,7 +1471,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 if (_discord is null || !_discord.IsReady) return;
                 var channelId = Settings.WeeklyTaskDiscordChannelId != 0
                     ? Settings.WeeklyTaskDiscordChannelId
-                    : Settings.DiscordPlayerListChannelId;
+                    : Settings.DiscordServerStatusChannelId;
 
                 foreach (var progress in progressList)
                 {
@@ -1135,10 +1484,13 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         Log("Weekly Tasks AutoStart: " + Settings.AutoStartWeeklyTasks);
     }
 
-    private void StopWeeklyTasks()
+    private void StopWeeklyTasks(bool persistAutoStart = true)
     {
-        Settings.AutoStartWeeklyTasks = false;
-        SettingsStore.Save(Settings);
+        if (persistAutoStart)
+        {
+            Settings.AutoStartWeeklyTasks = false;
+            SettingsStore.Save(Settings);
+        }
         _weeklyTasks?.Stop();
         _weeklyTasks = null;
         WeeklyTasksRunning = false;
@@ -1159,7 +1511,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             var channelId = Settings.WeeklyTaskDiscordChannelId != 0
                 ? Settings.WeeklyTaskDiscordChannelId
-                : Settings.DiscordPlayerListChannelId;
+                : Settings.DiscordServerStatusChannelId;
             foreach (var progress in progresses)
             {
                 await _discord.SendOrUpdateWeeklyTaskAsync(channelId, progress);
@@ -1183,7 +1535,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             var channelId = Settings.WeeklyTaskDiscordChannelId != 0
                 ? Settings.WeeklyTaskDiscordChannelId
-                : Settings.DiscordPlayerListChannelId;
+                : Settings.DiscordServerStatusChannelId;
             foreach (var progress in progresses)
             {
                 await _discord.SendOrUpdateWeeklyTaskAsync(channelId, progress);
@@ -1343,6 +1695,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     private async Task StartAutoMessagesAsync(bool persistAutoStart = true)
     {
+        SyncAutoMessageEditorsToSettings();
         if (persistAutoStart)
         {
             Settings.AutoStartAutoMessages = true;
@@ -1368,14 +1721,17 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             });
 
         AutoMessagesRunning = true;
-        AutoMessageStatus = $"Auto Messages laufen alle {Math.Max(1, Settings.AutoMessagesIntervalMinutes)} Minuten.";
+        AutoMessageStatus = $"Auto Messages laufen: Queue alle {Math.Max(1, Settings.AutoMessagesIntervalMinutes)} Minuten, Standalone nach eigenem Intervall.";
         Log("Auto Messages gestartet.");
     }
 
-    private void StopAutoMessages()
+    private void StopAutoMessages(bool persistAutoStart = true)
     {
-        Settings.AutoStartAutoMessages = false;
-        SettingsStore.Save(Settings);
+        if (persistAutoStart)
+        {
+            Settings.AutoStartAutoMessages = false;
+            SettingsStore.Save(Settings);
+        }
         _autoMessages?.Stop();
         _autoMessages = null;
         AutoMessagesRunning = false;
@@ -1385,6 +1741,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     private async Task SendAutoMessageNowAsync()
     {
+        SyncAutoMessageEditorsToSettings();
         var service = _autoMessages ?? new AutoMessageService(Log);
         await service.TickAsync(
             Settings,
@@ -1408,9 +1765,47 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private void InsertDefaultAutoMessages()
     {
         Settings.AutoMessagesFlowJson = AutoMessageFlow.BuildDefaultJson();
+        LoadAutoMessageEditorsFromSettings();
         SettingsStore.Save(Settings);
         OnPropertyChanged(nameof(Settings));
         Log("Auto Messages Beispiel-Flow eingefuegt.");
+    }
+
+    private void AddAutoMessage()
+    {
+        AutoMessageEditors.Add(new AutoMessageEditorViewModel
+        {
+            Name = "Neue Nachricht",
+            Enabled = true,
+            Mode = "Queue",
+            Type = "Text",
+            MessageType = Settings.AutoMessagesBroadcastType,
+            IntervalMinutes = Math.Max(1, Settings.AutoMessagesIntervalMinutes),
+            Text = "Neue Auto Message"
+        });
+        SyncAutoMessageEditorsToSettings();
+    }
+
+    private void RemoveAutoMessage(AutoMessageEditorViewModel? message)
+    {
+        if (message is null) return;
+        AutoMessageEditors.Remove(message);
+        SyncAutoMessageEditorsToSettings();
+    }
+
+    private void LoadAutoMessageEditorsFromSettings()
+    {
+        AutoMessageEditors.Clear();
+        foreach (var step in AutoMessageFlow.Parse(Settings.AutoMessagesFlowJson, Settings.AutoMessagesBroadcastType, includeDisabled: true))
+        {
+            AutoMessageEditors.Add(AutoMessageEditorViewModel.FromStep(step, Settings.AutoMessagesBroadcastType, Settings.AutoMessagesIntervalMinutes));
+        }
+    }
+
+    private void SyncAutoMessageEditorsToSettings()
+    {
+        var steps = AutoMessageEditors.Select(x => x.ToStep()).ToList();
+        Settings.AutoMessagesFlowJson = JsonSerializer.Serialize(steps, new JsonSerializerOptions { WriteIndented = true });
     }
 
     private void ResetAutoMessageFlow()
@@ -1589,11 +1984,14 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    private void StopChatLogForwarder()
+    private void StopChatLogForwarder(bool persistAutoStart = true)
     {
         _chatForwarderRequested = false;
-        Settings.AutoStartDiscordChatLogs = false;
-        SettingsStore.Save(Settings);
+        if (persistAutoStart)
+        {
+            Settings.AutoStartDiscordChatLogs = false;
+            SettingsStore.Save(Settings);
+        }
         _chatForwarder?.Stop();
         ChatLogForwarderRunning = false;
         Log("Discord Chatlog Forwarder deaktiviert.");
@@ -1602,9 +2000,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private void StartChatForwarder()
     {
         EnsureLocalLogDirectories();
-        if (!Settings.DiscordChatLogEmbedsEnabled)
+        if (!Settings.DiscordChatLogEmbedsEnabled && !Settings.DiscordVehicleLogEmbedsEnabled)
         {
-            Log("Discord Chatlog Forwarder: Chatlog-Embeds sind deaktiviert.");
+            Log("Discord Chatlog/Vehicle-Log Forwarder: Chatlog- und Vehicle-Embeds sind deaktiviert.");
             return;
         }
         if (Settings.DiscordChatLogChannelId == 0)
@@ -1645,10 +2043,106 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         ScriptJson = JsonSerializer.Serialize(definition, new JsonSerializerOptions { WriteIndented = true });
     }
 
+    public void MarkScriptDirty()
+    {
+        if (SelectedScript is not null)
+        {
+            ScriptHasUnsavedChanges = true;
+        }
+
+        ScriptEditorModel?.RefreshLocalVariablePlaceholders();
+    }
+
+    public bool ConfirmScriptChangeAllowed()
+    {
+        if (!ScriptHasUnsavedChanges)
+        {
+            return true;
+        }
+
+        var result = ShowUnsavedScriptDialog();
+
+        if (result == MessageBoxResult.Cancel)
+        {
+            return false;
+        }
+
+        if (result == MessageBoxResult.Yes)
+        {
+            return TrySaveScript();
+        }
+
+        ScriptHasUnsavedChanges = false;
+        return true;
+    }
+
+    private MessageBoxResult ShowUnsavedScriptDialog()
+    {
+        var result = MessageBoxResult.Cancel;
+        var window = new Window
+        {
+            Title = "Skriptzone - nicht gespeichert",
+            Width = 460,
+            Height = 210,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            ResizeMode = ResizeMode.NoResize,
+            Owner = App.Current?.MainWindow,
+            Background = App.Current?.TryFindResource("PanelBrush") as System.Windows.Media.Brush,
+            Foreground = App.Current?.TryFindResource("AppTextBrush") as System.Windows.Media.Brush,
+            FontFamily = new System.Windows.Media.FontFamily("Segoe UI")
+        };
+
+        var root = new DockPanel { Margin = new Thickness(18) };
+        var text = new TextBlock
+        {
+            Text = "Das aktuelle Skript hat ungespeicherte Aenderungen. Was soll passieren?",
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 18),
+            FontSize = 15
+        };
+        DockPanel.SetDock(text, Dock.Top);
+        root.Children.Add(text);
+
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right
+        };
+
+        Button BuildButton(string label, MessageBoxResult value)
+        {
+            var button = new Button
+            {
+                Content = label,
+                MinWidth = 112,
+                Margin = new Thickness(8, 0, 0, 0),
+                Padding = new Thickness(10, 7, 10, 7)
+            };
+            button.Click += (_, _) =>
+            {
+                result = value;
+                window.DialogResult = true;
+                window.Close();
+            };
+            return button;
+        }
+
+        buttons.Children.Add(BuildButton(Texts["Save"], MessageBoxResult.Yes));
+        buttons.Children.Add(BuildButton(Texts["DoNotSave"], MessageBoxResult.No));
+        buttons.Children.Add(BuildButton(Texts["Cancel"], MessageBoxResult.Cancel));
+        DockPanel.SetDock(buttons, Dock.Bottom);
+        root.Children.Add(buttons);
+
+        window.Content = root;
+        window.ShowDialog();
+        return result;
+    }
+
     private void AddScriptCommand(ScriptBlockEditorViewModel? block)
     {
         if (block is null) return;
         block.Commands.Add(new ScriptCommandEditorViewModel { Name = "Neuer Command", DelayMs = 50 });
+        MarkScriptDirty();
         SyncStructuredScriptToJson();
     }
 
@@ -1659,13 +2153,76 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             if (block.Commands.Remove(command)) break;
         }
+        MarkScriptDirty();
+        SyncStructuredScriptToJson();
+    }
+
+    private void AddSpawnBlock()
+    {
+        if (ScriptEditorModel is null) return;
+        var block = new SpawnBlockEditorViewModel
+        {
+            Name = "Neuer Spawn",
+            Type = "ArmedNPC",
+            Asset = "BP_Guard_Lvl_1",
+            Quantity = 1,
+            DelayMs = 250
+        };
+        ScriptEditorModel.SpawnBlocks.Add(block);
+        ScriptEditorModel.RebuildFlow();
+        ScriptEditorModel.SelectFlowTarget(block);
+        MarkScriptDirty();
+        SyncStructuredScriptToJson();
+    }
+
+    private void RemoveSpawnBlock(SpawnBlockEditorViewModel? block)
+    {
+        if (ScriptEditorModel is null || block is null) return;
+        ScriptEditorModel.SpawnBlocks.Remove(block);
+        ScriptEditorModel.RebuildFlow();
+        MarkScriptDirty();
+        SyncStructuredScriptToJson();
+    }
+
+    private void AddLootLocationVariable()
+    {
+        if (ScriptEditorModel is null) return;
+        ScriptEditorModel.LootSpawnLocations.Add(new ScriptLocationVariableEditorViewModel("loot", "loot_" + (ScriptEditorModel.LootSpawnLocations.Count + 1), "[{X=0 Y=0 Z=0|P=0 Y=0 R=0}]"));
+        ScriptEditorModel.RefreshLocalVariablePlaceholders();
+        MarkScriptDirty();
+        SyncStructuredScriptToJson();
+    }
+
+    private void AddNpcLocationVariable()
+    {
+        if (ScriptEditorModel is null) return;
+        ScriptEditorModel.NpcSpawnLocations.Add(new ScriptLocationVariableEditorViewModel("npc", "npc_" + (ScriptEditorModel.NpcSpawnLocations.Count + 1), "[{X=0 Y=0 Z=0|P=0 Y=0 R=0}]"));
+        ScriptEditorModel.RefreshLocalVariablePlaceholders();
+        MarkScriptDirty();
+        SyncStructuredScriptToJson();
+    }
+
+    private void RemoveLocationVariable(ScriptLocationVariableEditorViewModel? location)
+    {
+        if (ScriptEditorModel is null || location is null) return;
+        if (!ScriptEditorModel.LootSpawnLocations.Remove(location))
+        {
+            ScriptEditorModel.NpcSpawnLocations.Remove(location);
+        }
+
+        ScriptEditorModel.RefreshLocalVariablePlaceholders();
+        MarkScriptDirty();
         SyncStructuredScriptToJson();
     }
 
     private void AddLootPack()
     {
         if (ScriptEditorModel is null) return;
-        ScriptEditorModel.LootPacks.Add(new LootPackEditorViewModel { Name = "Neues LootPack", Weight = 1 });
+        var pack = new LootPackEditorViewModel { Name = "Neues LootPack", Weight = 1 };
+        ScriptEditorModel.LootPacks.Add(pack);
+        ScriptEditorModel.RebuildFlow();
+        ScriptEditorModel.SelectFlowTarget(pack);
+        MarkScriptDirty();
         SyncStructuredScriptToJson();
     }
 
@@ -1673,6 +2230,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     {
         if (ScriptEditorModel is null || pack is null) return;
         ScriptEditorModel.LootPacks.Remove(pack);
+        ScriptEditorModel.RebuildFlow();
+        MarkScriptDirty();
         SyncStructuredScriptToJson();
     }
 
@@ -1680,6 +2239,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     {
         if (pack is null) return;
         pack.Items.Add(new LootItemEditorViewModel { Quantity = 1, DelayMs = 50 });
+        MarkScriptDirty();
         SyncStructuredScriptToJson();
     }
 
@@ -1690,13 +2250,18 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             if (pack.Items.Remove(item)) break;
         }
+        MarkScriptDirty();
         SyncStructuredScriptToJson();
     }
 
     private void AddLootCommandPack()
     {
         if (ScriptEditorModel is null) return;
-        ScriptEditorModel.LootCommandPacks.Add(new LootCommandPackEditorViewModel { Name = "Neuer LootCommand", Weight = 1, DelayMs = 50 });
+        var pack = new LootCommandPackEditorViewModel { Name = "Neuer LootCommand", Weight = 1, DelayMs = 50 };
+        ScriptEditorModel.LootCommandPacks.Add(pack);
+        ScriptEditorModel.RebuildFlow();
+        ScriptEditorModel.SelectFlowTarget(pack);
+        MarkScriptDirty();
         SyncStructuredScriptToJson();
     }
 
@@ -1704,7 +2269,14 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     {
         if (ScriptEditorModel is null || pack is null) return;
         ScriptEditorModel.LootCommandPacks.Remove(pack);
+        ScriptEditorModel.RebuildFlow();
+        MarkScriptDirty();
         SyncStructuredScriptToJson();
+    }
+
+    public void SelectScriptFlowNode(ScriptFlowNodeViewModel? node)
+    {
+        ScriptEditorModel?.SelectFlowNode(node);
     }
 
     public void RefreshScripts()
@@ -1720,6 +2292,15 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         SelectedScript = Scripts.FirstOrDefault();
         RefreshScriptZoneMapFromFiles();
         Log($"{Scripts.Count} Script-Dateien gefunden.");
+    }
+
+    private void CreateScript()
+    {
+        var definition = EventDefinitionStore.CreateTemplate();
+        var path = EventDefinitionStore.Save(definition);
+        RefreshScripts();
+        SelectedScript = Scripts.FirstOrDefault(x => string.Equals(x.Path, path, StringComparison.OrdinalIgnoreCase));
+        Log("Neues Script angelegt: " + Path.GetFileName(path));
     }
 
     private void RefreshScriptZoneMapFromFiles()
@@ -1752,6 +2333,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         ScriptJson = File.ReadAllText(SelectedScript.Path);
         LoadStructuredScriptFromJson();
         ValidateScript();
+        ScriptHasUnsavedChanges = false;
     }
 
     public void ValidateScript()
@@ -1788,13 +2370,20 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     public void SaveScript()
     {
-        if (SelectedScript is null) return;
+        TrySaveScript();
+    }
+
+    private bool TrySaveScript()
+    {
+        if (SelectedScript is null) return true;
         SyncStructuredScriptToJson();
         ValidateScript();
-        if (SelectedScript.HasErrors) return;
+        if (SelectedScript.HasErrors) return false;
         File.WriteAllText(SelectedScript.Path, ScriptJson);
         Log("Script gespeichert: " + SelectedScript.Name);
+        ScriptHasUnsavedChanges = false;
         if (ScriptEngineRunning) Log("Hinweis: Script Engine neu starten, damit diese Aenderung aktiv wird.");
+        return true;
     }
 
     private void DuplicateScript()
@@ -1896,8 +2485,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        _discordStatusCts?.Cancel();
-        _discordStatusCts?.Dispose();
+        _discordServerStatusMessageCts?.Cancel();
+        _discordServerStatusMessageCts?.Dispose();
         _chatForwarder?.Stop();
         _chatCommands?.Stop();
         _joinCommands?.Stop();
@@ -1914,6 +2503,11 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
 public sealed class ScriptStructuredEditorViewModel : ObservableObject
 {
+    public ScriptStructuredEditorViewModel()
+    {
+        LootRandomBlock = new ScriptLootRandomBlockEditorViewModel(this);
+    }
+
     public string Id { get; set; } = "script";
     public string Name { get; set; } = "Script";
     public bool Enabled { get; set; } = true;
@@ -1932,15 +2526,34 @@ public sealed class ScriptStructuredEditorViewModel : ObservableObject
     public double ZoneY { get; set; }
     public double ZoneZ { get; set; }
     public double ZoneRadius { get; set; } = 75000;
+    public string InitiatorMessage { get; set; } = "";
 
     public ScriptBlockEditorViewModel PreLiveCleanupBlock { get; set; } = new() { Name = "Cleanup vor Live" };
     public ScriptBlockEditorViewModel InitiatorBlock { get; set; } = new() { Name = "Initiator Block" };
     public ScriptBlockEditorViewModel LiveBlock { get; set; } = new() { Name = "Liveblock" };
     public ScriptBlockEditorViewModel EmptyBlock { get; set; } = new() { Name = "Wenn Zone leer" };
     public ScriptBlockEditorViewModel CleanupBlock { get; set; } = new() { Name = "Cleanup Block" };
+    public ObservableCollection<SpawnBlockEditorViewModel> SpawnBlocks { get; } = new();
+    public ObservableCollection<ScriptLocationVariableEditorViewModel> LootSpawnLocations { get; } = new();
+    public ObservableCollection<ScriptLocationVariableEditorViewModel> NpcSpawnLocations { get; } = new();
+    public ObservableCollection<string> LocationPlaceholders { get; } = new();
     public ObservableCollection<LootPackEditorViewModel> LootPacks { get; } = new();
     public ObservableCollection<LootCommandPackEditorViewModel> LootCommandPacks { get; } = new();
     public IReadOnlyList<ScriptBlockEditorViewModel> Blocks => new[] { PreLiveCleanupBlock, InitiatorBlock, LiveBlock, EmptyBlock, CleanupBlock };
+    public ScriptLootRandomBlockEditorViewModel LootRandomBlock { get; }
+    public ObservableCollection<ScriptFlowNodeViewModel> FlowNodes { get; } = new();
+    public ObservableCollection<ScriptFlowConnectionViewModel> FlowConnections { get; } = new();
+
+    private ScriptFlowNodeViewModel? _selectedFlowNode;
+    public ScriptFlowNodeViewModel? SelectedFlowNode
+    {
+        get => _selectedFlowNode;
+        set => SelectFlowNode(value);
+    }
+
+    public object? SelectedFlowTarget => SelectedFlowNode?.Target;
+    public string SelectedFlowTitle => SelectedFlowNode?.Title ?? "Baustein";
+    public string SelectedFlowSubtitle => SelectedFlowNode?.Subtitle ?? "";
 
     public static ScriptStructuredEditorViewModel FromDefinition(EventDefinition definition)
     {
@@ -1965,6 +2578,7 @@ public sealed class ScriptStructuredEditorViewModel : ObservableObject
             ZoneY = zone.CenterY,
             ZoneZ = zone.CenterZ,
             ZoneRadius = zone.Radius,
+            InitiatorMessage = FirstNonEmpty(definition.LocalVariables?.InitiatorMessage, definition.Announcement),
             PreLiveCleanupBlock = ScriptBlockEditorViewModel.FromBlock(definition.PreLiveCleanupBlock, "Cleanup vor Live"),
             InitiatorBlock = ScriptBlockEditorViewModel.FromBlock(definition.InitiatorBlock, "Initiator Block"),
             LiveBlock = ScriptBlockEditorViewModel.FromBlock(definition.LiveBlock, "Liveblock"),
@@ -1974,6 +2588,10 @@ public sealed class ScriptStructuredEditorViewModel : ObservableObject
 
         foreach (var pack in definition.LootPacks) model.LootPacks.Add(LootPackEditorViewModel.FromPack(pack));
         foreach (var pack in definition.LootCommandPacks) model.LootCommandPacks.Add(LootCommandPackEditorViewModel.FromPack(pack));
+        foreach (var block in definition.SpawnBlocks ?? new List<SpawnBlock>()) model.SpawnBlocks.Add(SpawnBlockEditorViewModel.FromBlock(block));
+        foreach (var location in definition.LocalVariables?.LootSpawnLocations ?? new List<ScriptLocationVariable>()) model.LootSpawnLocations.Add(ScriptLocationVariableEditorViewModel.FromVariable("loot", location));
+        foreach (var location in definition.LocalVariables?.NpcSpawnLocations ?? new List<ScriptLocationVariable>()) model.NpcSpawnLocations.Add(ScriptLocationVariableEditorViewModel.FromVariable("npc", location));
+        model.RefreshLocalVariablePlaceholders();
         return model;
     }
 
@@ -1990,10 +2608,18 @@ public sealed class ScriptStructuredEditorViewModel : ObservableObject
         EventGroup = EventGroup?.Trim() ?? "",
         MaxConcurrentInGroup = Math.Max(0, MaxConcurrentInGroup),
         LootPackSpawnMode = string.IsNullOrWhiteSpace(LootPackSpawnMode) ? "OneTotal" : LootPackSpawnMode.Trim(),
+        Announcement = InitiatorMessage?.Trim() ?? "",
         Zone = new EventZone { Name = string.IsNullOrWhiteSpace(ZoneName) ? "Zone" : ZoneName.Trim(), CenterX = ZoneX, CenterY = ZoneY, CenterZ = ZoneZ, Radius = Math.Max(0, ZoneRadius) },
+        LocalVariables = new ScriptLocalVariables
+        {
+            InitiatorMessage = InitiatorMessage?.Trim() ?? "",
+            LootSpawnLocations = LootSpawnLocations.Select(x => x.ToVariable()).ToList(),
+            NpcSpawnLocations = NpcSpawnLocations.Select(x => x.ToVariable()).ToList()
+        },
         InitiatorBlock = InitiatorBlock.ToBlock(),
         PreLiveCleanupBlock = PreLiveCleanupBlock.ToBlock(),
         LiveBlock = LiveBlock.ToBlock(),
+        SpawnBlocks = SpawnBlocks.Select(x => x.ToBlock()).ToList(),
         EmptyBlock = EmptyBlock.ToBlock(),
         CleanupBlock = CleanupBlock.ToBlock(),
         LootPacks = LootPacks.Select(x => x.ToPack()).ToList(),
@@ -2001,6 +2627,167 @@ public sealed class ScriptStructuredEditorViewModel : ObservableObject
         CleanupWhenEmptySeconds = Math.Max(0, CleanupWhenEmptySeconds),
         CooldownMinutes = Math.Max(0, CooldownMinutes)
     };
+
+    public void RefreshLocalVariablePlaceholders()
+    {
+        var values = new List<string>
+        {
+            "{triggerZone}"
+        };
+
+        values.AddRange(LootSpawnLocations.Select(x => x.Placeholder));
+        values.AddRange(NpcSpawnLocations.Select(x => x.Placeholder));
+
+        LocationPlaceholders.Clear();
+        foreach (var value in values.Where(v => !string.IsNullOrWhiteSpace(v)).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            LocationPlaceholders.Add(value);
+        }
+    }
+
+    public void RebuildFlow()
+    {
+        var oldPositions = FlowNodes.ToDictionary(n => n.NodeId, n => (n.X, n.Y), StringComparer.OrdinalIgnoreCase);
+
+        foreach (var connection in FlowConnections)
+        {
+            connection.Dispose();
+        }
+
+        FlowConnections.Clear();
+        FlowNodes.Clear();
+
+        var zone = AddFlowNode("zone", "Trigger", "Aktivierungszone", $"{ZoneName} | Radius {ZoneRadius:0}", this, 24, 24, oldPositions);
+        var initiator = AddFlowNode("initiator", "Block", "Initiator", $"{InitiatorBlock.Commands.Count} Commands", InitiatorBlock, 24, 130, oldPositions);
+        var preLive = AddFlowNode("prelive", "Block", "Cleanup vor Live", $"{PreLiveCleanupBlock.Commands.Count} Commands", PreLiveCleanupBlock, 24, 236, oldPositions);
+        var live = AddFlowNode("live", "Block", "Live", $"{LiveBlock.Commands.Count} Commands", LiveBlock, 24, 342, oldPositions);
+        var empty = AddFlowNode("empty", "Block", "Zone leer", $"{EmptyBlock.Commands.Count} Commands", EmptyBlock, 708, 342, oldPositions);
+        var cleanup = AddFlowNode("cleanup", "Block", "Cleanup", $"{CleanupBlock.Commands.Count} Commands", CleanupBlock, 708, 448, oldPositions);
+
+        Connect(zone, initiator);
+        Connect(initiator, preLive);
+        Connect(preLive, live);
+
+        var branchTargets = new List<ScriptFlowNodeViewModel>();
+        var branchY = 24d;
+        var branchIndex = 0;
+        foreach (var spawn in SpawnBlocks)
+        {
+            branchTargets.Add(AddFlowNode(TargetNodeId("spawn", spawn), "Spawn", spawn.Name, $"{spawn.Type} x{spawn.Quantity}", spawn, 252, branchY + branchIndex++ * 106, oldPositions));
+        }
+
+        var randomLootY = branchY + branchIndex++ * 106;
+        var randomLoot = AddFlowNode("random_loot", "Random", "Random Loot", $"{LootPacks.Count} Packs | {LootPackSpawnMode}", LootRandomBlock, 252, randomLootY, oldPositions);
+        branchTargets.Add(randomLoot);
+
+        var packIndex = 0;
+        foreach (var pack in LootPacks)
+        {
+            var packNode = AddFlowNode(TargetNodeId("loot", pack), "LootPack", pack.Name, $"{pack.Items.Count} Items | Gewicht {pack.Weight}", pack, 480, randomLootY + packIndex++ * 92, oldPositions);
+            Connect(randomLoot, packNode);
+        }
+
+        foreach (var pack in LootCommandPacks)
+        {
+            branchTargets.Add(AddFlowNode(TargetNodeId("lootcommand", pack), "Command", pack.Name, $"Gewicht {pack.Weight}", pack, 252, branchY + branchIndex++ * 106, oldPositions));
+        }
+
+        if (branchTargets.Count == 0)
+        {
+            Connect(live, empty);
+        }
+        else
+        {
+            foreach (var branch in branchTargets)
+            {
+                Connect(live, branch);
+                Connect(branch, empty);
+            }
+        }
+
+        Connect(empty, cleanup);
+
+        var oldSelectedId = _selectedFlowNode?.NodeId;
+        SelectFlowNode(FlowNodes.FirstOrDefault(n => string.Equals(n.NodeId, oldSelectedId, StringComparison.OrdinalIgnoreCase)) ?? FlowNodes.FirstOrDefault());
+    }
+
+    public void SelectFlowTarget(object target)
+    {
+        SelectFlowNode(FlowNodes.FirstOrDefault(n => ReferenceEquals(n.Target, target)));
+    }
+
+    public void SelectFlowNode(ScriptFlowNodeViewModel? node)
+    {
+        if (ReferenceEquals(_selectedFlowNode, node))
+        {
+            return;
+        }
+
+        if (_selectedFlowNode is not null)
+        {
+            _selectedFlowNode.IsSelected = false;
+        }
+
+        _selectedFlowNode = node;
+
+        if (_selectedFlowNode is not null)
+        {
+            _selectedFlowNode.IsSelected = true;
+        }
+
+        OnPropertyChanged(nameof(SelectedFlowNode));
+        OnPropertyChanged(nameof(SelectedFlowTarget));
+        OnPropertyChanged(nameof(SelectedFlowTitle));
+        OnPropertyChanged(nameof(SelectedFlowSubtitle));
+    }
+
+    private ScriptFlowNodeViewModel AddFlowNode(
+        string nodeId,
+        string kind,
+        string title,
+        string subtitle,
+        object target,
+        double x,
+        double y,
+        Dictionary<string, (double X, double Y)> oldPositions)
+    {
+        if (oldPositions.TryGetValue(nodeId, out var position))
+        {
+            x = position.X;
+            y = position.Y;
+        }
+
+        var node = new ScriptFlowNodeViewModel(nodeId, kind, title, subtitle, target)
+        {
+            X = x,
+            Y = y
+        };
+        FlowNodes.Add(node);
+        return node;
+    }
+
+    private void Connect(ScriptFlowNodeViewModel from, ScriptFlowNodeViewModel to)
+    {
+        FlowConnections.Add(new ScriptFlowConnectionViewModel(from, to));
+    }
+
+    private static string TargetNodeId(string prefix, object target)
+    {
+        return prefix + "_" + RuntimeHelpers.GetHashCode(target).ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private static string FirstNonEmpty(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value.Trim();
+            }
+        }
+
+        return string.Empty;
+    }
 }
 
 public sealed class ScriptBlockEditorViewModel : ObservableObject
@@ -2049,6 +2836,329 @@ public sealed class ScriptCommandEditorViewModel : ObservableObject
         Command = Command?.Trim() ?? "",
         Repeat = Math.Max(1, Repeat),
         DelayMs = Math.Max(0, DelayMs)
+    };
+}
+
+public sealed class ScriptLocationVariableEditorViewModel : ObservableObject
+{
+    private string _name;
+    private string _location;
+
+    public ScriptLocationVariableEditorViewModel(string prefix, string name, string location)
+    {
+        Prefix = prefix;
+        _name = name;
+        _location = location;
+    }
+
+    public string Prefix { get; }
+
+    public string Name
+    {
+        get => _name;
+        set
+        {
+            if (SetProperty(ref _name, value))
+            {
+                OnPropertyChanged(nameof(Placeholder));
+            }
+        }
+    }
+
+    public string Location
+    {
+        get => _location;
+        set => SetProperty(ref _location, value);
+    }
+
+    public string Placeholder => "{" + Prefix + "_" + SanitizePlaceholderName(Name) + "}";
+
+    public static ScriptLocationVariableEditorViewModel FromVariable(string prefix, ScriptLocationVariable variable) =>
+        new(prefix, variable.Name ?? "position", variable.Location ?? "");
+
+    public ScriptLocationVariable ToVariable() => new()
+    {
+        Name = string.IsNullOrWhiteSpace(Name) ? "position" : Name.Trim(),
+        Location = Location?.Trim() ?? ""
+    };
+
+    private static string SanitizePlaceholderName(string? value)
+    {
+        var cleaned = System.Text.RegularExpressions.Regex.Replace((value ?? string.Empty).Trim(), "[^A-Za-z0-9_]+", "_");
+        cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, "_+", "_").Trim('_');
+        return string.IsNullOrWhiteSpace(cleaned) ? "value" : cleaned;
+    }
+}
+
+public sealed class AutoMessageEditorViewModel : ObservableObject
+{
+    private string _name = "Auto Message";
+    private bool _enabled = true;
+    private string _mode = "Queue";
+    private string _type = "Text";
+    private string _messageType = "Yellow";
+    private int _intervalMinutes = 15;
+    private string _text = string.Empty;
+
+    public string Name
+    {
+        get => _name;
+        set => SetProperty(ref _name, value);
+    }
+
+    public bool Enabled
+    {
+        get => _enabled;
+        set => SetProperty(ref _enabled, value);
+    }
+
+    public string Mode
+    {
+        get => _mode;
+        set
+        {
+            if (SetProperty(ref _mode, string.IsNullOrWhiteSpace(value) ? "Queue" : value.Trim()))
+            {
+                OnPropertyChanged(nameof(IsStandalone));
+                OnPropertyChanged(nameof(TimingLabel));
+            }
+        }
+    }
+
+    public string Type
+    {
+        get => _type;
+        set
+        {
+            if (SetProperty(ref _type, string.IsNullOrWhiteSpace(value) ? "Text" : value.Trim()))
+            {
+                OnPropertyChanged(nameof(IsChallenge));
+                OnPropertyChanged(nameof(PreviewText));
+            }
+        }
+    }
+
+    public string MessageType
+    {
+        get => _messageType;
+        set => SetProperty(ref _messageType, string.IsNullOrWhiteSpace(value) ? "Yellow" : value.Trim());
+    }
+
+    public int IntervalMinutes
+    {
+        get => _intervalMinutes;
+        set => SetProperty(ref _intervalMinutes, Math.Max(1, value));
+    }
+
+    public string Text
+    {
+        get => _text;
+        set
+        {
+            if (SetProperty(ref _text, value ?? string.Empty))
+            {
+                OnPropertyChanged(nameof(PreviewText));
+            }
+        }
+    }
+
+    public bool IsStandalone => AutoMessageFlow.IsStandalone(Mode);
+    public bool IsChallenge => AutoMessageFlow.IsChallengeStep(Type);
+    public string TimingLabel => IsStandalone ? "Eigenes Intervall" : "Queue-Reihenfolge";
+    public string PreviewText => IsChallenge ? "Aktueller Community-Challenge-Status" : Text;
+
+    public static AutoMessageEditorViewModel FromStep(AutoMessageStep step, string fallbackMessageType, int fallbackIntervalMinutes) => new()
+    {
+        Name = string.IsNullOrWhiteSpace(step.Name) ? (AutoMessageFlow.IsChallengeStep(step.Type) ? "Challenge Status" : "Auto Message") : step.Name,
+        Enabled = step.Enabled,
+        Mode = string.IsNullOrWhiteSpace(step.Mode) ? "Queue" : step.Mode,
+        Type = string.IsNullOrWhiteSpace(step.Type) ? "Text" : step.Type,
+        MessageType = string.IsNullOrWhiteSpace(step.MessageType) ? fallbackMessageType : step.MessageType,
+        IntervalMinutes = step.IntervalMinutes <= 0 ? Math.Max(1, fallbackIntervalMinutes) : step.IntervalMinutes,
+        Text = step.Text ?? string.Empty
+    };
+
+    public AutoMessageStep ToStep() => new()
+    {
+        Name = string.IsNullOrWhiteSpace(Name) ? "Auto Message" : Name.Trim(),
+        Enabled = Enabled,
+        Mode = string.IsNullOrWhiteSpace(Mode) ? "Queue" : Mode.Trim(),
+        Type = string.IsNullOrWhiteSpace(Type) ? "Text" : Type.Trim(),
+        MessageType = string.IsNullOrWhiteSpace(MessageType) ? "Yellow" : MessageType.Trim(),
+        IntervalMinutes = Math.Max(1, IntervalMinutes),
+        Text = Text?.Trim() ?? string.Empty
+    };
+}
+
+public sealed class ScriptLootRandomBlockEditorViewModel : ObservableObject
+{
+    private readonly ScriptStructuredEditorViewModel _owner;
+
+    public ScriptLootRandomBlockEditorViewModel(ScriptStructuredEditorViewModel owner)
+    {
+        _owner = owner;
+    }
+
+    public string Name => "Random Loot";
+    public ObservableCollection<LootPackEditorViewModel> LootPacks => _owner.LootPacks;
+
+    public string LootPackSpawnMode
+    {
+        get => _owner.LootPackSpawnMode;
+        set
+        {
+            var next = string.IsNullOrWhiteSpace(value) ? "OneTotal" : value.Trim();
+            if (string.Equals(_owner.LootPackSpawnMode, next, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _owner.LootPackSpawnMode = next;
+            OnPropertyChanged();
+        }
+    }
+
+    public string Summary => $"{LootPacks.Count} LootPacks";
+}
+
+public sealed class ScriptFlowNodeViewModel : ObservableObject
+{
+    private double _x;
+    private double _y;
+    private bool _isSelected;
+
+    public ScriptFlowNodeViewModel(string nodeId, string kind, string title, string subtitle, object target)
+    {
+        NodeId = nodeId;
+        Kind = kind;
+        Title = title;
+        Subtitle = subtitle;
+        Target = target;
+    }
+
+    public string NodeId { get; }
+    public string Kind { get; }
+    public string Title { get; }
+    public string Subtitle { get; }
+    public object Target { get; }
+
+    public double X
+    {
+        get => _x;
+        set
+        {
+            if (SetProperty(ref _x, value))
+            {
+                OnPropertyChanged(nameof(CenterX));
+            }
+        }
+    }
+
+    public double Y
+    {
+        get => _y;
+        set
+        {
+            if (SetProperty(ref _y, value))
+            {
+                OnPropertyChanged(nameof(CenterY));
+            }
+        }
+    }
+
+    public double CenterX => X + 88;
+    public double CenterY => Y + 42;
+
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set => SetProperty(ref _isSelected, value);
+    }
+}
+
+public sealed class ScriptFlowConnectionViewModel : ObservableObject, IDisposable
+{
+    public ScriptFlowConnectionViewModel(ScriptFlowNodeViewModel from, ScriptFlowNodeViewModel to)
+    {
+        From = from;
+        To = to;
+        From.PropertyChanged += NodeOnPropertyChanged;
+        To.PropertyChanged += NodeOnPropertyChanged;
+    }
+
+    public ScriptFlowNodeViewModel From { get; }
+    public ScriptFlowNodeViewModel To { get; }
+    public double X1 => From.CenterX;
+    public double Y1 => From.CenterY;
+    public double X2 => To.CenterX;
+    public double Y2 => To.CenterY;
+
+    private void NodeOnPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(ScriptFlowNodeViewModel.X) or nameof(ScriptFlowNodeViewModel.Y) or nameof(ScriptFlowNodeViewModel.CenterX) or nameof(ScriptFlowNodeViewModel.CenterY))
+        {
+            OnPropertyChanged(nameof(X1));
+            OnPropertyChanged(nameof(Y1));
+            OnPropertyChanged(nameof(X2));
+            OnPropertyChanged(nameof(Y2));
+        }
+    }
+
+    public void Dispose()
+    {
+        From.PropertyChanged -= NodeOnPropertyChanged;
+        To.PropertyChanged -= NodeOnPropertyChanged;
+    }
+}
+
+public sealed class SpawnBlockEditorViewModel : ObservableObject
+{
+    public string Name { get; set; } = "Spawn";
+    public bool Enabled { get; set; } = true;
+    public string Type { get; set; } = "ArmedNPC";
+    public string Asset { get; set; } = "BP_Guard_Lvl_1";
+    public int Quantity { get; set; } = 1;
+    public string Location { get; set; } = "";
+    public string Extra { get; set; } = "";
+    public int DespawnLifetimeSeconds { get; set; }
+    public int StartDelaySeconds { get; set; }
+    public int Repeat { get; set; } = 1;
+    public int RepeatEverySeconds { get; set; }
+    public int DelayMs { get; set; } = 250;
+    public bool UseTriggerPlayer { get; set; } = true;
+
+    public static SpawnBlockEditorViewModel FromBlock(SpawnBlock block) => new()
+    {
+        Name = string.IsNullOrWhiteSpace(block.Name) ? "Spawn" : block.Name,
+        Enabled = block.Enabled,
+        Type = string.IsNullOrWhiteSpace(block.Type) ? "ArmedNPC" : block.Type,
+        Asset = block.Asset ?? "",
+        Quantity = Math.Max(1, block.Quantity),
+        Location = block.Location ?? "",
+        Extra = block.Extra ?? "",
+        DespawnLifetimeSeconds = Math.Max(0, block.DespawnLifetimeSeconds),
+        StartDelaySeconds = Math.Max(0, block.StartDelaySeconds),
+        Repeat = Math.Max(1, block.Repeat),
+        RepeatEverySeconds = Math.Max(0, block.RepeatEverySeconds),
+        DelayMs = Math.Max(0, block.DelayMs),
+        UseTriggerPlayer = block.UseTriggerPlayer
+    };
+
+    public SpawnBlock ToBlock() => new()
+    {
+        Name = string.IsNullOrWhiteSpace(Name) ? "Spawn" : Name.Trim(),
+        Enabled = Enabled,
+        Type = string.IsNullOrWhiteSpace(Type) ? "ArmedNPC" : Type.Trim(),
+        Asset = Asset?.Trim() ?? "",
+        Quantity = Math.Max(1, Quantity),
+        Location = Location?.Trim() ?? "",
+        Extra = Extra?.Trim() ?? "",
+        DespawnLifetimeSeconds = Math.Max(0, DespawnLifetimeSeconds),
+        StartDelaySeconds = Math.Max(0, StartDelaySeconds),
+        Repeat = Math.Max(1, Repeat),
+        RepeatEverySeconds = Math.Max(0, RepeatEverySeconds),
+        DelayMs = Math.Max(0, DelayMs),
+        UseTriggerPlayer = UseTriggerPlayer
     };
 }
 

@@ -88,6 +88,7 @@ public sealed class ChatLogMessage
     public string Channel { get; init; } = string.Empty;
     public string Message { get; init; } = string.Empty;
     public string RawLine { get; init; } = string.Empty;
+    public DateTime? LoggedAtUtc { get; init; }
 
     public bool IsGlobal => string.Equals(Channel?.Trim(), "Global", StringComparison.OrdinalIgnoreCase);
 }
@@ -123,6 +124,7 @@ public static partial class AutomationLogParser
             SteamId = match.Groups["steamid"].Success ? match.Groups["steamid"].Value.Trim() : string.Empty,
             Channel = match.Groups["channel"].Success ? match.Groups["channel"].Value.Trim() : string.Empty,
             Message = message,
+            LoggedAtUtc = TryParseScumTimestampUtc(match.Groups["ts"].Success ? match.Groups["ts"].Value : string.Empty),
             RawLine = line
         };
     }
@@ -346,7 +348,7 @@ public static partial class AutomationLogParser
 
     // SCUM chat log format, UTF-16 LE, for example:
     // 2026.05.13-18.42.58: '76561198045804979:TOMahawk918(10)' 'Global: /vote day'
-    [GeneratedRegex(@"^\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}\.\d{2}:\s*'(?<steamid>\d{10,}):(?<name>.+?)\(\d+\)'\s*'(?<channel>[^:']+):\s*(?<message>.*?)'\s*$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^(?<ts>\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}\.\d{2}):\s*'(?<steamid>\d{10,}):(?<name>.+?)\(\d+\)'\s*'(?<channel>[^:']+):\s*(?<message>.*?)'\s*$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex ScumChatRegex();
 
     [GeneratedRegex(@"^(?:\[[^\]]+\]\s*)?(?<name>[^:]+?)\s*(?:\((?<steamid>\d{10,})\))?\s*:\s*(?<message>.+)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]

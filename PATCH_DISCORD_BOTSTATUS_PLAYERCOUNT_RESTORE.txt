@@ -1,0 +1,27 @@
+PATCH: Discord Botstatus mit Spieleranzahl wiederhergestellt
+
+Ziel
+- Keine Discord Channelnamen-Renames mehr.
+- Eine Serverstatus-Nachricht bleibt die zentrale Anzeige.
+- Der normale Discord Botstatus darf weiterhin die aktuelle Spieleranzahl anzeigen.
+
+Neue Settings
+- AutoStartDiscordBotStatus = true
+- DiscordBotStatusTemplate = "SCUM {players}/{max} Spieler online"
+
+Platzhalter fuer DiscordBotStatusTemplate
+- {players}
+- {playeramount}
+- {max}
+- {maxplayers}
+- {servername}
+
+Verhalten
+- Der bestehende Serverstatus/Botstatus Loop aktualisiert nun beides.
+- Botstatus funktioniert auch dann, wenn keine Serverstatus-Channel-ID gesetzt ist.
+- Channelnamen-Rename-Logik bleibt entfernt.
+
+Betroffene Dateien
+- BotSettings.cs
+- ViewModels/MainViewModel.cs
+- MainWindow.xaml

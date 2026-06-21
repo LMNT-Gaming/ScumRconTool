@@ -28,6 +28,7 @@ public sealed class SftpKillLogService
             }
 
             Directory.CreateDirectory(_settings.FtpLocalDirectory);
+            LocalRetentionService.CleanupDirectory(_settings.FtpLocalDirectory);
             var downloaded = new List<string>();
             var remoteDirectory = NormalizeRemoteDirectory(_settings.FtpRemoteDirectory);
             var pattern = string.IsNullOrWhiteSpace(_settings.FtpKillLogPattern) ? "kill*.log" : _settings.FtpKillLogPattern.Trim();
@@ -54,6 +55,7 @@ public sealed class SftpKillLogService
             }
 
             client.Disconnect();
+            LocalRetentionService.CleanupDirectory(_settings.FtpLocalDirectory);
             return downloaded;
         }, cancellationToken);
     }

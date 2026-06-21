@@ -40,13 +40,6 @@
         "delayMs": 250
       },
       {
-        "name": "Rager crash prop",
-        "enabled": true,
-        "command": "#ExecAs {playerId} #SpawnVehicle BPC_Rager 1 Location \"[{X=197911.906 Y=-349413.969 Z=15509.562|P=90 Y=0 R=90}]\" Modifier minimalfunctional",
-        "repeat": 1,
-        "delayMs": 1000
-      },
-      {
         "name": "Guard 1 - A3 crash",
         "enabled": true,
         "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=197837.422 Y=-348882.719 Z=14035.099|P=332.304779 Y=327.868164 R=0.000000}]\" DespawnLifetime 600",

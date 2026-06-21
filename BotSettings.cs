@@ -5,6 +5,7 @@ namespace ScumRconTool;
 
 public sealed class BotSettings
 {
+    public string UiLanguage { get; set; } = "de";
     public string Host { get; set; } = "88.198.43.88";
     public int Port { get; set; } = 5377;
     public string Password { get; set; } = string.Empty;
@@ -25,16 +26,24 @@ public sealed class BotSettings
     public string DiscordBotToken { get; set; } = string.Empty;
     public ulong DiscordChatLogChannelId { get; set; }
     public ulong DiscordGameBridgeChannelId { get; set; }
-    public ulong DiscordPlayerListChannelId { get; set; }
+    public ulong DiscordServerStatusChannelId { get; set; }
+    public bool AutoStartDiscordServerStatusMessage { get; set; }
+    public bool AutoStartDiscordBotStatus { get; set; } = true;
+    public string DiscordBotStatusTemplate { get; set; } = "SCUM {players}/{max} Spieler online";
+    public string DiscordServerStatusTitle { get; set; } = "SCUM Serverstatus";
+    public string DiscordServerName { get; set; } = "LMNT-Gaming";
+    public string DiscordServerAddress { get; set; } = string.Empty;
+    public string GgconHttpBaseUrl { get; set; } = string.Empty;
+    public int GgconHttpPort { get; set; } = 5376; // Direkter ggCON HTTP API Port. Bei GGHost oft RCON-Port minus 1.
+    public string GgconHttpPassword { get; set; } = string.Empty;
+    public bool AutoCheckForUpdates { get; set; } = true;
+    public string UpdateLatestJsonUrl { get; set; } = "https://lmnt-gaming.net/rrrt/latest.json";
     public bool DiscordChatLogEmbedsEnabled { get; set; } = true;
+    public bool DiscordVehicleLogEmbedsEnabled { get; set; } = true;
     public bool DiscordGameBridgeEnabled { get; set; }
     public string DiscordGameBridgeMessageType { get; set; } = "Cyan";
     public int DiscordPollSeconds { get; set; } = 60;
     public int DiscordMaxPlayers { get; set; } = 20;
-    public string DiscordStatusTemplate { get; set; } = "SCUM {players}/{max} Spieler online";
-    public bool AutoStartDiscordStatus { get; set; }
-    public bool AutoStartDiscordPlayerList { get; set; }
-    public bool AutoStartDiscordRandomEvents { get; set; } = true;
     public bool AutoStartDiscordChatLogs { get; set; }
     public bool AutoStartScripts { get; set; }
     public int ScriptPollSeconds { get; set; } = 10;
@@ -44,10 +53,24 @@ public sealed class BotSettings
     public int RandomQuestStartDelayMinutes { get; set; } = 0;
 
     public string FtpChatLogPattern { get; set; } = "chat_*.log";
+    public string FtpVehicleDestructionLogPattern { get; set; } = "vehicle_destruction_*.log";
     public string FtpLoginLogPattern { get; set; } = "login_*.log";
     public int AutomationPollSeconds { get; set; } = 30;
     public bool AutoStartAutomation { get; set; }
     public bool AutoStartChatCommands { get; set; }
+    public bool UseGgconLogsForChatCommands { get; set; } = true;
+    public int GgconChatCommandPollSeconds { get; set; } = 3;
+    public int GgconChatCommandInitialBackfillSeconds { get; set; } = 10;
+    public bool PaidVotesEnabled { get; set; } = true;
+    public int VotePrice { get; set; } = 5000;
+    public int VoteConfirmationTimeoutSeconds { get; set; } = 60;
+    public string VotePurchasePromptResponse { get; set; } = "[Server] {name}, der Vote kostet {cost}$. Bestaetige mit /ja innerhalb von {timeoutSeconds}s.";
+    public string VotePurchaseSuccessResponse { get; set; } = "[Server] {name} hat {cost}$ bezahlt und eine Abstimmung gestartet.";
+    public string VoteInsufficientFundsResponse { get; set; } = "[Server] {name}, du hast nicht genug Geld. Vote kostet {cost}$, dein Kontostand: {balance}$.";
+    public string VoteNoPendingResponse { get; set; } = "[Server] {name}, du hast keinen offenen Vote-Kauf.";
+    public string VotePaymentFailedResponse { get; set; } = "[Server] {name}, der Vote-Kauf konnte nicht abgeschlossen werden. Bitte spaeter erneut versuchen.";
+    public int VoteCooldownHours { get; set; } = 24;
+    public string VoteCooldownBlockedResponse { get; set; } = "[Server] {name}, du kannst nur alle {cooldownHours}h eine Abstimmung starten. Verbleibend: {remaining}.";
     public bool AutoStartJoinCommands { get; set; }
     public string ChatAutomationRulesJson { get; set; } = "";
     public string JoinAutomationRulesJson { get; set; } = "";
@@ -113,5 +136,3 @@ public sealed class BotSettings
         return GetWeeklyTaskDefinitions().FirstOrDefault() ?? new WeeklyCommunityTaskDefinition();
     }
 }
-
-

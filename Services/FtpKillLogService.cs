@@ -24,6 +24,7 @@ public sealed class FtpKillLogService
         }
 
         Directory.CreateDirectory(_settings.FtpLocalDirectory);
+            LocalRetentionService.CleanupDirectory(_settings.FtpLocalDirectory);
         var files = await ListFilesAsync(cancellationToken);
         var pattern = string.IsNullOrWhiteSpace(_settings.FtpKillLogPattern) ? "kill*.log" : _settings.FtpKillLogPattern.Trim();
         var killLogs = files
@@ -41,7 +42,8 @@ public sealed class FtpKillLogService
             downloaded.Add(local);
         }
 
-        return downloaded;
+        LocalRetentionService.CleanupDirectory(_settings.FtpLocalDirectory);
+            return downloaded;
     }
 
     private async Task<IReadOnlyList<string>> ListFilesAsync(CancellationToken cancellationToken)

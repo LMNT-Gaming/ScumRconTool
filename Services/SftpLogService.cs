@@ -30,6 +30,7 @@ public sealed class SftpLogService
                 var remoteDirectory = ResolveRemoteDirectory(_settings.FtpRemoteDirectory, remoteDirectoryOverride);
                 var localDirectory = GetLocalDirectory(_settings, localSubDirectory);
                 Directory.CreateDirectory(localDirectory);
+                LocalRetentionService.CleanupDirectory(localDirectory);
 
                 using var client = new SftpClient(host, port, _settings.FtpUser, _settings.FtpPassword ?? string.Empty);
                 client.ConnectionInfo.Timeout = TimeSpan.FromSeconds(30);
@@ -61,6 +62,7 @@ public sealed class SftpLogService
                     }
 
                     File.Move(temp, local, true);
+                    LocalRetentionService.CleanupDirectory(localDirectory);
                 }
                 finally
                 {
@@ -103,6 +105,7 @@ public sealed class SftpLogService
                 // Setups auf einen Log-Unterordner zeigen und dort gibt es haeufig Lock-/Rechteprobleme.
                 var localDirectory = GetAppDataLocalDirectory(localSubDirectory);
                 Directory.CreateDirectory(localDirectory);
+                LocalRetentionService.CleanupDirectory(localDirectory);
 
                 using var client = new SftpClient(host, port, _settings.FtpUser, _settings.FtpPassword ?? string.Empty);
                 client.ConnectionInfo.Timeout = TimeSpan.FromSeconds(30);
@@ -132,6 +135,7 @@ public sealed class SftpLogService
                     }
 
                     File.Move(temp, local, true);
+                    LocalRetentionService.CleanupDirectory(localDirectory);
                 }
                 catch (Exception ex)
                 {

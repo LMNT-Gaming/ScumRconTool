@@ -587,6 +587,7 @@ public sealed class EventEngine : IDisposable
         _log($"{runtime.Definition.Name}: LiveBlock startet" + (triggerPlayer is null ? "." : $" durch {triggerPlayer.DisplayName} ({triggerPlayer.UserId})."));
         await ExecuteBlockAsync(runtime.Definition.PreLiveCleanupBlock, runtime.Definition.PreLiveCleanupBlock.Commands, runtime, triggerPlayer, cancellationToken);
         await ExecuteBlockAsync(runtime.Definition.LiveBlock, runtime.Definition.GetLiveCommands(), runtime, triggerPlayer, cancellationToken);
+        await ExecuteSpawnBlocksAsync(runtime, triggerPlayer, cancellationToken);
         await ExecuteRandomLootPackAsync(runtime, triggerPlayer, cancellationToken);
         await ExecuteRandomLootCommandPackAsync(runtime, triggerPlayer, cancellationToken);
         runtime.LastLiveUtc = DateTime.UtcNow;
@@ -740,17 +741,7 @@ public sealed class EventEngine : IDisposable
 
     private static string ReplacePlaceholders(string input, EventRuntime runtime, ScumPlayer? player)
     {
-        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["scriptId"] = runtime.Definition.Id ?? "",
-            ["scriptName"] = runtime.Definition.Name ?? "",
-            ["state"] = runtime.State.ToString(),
-            ["playerId"] = player?.UserId ?? "",
-            ["playerName"] = player?.DisplayName ?? "",
-            ["x"] = player?.Location?.X.ToString("0.###", CultureInfo.InvariantCulture) ?? "",
-            ["y"] = player?.Location?.Y.ToString("0.###", CultureInfo.InvariantCulture) ?? "",
-            ["z"] = player?.Location?.Z.ToString("0.###", CultureInfo.InvariantCulture) ?? ""
-        };
+        var values = BuildPlaceholderValues(runtime, player);
 
         var result = input ?? string.Empty;
         foreach (var pair in values)
@@ -798,19 +789,165 @@ public sealed class EventEngine : IDisposable
         await ExecuteCommandListAsync(fallbackCommands, runtime, player, cancellationToken);
     }
 
+    private async Task ExecuteSpawnBlocksAsync(EventRuntime runtime, ScumPlayer? player, CancellationToken cancellationToken)
+    {
+        var blocks = (runtime.Definition.SpawnBlocks ?? new List<SpawnBlock>())
+            .Where(b => b.Enabled)
+            .Where(b => !string.IsNullOrWhiteSpace(b.Asset))
+            .Where(b => !string.IsNullOrWhiteSpace(b.Location))
+            .ToList();
+
+        if (blocks.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var block in blocks)
+        {
+            var hasDelayedLoop = block.StartDelaySeconds > 0 || (block.Repeat > 1 && block.RepeatEverySeconds > 0);
+            if (hasDelayedLoop)
+            {
+                _log($"{runtime.Definition.Name}: SpawnBlock '{block.Name}' wurde als Hintergrund-Loop geplant.");
+                _ = Task.Run(() => RunSpawnBlockLoopAsync(runtime, block, player, cancellationToken), cancellationToken);
+                continue;
+            }
+
+            await RunSpawnBlockLoopAsync(runtime, block, player, cancellationToken);
+        }
+    }
+
+    private async Task RunSpawnBlockLoopAsync(EventRuntime runtime, SpawnBlock block, ScumPlayer? player, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var repeat = Math.Max(1, block.Repeat);
+            var startDelay = Math.Max(0, block.StartDelaySeconds);
+            if (startDelay > 0)
+            {
+                _log($"{runtime.Definition.Name}: SpawnBlock '{block.Name}' startet in {startDelay}s.");
+                await Task.Delay(TimeSpan.FromSeconds(startDelay), cancellationToken);
+                if (runtime.State == EventRuntimeState.Stopped || runtime.State == EventRuntimeState.Cooldown)
+                {
+                    _log($"{runtime.Definition.Name}: SpawnBlock '{block.Name}' nach Startdelay gestoppt, Script ist nicht mehr aktiv.");
+                    return;
+                }
+            }
+
+            for (var i = 0; i < repeat; i++)
+            {
+                if (i > 0 && runtime.State != EventRuntimeState.Live && runtime.State != EventRuntimeState.CleanupPending)
+                {
+                    _log($"{runtime.Definition.Name}: SpawnBlock '{block.Name}' Loop gestoppt, Script ist nicht mehr live.");
+                    return;
+                }
+
+                var command = BuildSpawnBlockCommand(block, runtime, player);
+                if (string.IsNullOrWhiteSpace(command))
+                {
+                    _log($"{runtime.Definition.Name}: SpawnBlock '{block.Name}' uebersprungen. Typ, Asset oder Location fehlen.");
+                    return;
+                }
+
+                var unresolvedPlaceholders = Regex.Matches(command, @"\{[A-Za-z][A-Za-z0-9_]*\}")
+                    .Cast<Match>()
+                    .Select(m => m.Value)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                if (unresolvedPlaceholders.Count > 0)
+                {
+                    _log("SpawnBlock uebersprungen, Platzhalter nicht aufgeloest (" + string.Join(", ", unresolvedPlaceholders) + "): " + command);
+                    return;
+                }
+
+                var normalizedCommand = NormalizeCommandBeforeSend(command);
+                MarkRuntime(runtime, $"SpawnBlock gesendet: {block.Name} ({i + 1}/{repeat})", normalizedCommand);
+                await SendAsync(normalizedCommand, cancellationToken);
+
+                if (block.DelayMs > 0)
+                {
+                    await Task.Delay(block.DelayMs, cancellationToken);
+                }
+
+                var loopDelay = Math.Max(0, block.RepeatEverySeconds);
+                if (i < repeat - 1 && loopDelay > 0)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(loopDelay), cancellationToken);
+                }
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            _log($"{runtime.Definition.Name}: SpawnBlock '{block.Name}' Fehler: {ex.Message}");
+            AppLogService.WriteException("ScriptEngine.SpawnBlock", ex);
+        }
+    }
+
+    private string BuildSpawnBlockCommand(SpawnBlock block, EventRuntime runtime, ScumPlayer? player)
+    {
+        var type = NormalizeSpawnType(block.Type);
+        var commandName = type switch
+        {
+            "Item" => "#SpawnItem",
+            "ArmedNPC" => "#SpawnArmedNPC",
+            "NPC" => "#SpawnNPC",
+            "Zombie" => "#SpawnZombie",
+            "Vehicle" => "#SpawnVehicle",
+            _ => string.Empty
+        };
+
+        if (string.IsNullOrWhiteSpace(commandName))
+        {
+            return string.Empty;
+        }
+
+        var asset = ReplacePlaceholders(block.Asset, runtime, player).Trim();
+        var location = ReplacePlaceholders(block.Location, runtime, player).Trim();
+        if (string.IsNullOrWhiteSpace(asset) || string.IsNullOrWhiteSpace(location))
+        {
+            return string.Empty;
+        }
+
+        var quantity = Math.Max(1, block.Quantity);
+        var command = $"{commandName} {asset} {quantity} Location \"{location}\"";
+        if (block.DespawnLifetimeSeconds > 0)
+        {
+            command += " DespawnLifetime " + block.DespawnLifetimeSeconds.ToString(CultureInfo.InvariantCulture);
+        }
+
+        var extra = ReplacePlaceholders(block.Extra, runtime, player).Trim();
+        if (!string.IsNullOrWhiteSpace(extra))
+        {
+            command += " " + extra;
+        }
+
+        return block.UseTriggerPlayer ? EnsureExecAsForTriggerPlayer(command, player) : command;
+    }
+
+    private static string NormalizeSpawnType(string? type)
+    {
+        var value = (type ?? string.Empty).Trim();
+        return value switch
+        {
+            "ArmedNpc" => "ArmedNPC",
+            "armednpc" => "ArmedNPC",
+            "npc" => "NPC",
+            "Item" => "Item",
+            "item" => "Item",
+            "Zombie" => "Zombie",
+            "zombie" => "Zombie",
+            "Vehicle" => "Vehicle",
+            "vehicle" => "Vehicle",
+            _ => value
+        };
+    }
+
     private async Task ExecuteCommandListAsync(IEnumerable<EventCommand> commands, EventRuntime runtime, ScumPlayer? player, CancellationToken cancellationToken)
     {
-        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["scriptId"] = runtime.Definition.Id ?? "",
-            ["scriptName"] = runtime.Definition.Name ?? "",
-            ["state"] = runtime.State.ToString(),
-            ["playerId"] = player?.UserId ?? "",
-            ["playerName"] = player?.DisplayName ?? "",
-            ["x"] = player?.Location?.X.ToString("0.###", CultureInfo.InvariantCulture) ?? "",
-            ["y"] = player?.Location?.Y.ToString("0.###", CultureInfo.InvariantCulture) ?? "",
-            ["z"] = player?.Location?.Z.ToString("0.###", CultureInfo.InvariantCulture) ?? ""
-        };
+        var values = BuildPlaceholderValues(runtime, player);
 
         foreach (var eventCommand in commands)
         {
@@ -862,6 +999,74 @@ public sealed class EventEngine : IDisposable
                 }
             }
         }
+    }
+
+    private static Dictionary<string, string> BuildPlaceholderValues(EventRuntime runtime, ScumPlayer? player)
+    {
+        var zone = runtime.Definition.EffectiveZone;
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["scriptId"] = runtime.Definition.Id ?? "",
+            ["scriptName"] = runtime.Definition.Name ?? "",
+            ["state"] = runtime.State.ToString(),
+            ["playerId"] = player?.UserId ?? "",
+            ["playerName"] = player?.DisplayName ?? "",
+            ["x"] = player?.Location?.X.ToString("0.###", CultureInfo.InvariantCulture) ?? "",
+            ["y"] = player?.Location?.Y.ToString("0.###", CultureInfo.InvariantCulture) ?? "",
+            ["z"] = player?.Location?.Z.ToString("0.###", CultureInfo.InvariantCulture) ?? "",
+            ["triggerX"] = zone.CenterX.ToString("0.###", CultureInfo.InvariantCulture),
+            ["triggerY"] = zone.CenterY.ToString("0.###", CultureInfo.InvariantCulture),
+            ["triggerZ"] = zone.CenterZ.ToString("0.###", CultureInfo.InvariantCulture),
+            ["triggerRadius"] = zone.Radius.ToString("0.###", CultureInfo.InvariantCulture),
+            ["triggerZone"] = FormatLocation(zone.CenterX, zone.CenterY, zone.CenterZ),
+            ["initiatorMessage"] = FirstNonEmpty(runtime.Definition.LocalVariables?.InitiatorMessage, runtime.Definition.Announcement)
+        };
+
+        foreach (var location in runtime.Definition.LocalVariables?.LootSpawnLocations ?? new List<ScriptLocationVariable>())
+        {
+            var key = "loot_" + SanitizePlaceholderName(location.Name);
+            if (!values.ContainsKey(key))
+            {
+                values[key] = location.Location ?? "";
+            }
+        }
+
+        foreach (var location in runtime.Definition.LocalVariables?.NpcSpawnLocations ?? new List<ScriptLocationVariable>())
+        {
+            var key = "npc_" + SanitizePlaceholderName(location.Name);
+            if (!values.ContainsKey(key))
+            {
+                values[key] = location.Location ?? "";
+            }
+        }
+
+        return values;
+    }
+
+    private static string FormatLocation(double x, double y, double z) =>
+        "[{X=" + x.ToString("0.###", CultureInfo.InvariantCulture) +
+        " Y=" + y.ToString("0.###", CultureInfo.InvariantCulture) +
+        " Z=" + z.ToString("0.###", CultureInfo.InvariantCulture) +
+        "|P=0 Y=0 R=0}]";
+
+    private static string FirstNonEmpty(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value.Trim();
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static string SanitizePlaceholderName(string? value)
+    {
+        var cleaned = Regex.Replace((value ?? string.Empty).Trim(), "[^A-Za-z0-9_]+", "_");
+        cleaned = Regex.Replace(cleaned, "_+", "_").Trim('_');
+        return string.IsNullOrWhiteSpace(cleaned) ? "value" : cleaned;
     }
 
     private static string NormalizeCommandBeforeSend(string command)

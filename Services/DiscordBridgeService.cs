@@ -13,6 +13,7 @@ public sealed class DiscordBridgeService : IAsyncDisposable
     private ulong _gameBridgeChannelId;
     private string _messageType = "Cyan";
     private TaskCompletionSource<bool>? _readyTcs;
+    private readonly HashSet<ulong> _legacyStatusCleanupDone = new();
 
     public DiscordBridgeService(Action<string> log, Action<bool>? connectionChanged = null)
     {
@@ -133,6 +134,8 @@ public sealed class DiscordBridgeService : IAsyncDisposable
         await _client.SetStatusAsync(UserStatus.Online);
     }
 
+
+
     public async Task SendChatEmbedAsync(ulong channelId, ChatLogMessage message)
     {
         if (_client is null || !IsReady) throw new InvalidOperationException("Discord Bot ist nicht verbunden.");
@@ -156,43 +159,98 @@ public sealed class DiscordBridgeService : IAsyncDisposable
     }
 
 
-    public async Task SendOrUpdatePlayerListAsync(ulong channelId, IReadOnlyCollection<ScumPlayer> players, int maxPlayers)
+    public async Task SendVehicleDestructionEmbedAsync(ulong channelId, VehicleDestructionLogEntry entry)
     {
         if (_client is null || !IsReady) throw new InvalidOperationException("Discord Bot ist nicht verbunden.");
-        if (channelId == 0) throw new InvalidOperationException("Discord Playerlist Channel-ID fehlt.");
+        if (channelId == 0) throw new InvalidOperationException("Discord Vehicle-Log Channel-ID fehlt.");
         if (_client.GetChannel(channelId) is not IMessageChannel channel)
         {
-            throw new InvalidOperationException("Discord Playerlist Channel wurde nicht gefunden. Ist der Bot auf dem Server und hat Zugriff auf den Channel?");
+            throw new InvalidOperationException("Discord Vehicle-Log Channel wurde nicht gefunden. Ist der Bot auf dem Server und hat Zugriff auf den Channel?");
         }
 
-        var names = players
-            .Select(x => CleanDiscordName(x.DisplayName))
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        var (title, description, color) = BuildVehicleEventPresentation(entry.Action);
+        var owner = entry.HasOwner
+            ? $"{CleanDiscordName(entry.OwnerName)} ({entry.OwnerSteamId})".Trim()
+            : "N/A";
+        if (string.IsNullOrWhiteSpace(entry.OwnerName) && !string.IsNullOrWhiteSpace(entry.OwnerSteamId)) owner = entry.OwnerSteamId;
 
-        var shownNames = names.Take(80).ToList();
-        var playerText = shownNames.Count == 0
-            ? "_Aktuell ist niemand online._"
-            : string.Join("\n", shownNames.Select((name, index) => $"`{index + 1:00}` {name}"));
+        var location = entry.X.HasValue && entry.Y.HasValue && entry.Z.HasValue
+            ? $"X={entry.X.Value:0.###} Y={entry.Y.Value:0.###} Z={entry.Z.Value:0.###}"
+            : "Unbekannt";
 
-        if (names.Count > shownNames.Count)
-        {
-            playerText += $"\n... und {names.Count - shownNames.Count} weitere";
-        }
-
-        var max = maxPlayers > 0 ? maxPlayers : 64;
         var embed = new EmbedBuilder()
-            .WithTitle("Aktuell verbundene Spieler")
-            .WithColor(new Color(211, 21, 42))
-            .AddField("Online", $"{names.Count}/{max}", true)
-            .AddField("Spieler", playerText, false)
-            .WithFooter("Nur Spielernamen, keine Steam IDs")
+            .WithTitle(title)
+            .WithDescription(description)
+            .WithColor(color)
+            .AddField("Fahrzeug", CleanDiscordName(entry.VehicleIconName), true)
+            .AddField("VehicleId", string.IsNullOrWhiteSpace(entry.VehicleId) ? "Unbekannt" : entry.VehicleId, true)
+            .AddField("Owner", owner, false)
+            .AddField("Location", $"`{location}`", false)
+            .WithImageUrl(entry.IconUrl)
+            .WithCurrentTimestamp();
+
+        if (entry.Timestamp.HasValue) embed.AddField("Zeit", entry.Timestamp.Value.ToString("yyyy-MM-dd HH:mm:ss"), true);
+        embed.WithFooter("SCUM vehicle_destruction log");
+
+        await channel.SendMessageAsync(embed: embed.Build());
+    }
+
+    private static (string Title, string Description, Color Color) BuildVehicleEventPresentation(string action)
+    {
+        return action.Trim() switch
+        {
+            "Destroyed" => ("Fahrzeug zerstoert", "Ein Fahrzeug wurde zerstoert.", new Color(211, 21, 42)),
+            "Disappeared" => ("Fahrzeug verschwunden", "Ein Fahrzeug ist despawned oder verschwunden.", new Color(155, 89, 182)),
+            "VehicleInactiveTimerReached" => ("Fahrzeug inaktiv", "Der Inaktivitaets-Timer des Fahrzeugs wurde erreicht.", new Color(243, 156, 18)),
+            "ForbiddenZoneTimerExpired" => ("Fahrzeug in verbotener Zone entfernt", "Der Forbidden-Zone-Timer ist abgelaufen.", new Color(230, 126, 34)),
+            "Failed to spawn" => ("Fahrzeug-Spawn fehlgeschlagen", "Ein Fahrzeug konnte nicht gespawnt werden.", new Color(127, 140, 141)),
+            var other when !string.IsNullOrWhiteSpace(other) => ($"Fahrzeug-Event: {CleanDiscordName(other)}", "Ein Vehicle-Destruction-Log-Event wurde erkannt.", new Color(52, 152, 219)),
+            _ => ("Fahrzeug-Event", "Ein Vehicle-Destruction-Log-Event wurde erkannt.", new Color(52, 152, 219))
+        };
+    }
+
+
+    public async Task SendOrUpdateServerStatusAsync(
+        ulong channelId,
+        string title,
+        string serverName,
+        string serverAddress,
+        IReadOnlyCollection<ScumPlayer> players,
+        int maxPlayers,
+        GgconWeatherResponse? weather,
+        IEnumerable<EventRuntime> runtimes)
+    {
+        if (_client is null || !IsReady) throw new InvalidOperationException("Discord Bot ist nicht verbunden.");
+        if (channelId == 0) throw new InvalidOperationException("Discord Serverstatus Channel-ID fehlt.");
+        if (_client.GetChannel(channelId) is not IMessageChannel channel)
+        {
+            throw new InvalidOperationException("Discord Serverstatus Channel wurde nicht gefunden. Ist der Bot auf dem Server und hat Zugriff auf den Channel?");
+        }
+
+        await CleanupLegacyStatusMessagesOnceAsync(channelId, channel);
+
+        title = string.IsNullOrWhiteSpace(title) ? "SCUM Serverstatus" : CleanDiscordName(title);
+        serverName = string.IsNullOrWhiteSpace(serverName) ? "SCUM Server" : CleanDiscordName(serverName);
+        serverAddress = string.IsNullOrWhiteSpace(serverAddress) ? "Nicht gesetzt" : serverAddress.Trim();
+        maxPlayers = maxPlayers > 0 ? maxPlayers : 64;
+
+        var onlineText = $"**{players.Count}/{maxPlayers}** online";
+        var playerText = BuildPlayerPreview(players);
+        var weatherText = BuildWeatherStatusText(weather);
+        var eventText = BuildActiveEventStatusText(runtimes);
+
+        var embed = new EmbedBuilder()
+            .WithTitle(title)
+            .WithColor(new Color(46, 204, 113))
+            .AddField("Server", $"**{serverName}**\n`{serverAddress}`", false)
+            .AddField("Spieler", onlineText + "\n" + playerText, false)
+            .AddField("Wetter / Zeit", weatherText, false)
+            .AddField("Aktive Events", eventText, false)
+            .WithFooter("Automatisch aktualisiert")
             .WithCurrentTimestamp()
             .Build();
 
-        var ownMessage = await FindOwnPlayerListMessageAsync(channel);
+        var ownMessage = await FindOwnMessageByTitleAsync(channel, title);
         if (ownMessage is not null)
         {
             await ownMessage.ModifyAsync(x =>
@@ -206,69 +264,71 @@ public sealed class DiscordBridgeService : IAsyncDisposable
         await channel.SendMessageAsync(embed: embed);
     }
 
-    public async Task SendOrUpdateRandomEventsAsync(ulong channelId, IEnumerable<EventRuntime> runtimes)
+    private static string BuildPlayerPreview(IReadOnlyCollection<ScumPlayer> players)
     {
-        if (_client is null || !IsReady) throw new InvalidOperationException("Discord Bot ist nicht verbunden.");
-        if (channelId == 0) throw new InvalidOperationException("Discord Playerlist Channel-ID fehlt.");
-        if (_client.GetChannel(channelId) is not IMessageChannel channel)
+        if (players.Count == 0)
         {
-            throw new InvalidOperationException("Discord Playerlist Channel wurde nicht gefunden. Ist der Bot auf dem Server und hat Zugriff auf den Channel?");
+            return "_Keine Spieler online._";
         }
 
+        var names = players
+            .Select(x => CleanDiscordName(x.DisplayName))
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Take(20)
+            .ToList();
+
+        var text = string.Join(", ", names);
+        if (players.Count > names.Count)
+        {
+            text += $" und {players.Count - names.Count} weitere";
+        }
+
+        return text.Length <= 900 ? text : text[..900] + "...";
+    }
+
+    private static string BuildWeatherStatusText(GgconWeatherResponse? weather)
+    {
+        if (weather is null)
+        {
+            return "_Keine Wetterdaten verfuegbar._";
+        }
+
+        var air = GgconWeatherResponse.FormatTemperatureValue(weather.AirTemperature);
+        var water = GgconWeatherResponse.FormatTemperatureValue(weather.WaterTemperature);
+        var time = weather.FormatIngameTime();
+        var score = weather.GetWeatherScore().ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+        var icon = weather.GetWeatherIcon();
+
+        return $"{icon} Wetterwert `{score}`\n🌡️ Luft: **{air}°C** | 🏊 Wasser: **{water}°C** | ⌚ Ingame: **{time}**";
+    }
+
+    private static string BuildActiveEventStatusText(IEnumerable<EventRuntime> runtimes)
+    {
         var active = runtimes
             .Where(x => x.Definition.Enabled)
             .Where(IsRandomRuntime)
             .Where(x => x.State == EventRuntimeState.Initiated || x.State == EventRuntimeState.Live || x.State == EventRuntimeState.CleanupPending)
             .OrderByDescending(x => x.State == EventRuntimeState.Live)
             .ThenBy(x => x.Definition.Name, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        string eventText;
-        if (active.Count == 0)
-        {
-            eventText = "_Aktuell ist kein Random Event initialisiert oder live._";
-        }
-        else
-        {
-            eventText = string.Join("\n", active.Take(20).Select(x =>
+            .Take(10)
+            .Select(x =>
             {
                 var state = x.State switch
                 {
                     EventRuntimeState.Initiated => "Initialisiert",
-                    EventRuntimeState.Live => "Gestartet",
+                    EventRuntimeState.Live => "Live",
                     EventRuntimeState.CleanupPending => "Cleanup",
                     _ => x.State.ToString()
                 };
                 return $"`{state}` {CleanDiscordName(x.Definition.Name)}";
-            }));
+            })
+            .ToList();
 
-            if (active.Count > 20)
-            {
-                eventText += $"\n... und {active.Count - 20} weitere";
-            }
-        }
-
-        var embed = new EmbedBuilder()
-            .WithTitle("Aktive Random Events")
-            .WithColor(new Color(41, 128, 185))
-            .AddField("Status", eventText, false)
-            .WithFooter("Initialisiert = angekuendigt/scharf, Gestartet = LiveBlock ausgefuehrt")
-            .WithCurrentTimestamp()
-            .Build();
-
-        var ownMessage = await FindOwnMessageByTitleAsync(channel, "Aktive Random Events");
-        if (ownMessage is not null)
-        {
-            await ownMessage.ModifyAsync(x =>
-            {
-                x.Content = string.Empty;
-                x.Embed = embed;
-            });
-            return;
-        }
-
-        await channel.SendMessageAsync(embed: embed);
+        return active.Count == 0
+            ? "_Keine aktiven Events._"
+            : string.Join("\n", active);
     }
+
 
 
 
@@ -431,8 +491,34 @@ public sealed class DiscordBridgeService : IAsyncDisposable
          runtime.Definition.Mode.Equals("A", StringComparison.OrdinalIgnoreCase) ||
          runtime.Definition.Mode.Equals("AnnouncedThenZone", StringComparison.OrdinalIgnoreCase));
 
-    private Task<IUserMessage?> FindOwnPlayerListMessageAsync(IMessageChannel channel) =>
-        FindOwnMessageByTitleAsync(channel, "Aktuell verbundene Spieler");
+    private async Task CleanupLegacyStatusMessagesOnceAsync(ulong channelId, IMessageChannel channel)
+    {
+        if (!_legacyStatusCleanupDone.Add(channelId))
+        {
+            return;
+        }
+
+        foreach (var legacyTitle in new[] { "Aktuell verbundene Spieler", "Aktive Random Events" })
+        {
+            var message = await FindOwnMessageByTitleAsync(channel, legacyTitle);
+            if (message is null)
+            {
+                continue;
+            }
+
+            try
+            {
+                await message.DeleteAsync();
+                _log("Discord: alte separate Status-Nachricht entfernt: " + legacyTitle);
+            }
+            catch (Exception ex)
+            {
+                _log("Discord: alte separate Status-Nachricht konnte nicht entfernt werden: " + legacyTitle + " - " + ex.Message);
+                AppLogService.WriteException("Discord.LegacyStatusCleanup", ex);
+            }
+        }
+    }
+
 
     private Task<IUserMessage?> FindOwnMessageByTitleAsync(IMessageChannel channel, string title)
     {
