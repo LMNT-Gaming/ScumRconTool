@@ -1,0 +1,24 @@
+PATCH: Weather Score uses nimbostratusCoverage only
+
+Problem
+- The previous displayed weather value used max(rain, snow, lightning, fog, cirrostratus, cumulonimbus, nimbostratus).
+- In SCUM/GGHost weather output, fogDensity and cirrostratusCoverage can stay high even when weather intensity is 0%.
+- This made the Discord status message show incorrect weather values such as 0.60 at actual 0%.
+
+Fix
+- Weather score now uses only nimbostratusCoverage.
+- Examples from live API now map correctly:
+  nimbostratusCoverage = 0.0 -> weather 0%
+  nimbostratusCoverage = 0.5 -> weather 50%
+  nimbostratusCoverage = 1.0 -> weather 100%
+
+Icon mapping remains based on this corrected score:
+- 0.00 - 0.09 = ☀️
+- 0.10 - 0.29 = 🌤️
+- 0.30 - 0.49 = ⛅
+- 0.50 - 0.69 = ☁️
+- 0.70 - 0.89 = 🌧️
+- 0.90 - 1.00 = ⛈️
+
+Changed file
+- Services/GgconHttpApiService.cs

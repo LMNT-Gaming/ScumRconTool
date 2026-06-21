@@ -1,0 +1,34 @@
+PATCH: Vote 24h Cooldown pro Spieler
+
+Ziel
+- Pro Spieler darf maximal einmal alle 24 Stunden ein Vote gestartet werden.
+
+Umsetzung
+- Neue persistente State-Datei:
+  %LOCALAPPDATA%\ScumRconTool\State\vote-cooldowns.json
+- Vote-Cooldown wird pro SteamID gespeichert.
+- Falls keine SteamID erkannt wird, wird als Fallback der Spielername genutzt.
+- Der Cooldown wird erst gespeichert, wenn der Vote-RCON-Command wirklich gesendet wurde.
+- Normale Chat-Cooldowns und globale Anti-Spam-Cooldowns bleiben zusätzlich aktiv.
+
+Erkannte Vote-Regeln
+- Trigger beginnt mit /vote
+- oder Command beginnt mit #vote
+- oder Command enthaelt #ExecAs ... #vote
+
+Neue Settings
+- VoteCooldownHours = 24
+- VoteCooldownBlockedResponse = "[Server] {name}, du kannst nur alle {cooldownHours}h eine Abstimmung starten. Verbleibend: {remaining}."
+
+Neue Platzhalter fuer die Block-Antwort
+- {remaining}
+- {remainingHours}
+- {remainingMinutes}
+- {cooldownHours}
+- plus vorhandene Chat-Platzhalter wie {name}, {playerName}, {steamId}
+
+Betroffene Dateien
+- BotSettings.cs
+- Services/ChatCommandAutomationService.cs
+- Services/VoteCooldownStore.cs
+- MainWindow.xaml

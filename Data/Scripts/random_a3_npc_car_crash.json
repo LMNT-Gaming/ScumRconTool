@@ -1,0 +1,176 @@
+{
+  "id": "random_a3_npc_car_crash",
+  "name": "Random - A3 NPC Car Crash",
+  "enabled": true,
+  "mode": "RandomAnnouncedZone",
+  "includeInRandomizer": true,
+  "randomizerEveryMinutes": 360,
+  "initiatorRepeatEveryMinutes": 30,
+  "announcementType": "Yellow",
+  "announcement": "Npc car crash in A3",
+  "activationZone": {
+    "name": "A3 Car Crash Aktivierzone",
+    "centerX": 198138.895,
+    "centerY": -348930.054,
+    "centerZ": 14224.784,
+    "radius": 50000
+  },
+  "initiatorBlock": {
+    "name": "InitiatorBlock - repeat announcement every 30 min",
+    "enabled": true,
+    "commands": [
+      {
+        "name": "A3 Car Crash Announcement",
+        "enabled": true,
+        "command": "#Broadcast Yellow Npc car crash in A3",
+        "repeat": 1,
+        "delayMs": 250
+      }
+    ]
+  },
+  "liveBlock": {
+    "name": "LiveBlock - A3 car crash, guards and loot",
+    "enabled": true,
+    "commands": [
+      {
+        "name": "Eventzone started",
+        "enabled": true,
+        "command": "#Broadcast Red Eventzone started",
+        "repeat": 1,
+        "delayMs": 250
+      },
+      {
+        "name": "Guard 1 - A3 crash",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=197837.422 Y=-348882.719 Z=14035.099|P=332.304779 Y=327.868164 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 2 - A3 crash",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=198232.266 Y=-349414.219 Z=13987.835|P=341.485626 Y=0.000824 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 3 - A3 crash",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=198997.328 Y=-348874.531 Z=13955.687|P=339.586090 Y=204.508347 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 4 - A3 crash",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=198096.406 Y=-348402.094 Z=14031.377|P=337.369904 Y=297.423126 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      }
+    ]
+  },
+  "emptyBlock": {
+    "name": "EmptyBlock - A3 Car Crash cooldown",
+    "enabled": true,
+    "commands": [
+      {
+        "name": "A3 crash zone empty",
+        "enabled": true,
+        "command": "#Broadcast Yellow A3 car crash eventzone is empty. Event cooldown started.",
+        "repeat": 1,
+        "delayMs": 250
+      }
+    ]
+  },
+  "cleanupWhenEmptySeconds": 300,
+  "cooldownMinutes": 60,
+  "preLiveCleanupBlock": {
+    "name": "PreLiveCleanupBlock - alte Lootreste entfernen",
+    "enabled": true,
+    "commands": [
+      {
+        "name": "Cleanup loot radius 20 - spot 1",
+        "enabled": true,
+        "command": "#DestroyAllItemsWithinRadius all 20 Location \"[{X=198002.219 Y=-348777.250 Z=14019.290|P=329.455322 Y=236.482391 R=0.000000}]\"",
+        "repeat": 1,
+        "delayMs": 300
+      },
+      {
+        "name": "Cleanup loot radius 20 - spot 2",
+        "enabled": true,
+        "command": "#DestroyAllItemsWithinRadius all 20 Location \"[{X=197894.719 Y=-348745.594 Z=14034.636|P=338.161041 Y=250.728409 R=0.000000}]\"",
+        "repeat": 1,
+        "delayMs": 300
+      }
+    ]
+  },
+  "cleanupBlock": {
+    "name": "CleanupBlock - Lootreste nach leerer Zone entfernen",
+    "enabled": true,
+    "commands": [
+      {
+        "name": "Cleanup loot radius 20 - spot 1",
+        "enabled": true,
+        "command": "#DestroyAllItemsWithinRadius all 20 Location \"[{X=198002.219 Y=-348777.250 Z=14019.290|P=329.455322 Y=236.482391 R=0.000000}]\"",
+        "repeat": 1,
+        "delayMs": 300
+      },
+      {
+        "name": "Cleanup loot radius 20 - spot 2",
+        "enabled": true,
+        "command": "#DestroyAllItemsWithinRadius all 20 Location \"[{X=197894.719 Y=-348745.594 Z=14034.636|P=338.161041 Y=250.728409 R=0.000000}]\"",
+        "repeat": 1,
+        "delayMs": 300
+      }
+    ]
+  },
+  "lootPacks": [
+    {
+      "name": "Pack 1 - MK18",
+      "enabled": true,
+      "weight": 1,
+      "location": "[{X=198002.219 Y=-348777.250 Z=14019.290|P=329.455322 Y=236.482391 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_MK18",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_M16",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_5_56x45mm_Ammobox",
+          "quantity": 2,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "Pack 2 - M16",
+      "enabled": true,
+      "weight": 1,
+      "location": "[{X=197894.719 Y=-348745.594 Z=14034.636|P=338.161041 Y=250.728409 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_M16",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_M16",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_5_56x45mm_Ammobox",
+          "quantity": 2,
+          "delayMs": 250
+        }
+      ]
+    }
+  ],
+  "maxConcurrentRandomEvents": 1
+}

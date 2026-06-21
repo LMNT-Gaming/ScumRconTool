@@ -1,0 +1,86 @@
+[
+  {
+    "id": "npc_group_b3_fixed_camp",
+    "name": "NPC Gruppe B3 - fester Camp-Spawn",
+    "enabled": true,
+    "announceEveryMinutes": 360,
+    "announcementType": "Yellow",
+    "announcement": "NPC Gruppe in B3 gesichtet. Betreten auf eigene Gefahr!",
+    "zone": {
+      "name": "B3 Camp Triggerzone",
+      "centerX": 462746.109,
+      "centerY": -113552.266,
+      "centerZ": 5644.478,
+      "radius": 10000
+    },
+    "onEnterCommands": [
+      {
+        "name": "Event Broadcast",
+        "enabled": true,
+        "command": "#Broadcast Red Eventzone B3 wurde betreten. NPC Gruppe verteidigt das Camp!",
+        "repeat": 1,
+        "delayMs": 250
+      },
+      {
+  "name": "Guard 1 fixed via ExecAs trigger player",
+  "enabled": true,
+  "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_1 1 Location \"[462613.219 -113434.250 5655.997]\"",
+  "repeat": 1,
+  "delayMs": 800
+},
+{
+  "name": "Guard 2 fixed via ExecAs trigger player",
+  "enabled": true,
+  "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_1 1 Location \"[462475.906 -113963.305 5611.157]\"",
+  "repeat": 1,
+  "delayMs": 800
+},
+{
+  "name": "Guard 3 fixed via ExecAs trigger player",
+  "enabled": true,
+  "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_1 1 Location \"[463202.812 -113871.867 5638.219]\"",
+  "repeat": 1,
+  "delayMs": 800
+},
+      {
+        "name": "Loot fixed - MRE",
+        "enabled": true,
+        "command": "#SpawnItem MRE_Stew 2 Location \"{X=462570.969 Y=-112808.133 Z=5674.750|P=338.313629 Y=133.932983 R=0.000000}\"",
+        "repeat": 1,
+        "delayMs": 250
+      },
+      {
+        "name": "Loot fixed - Bandage",
+        "enabled": true,
+        "command": "#SpawnItem Bandage 3 Location \"{X=462570.969 Y=-112808.133 Z=5674.750|P=338.313629 Y=133.932983 R=0.000000}\"",
+        "repeat": 1,
+        "delayMs": 250
+      },
+      {
+        "name": "Prop fireplace fixed - asset id pruefen",
+        "enabled": false,
+        "command": "#SpawnItem Fireplace 1 Location \"{X=462708.562 Y=-113455.312 Z=5650.830|P=328.657990 Y=256.130554 R=0.000000}\"",
+        "repeat": 1,
+        "delayMs": 250
+      },
+      {
+        "name": "Prop tent fixed - asset id pruefen",
+        "enabled": false,
+        "command": "#SpawnItem Tent 1 Location \"{X=462905.188 Y=-113780.727 Z=5635.916|P=333.406555 Y=327.359924 R=0.000000}\"",
+        "repeat": 1,
+        "delayMs": 250
+      }
+    ],
+    "onEmptyCommands": [
+      {
+        "name": "Zone leer Broadcast",
+        "enabled": true,
+        "command": "#Broadcast Yellow B3 Camp ist leer. Event geht in Cooldown.",
+        "repeat": 1,
+        "delayMs": 250
+      }
+    ],
+    "cleanupWhenEmptySeconds": 300,
+    "cooldownMinutes": 60
+  }
+]

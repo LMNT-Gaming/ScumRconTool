@@ -1,0 +1,33 @@
+PATCH: Version Control + Homepage Update Check
+
+Umgesetzt
+- Aktuelle App-Version wird aus InformationalVersion/Assembly-Version gelesen und links in der Sidebar angezeigt.
+- Projektversion gesetzt:
+  Version / AssemblyVersion / FileVersion / InformationalVersion = 1.0.0
+- Update-Check wie beim ScumDBTool eingebaut:
+  GET latest.json von der Homepage
+  Vergleich latest.version > aktuelle Version
+  Update-Hinweis beim Start nur, wenn eine neue Version gefunden wurde
+  Manueller Button "Pruefen"
+  Button "Update herunterladen" oeffnet downloadUrl
+- Update-Check ist konfigurierbar:
+  AutoCheckForUpdates = true
+  UpdateLatestJsonUrl = https://lmnt-gaming.net/rrrt/latest.json
+
+Erwartetes latest.json Format
+{
+  "version": "1.0.1",
+  "downloadUrl": "https://lmnt-gaming.net/.../RedRavenRconTool.zip",
+  "patchNotesUrl": "https://lmnt-gaming.net/...",
+  "mandatory": false,
+  "sha256": "optional"
+}
+
+Betroffene Dateien
+- ScumRconTool.Wpf.csproj
+- BotSettings.cs
+- Models/UpdateInfo.cs
+- Services/UpdateService.cs
+- ViewModels/MainViewModel.cs
+- MainWindow.xaml
+- MainWindow.xaml.cs

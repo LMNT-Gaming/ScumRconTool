@@ -1,0 +1,1123 @@
+{
+  "id": "sector_z_base",
+  "name": "Sector Z - Base",
+  "enabled": true,
+  "mode": "SilentZone",
+  "includeInRandomizer": false,
+  "randomizerEveryMinutes": 360,
+  "initiatorRepeatEveryMinutes": 0,
+  "maxConcurrentRandomEvents": 0,
+  "activationZone": {
+    "name": "Sector Z - Base Aktivierzone",
+    "centerX": 354521.77,
+    "centerY": -653361.732,
+    "centerZ": 4688.535,
+    "radius": 20000
+  },
+  "initiatorBlock": {
+    "name": "Silent initiator",
+    "enabled": true,
+    "commands": []
+  },
+  "preLiveCleanupBlock": {
+    "name": "PreLiveCleanup - alte Lootreste entfernen",
+    "enabled": true,
+    "commands": [
+      {
+        "name": "Cleanup loot 1 - Sector Z Base",
+        "enabled": true,
+        "command": "#DestroyAllItemsWithinRadius all 20 Location \"[{X=354301.281 Y=-653467.938 Z=3789.916|P=334.673645 Y=358.671295 R=0.000000}]\"",
+        "repeat": 1,
+        "delayMs": 250
+      },
+      {
+        "name": "Cleanup loot 2 - Sector Z Base",
+        "enabled": true,
+        "command": "#DestroyAllItemsWithinRadius all 20 Location \"[{X=354462.531 Y=-654137.438 Z=3789.939|P=339.739380 Y=43.941139 R=0.000000}]\"",
+        "repeat": 1,
+        "delayMs": 250
+      },
+      {
+        "name": "Cleanup loot 3 - Sector Z Base",
+        "enabled": true,
+        "command": "#DestroyAllItemsWithinRadius all 20 Location \"[{X=354664.000 Y=-651552.500 Z=3787.701|P=345.121307 Y=271.612885 R=0.000000}]\"",
+        "repeat": 1,
+        "delayMs": 250
+      },
+      {
+        "name": "Cleanup loot 4 - Sector Z Base",
+        "enabled": true,
+        "command": "#DestroyAllItemsWithinRadius all 20 Location \"[{X=352849.531 Y=-654546.500 Z=3679.411|P=345.278961 Y=90.215584 R=0.000000}]\"",
+        "repeat": 1,
+        "delayMs": 250
+      }
+    ]
+  },
+  "liveBlock": {
+    "name": "LiveBlock - Sector Z - Base",
+    "enabled": true,
+    "commands": [
+      {
+        "name": "Guard 1 - Sector Z Base",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=356770.656 Y=-654024.938 Z=4313.354|P=346.545135 Y=20.807816 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 2 - Sector Z Base",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=354247.281 Y=-650411.125 Z=4331.937|P=345.437378 Y=120.395340 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 3 - Sector Z Base",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=355726.094 Y=-655660.688 Z=4000.549|P=347.970245 Y=286.229919 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 4 - Sector Z Base",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=355702.719 Y=-655708.062 Z=4266.263|P=343.537140 Y=239.376129 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 5 - Sector Z Base",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=355812.094 Y=-655666.500 Z=4266.263|P=345.753296 Y=332.923798 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 6 - Sector Z Base",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=351568.312 Y=-654679.562 Z=4249.681|P=345.278625 Y=154.076584 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 7 - Sector Z Base",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=352461.781 Y=-651943.938 Z=4208.251|P=345.595917 Y=108.628456 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 8 - Sector Z Base",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=354240.000 Y=-650415.562 Z=4066.223|P=347.611359 Y=120.553459 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 9 - Sector Z Base",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=354177.031 Y=-650436.438 Z=4331.937|P=336.098083 Y=164.874252 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 10 - Sector Z Base",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=354262.094 Y=-650377.875 Z=4331.937|P=341.005188 Y=54.706173 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 11 - Sector Z Base",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=354861.406 Y=-654253.062 Z=4585.800|P=344.329742 Y=327.701691 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 12 - Sector Z Base",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=354248.625 Y=-654288.938 Z=4585.800|P=342.430389 Y=206.611740 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 13 - Sector Z Base",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=354233.875 Y=-653648.312 Z=4585.800|P=338.631348 Y=121.294670 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 14 - Sector Z Base",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=354881.656 Y=-653621.375 Z=4585.800|P=339.580841 Y=34.394833 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 15 - Sector Z Base",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=354565.594 Y=-654077.750 Z=5662.458|P=338.789581 Y=267.927124 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 16 - Sector Z Base",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=354431.438 Y=-654227.500 Z=6666.520|P=330.874603 Y=258.434479 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      },
+      {
+        "name": "Guard 17 - Sector Z Base",
+        "enabled": true,
+        "command": "#ExecAs {playerId} #SpawnArmedNPC BP_Guard_Lvl_5 1 Location \"[{X=354679.438 Y=-653707.812 Z=6666.521|P=329.291901 Y=56.247227 R=0.000000}]\" DespawnLifetime 600",
+        "repeat": 1,
+        "delayMs": 800
+      }
+    ]
+  },
+  "lootPacks": [
+    {
+      "name": "AWM - Base Lootpoint 1",
+      "enabled": true,
+      "weight": 40,
+      "location": "[{X=354301.281 Y=-653467.938 Z=3789.916|P=334.673645 Y=358.671295 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_AWM",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_AWM",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_338_Ammobox",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_338_Black",
+          "quantity": 2,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "AWP - Base Lootpoint 1",
+      "enabled": true,
+      "weight": 40,
+      "location": "[{X=354301.281 Y=-653467.938 Z=3789.916|P=334.673645 Y=358.671295 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_AWP",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_AWP",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_308_Ammobox",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_308_Black",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "M249 - Base Lootpoint 1",
+      "enabled": true,
+      "weight": 60,
+      "location": "[{X=354301.281 Y=-653467.938 Z=3789.916|P=334.673645 Y=358.671295 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_M249",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_M249",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_5_56x45mm_Ammobox",
+          "quantity": 4,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_MK18",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "M82 - Base Lootpoint 1",
+      "enabled": true,
+      "weight": 15,
+      "location": "[{X=354301.281 Y=-653467.938 Z=3789.916|P=334.673645 Y=358.671295 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_M82A1_Black",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_M82A1",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_50BMG_Ammobox",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_M82A1_Black",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "MK18 - Base Lootpoint 1",
+      "enabled": true,
+      "weight": 40,
+      "location": "[{X=354301.281 Y=-653467.938 Z=3789.916|P=334.673645 Y=358.671295 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_MK18",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_M16",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_5_56x45mm_Ammobox",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_MK18",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "RPK - Base Lootpoint 1",
+      "enabled": true,
+      "weight": 30,
+      "location": "[{X=354301.281 Y=-653467.938 Z=3789.916|P=334.673645 Y=358.671295 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_RPK-74",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_RPK",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_7_62x39mm_Ammobox",
+          "quantity": 4,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_AK15",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "Scar-L - Base Lootpoint 1",
+      "enabled": true,
+      "weight": 50,
+      "location": "[{X=354301.281 Y=-653467.938 Z=3789.916|P=334.673645 Y=358.671295 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_SCAR_L",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_M16",
+          "quantity": 4,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_5_56x45mm_Ammobox",
+          "quantity": 4,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_MK18",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "Scar - Base Lootpoint 1",
+      "enabled": true,
+      "weight": 50,
+      "location": "[{X=354301.281 Y=-653467.938 Z=3789.916|P=334.673645 Y=358.671295 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_SCAR_DMR",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_SCAR_DMR",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_308_Ammobox",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_308_Black",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "AWM - Base Lootpoint 2",
+      "enabled": true,
+      "weight": 40,
+      "location": "[{X=354462.531 Y=-654137.438 Z=3789.939|P=339.739380 Y=43.941139 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_AWM",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_AWM",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_338_Ammobox",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_338_Black",
+          "quantity": 2,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "AWP - Base Lootpoint 2",
+      "enabled": true,
+      "weight": 40,
+      "location": "[{X=354462.531 Y=-654137.438 Z=3789.939|P=339.739380 Y=43.941139 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_AWP",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_AWP",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_308_Ammobox",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_308_Black",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "M249 - Base Lootpoint 2",
+      "enabled": true,
+      "weight": 60,
+      "location": "[{X=354462.531 Y=-654137.438 Z=3789.939|P=339.739380 Y=43.941139 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_M249",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_M249",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_5_56x45mm_Ammobox",
+          "quantity": 4,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_MK18",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "M82 - Base Lootpoint 2",
+      "enabled": true,
+      "weight": 15,
+      "location": "[{X=354462.531 Y=-654137.438 Z=3789.939|P=339.739380 Y=43.941139 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_M82A1_Black",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_M82A1",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_50BMG_Ammobox",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_M82A1_Black",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "MK18 - Base Lootpoint 2",
+      "enabled": true,
+      "weight": 40,
+      "location": "[{X=354462.531 Y=-654137.438 Z=3789.939|P=339.739380 Y=43.941139 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_MK18",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_M16",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_5_56x45mm_Ammobox",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_MK18",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "RPK - Base Lootpoint 2",
+      "enabled": true,
+      "weight": 30,
+      "location": "[{X=354462.531 Y=-654137.438 Z=3789.939|P=339.739380 Y=43.941139 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_RPK-74",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_RPK",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_7_62x39mm_Ammobox",
+          "quantity": 4,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_AK15",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "Scar-L - Base Lootpoint 2",
+      "enabled": true,
+      "weight": 50,
+      "location": "[{X=354462.531 Y=-654137.438 Z=3789.939|P=339.739380 Y=43.941139 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_SCAR_L",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_M16",
+          "quantity": 4,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_5_56x45mm_Ammobox",
+          "quantity": 4,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_MK18",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "Scar - Base Lootpoint 2",
+      "enabled": true,
+      "weight": 50,
+      "location": "[{X=354462.531 Y=-654137.438 Z=3789.939|P=339.739380 Y=43.941139 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_SCAR_DMR",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_SCAR_DMR",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_308_Ammobox",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_308_Black",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "AWM - Base Lootpoint 3",
+      "enabled": true,
+      "weight": 40,
+      "location": "[{X=354664.000 Y=-651552.500 Z=3787.701|P=345.121307 Y=271.612885 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_AWM",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_AWM",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_338_Ammobox",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_338_Black",
+          "quantity": 2,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "AWP - Base Lootpoint 3",
+      "enabled": true,
+      "weight": 40,
+      "location": "[{X=354664.000 Y=-651552.500 Z=3787.701|P=345.121307 Y=271.612885 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_AWP",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_AWP",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_308_Ammobox",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_308_Black",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "M249 - Base Lootpoint 3",
+      "enabled": true,
+      "weight": 60,
+      "location": "[{X=354664.000 Y=-651552.500 Z=3787.701|P=345.121307 Y=271.612885 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_M249",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_M249",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_5_56x45mm_Ammobox",
+          "quantity": 4,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_MK18",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "M82 - Base Lootpoint 3",
+      "enabled": true,
+      "weight": 15,
+      "location": "[{X=354664.000 Y=-651552.500 Z=3787.701|P=345.121307 Y=271.612885 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_M82A1_Black",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_M82A1",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_50BMG_Ammobox",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_M82A1_Black",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "MK18 - Base Lootpoint 3",
+      "enabled": true,
+      "weight": 40,
+      "location": "[{X=354664.000 Y=-651552.500 Z=3787.701|P=345.121307 Y=271.612885 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_MK18",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_M16",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_5_56x45mm_Ammobox",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_MK18",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "RPK - Base Lootpoint 3",
+      "enabled": true,
+      "weight": 30,
+      "location": "[{X=354664.000 Y=-651552.500 Z=3787.701|P=345.121307 Y=271.612885 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_RPK-74",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_RPK",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_7_62x39mm_Ammobox",
+          "quantity": 4,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_AK15",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "Scar-L - Base Lootpoint 3",
+      "enabled": true,
+      "weight": 50,
+      "location": "[{X=354664.000 Y=-651552.500 Z=3787.701|P=345.121307 Y=271.612885 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_SCAR_L",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_M16",
+          "quantity": 4,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_5_56x45mm_Ammobox",
+          "quantity": 4,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_MK18",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "Scar - Base Lootpoint 3",
+      "enabled": true,
+      "weight": 50,
+      "location": "[{X=354664.000 Y=-651552.500 Z=3787.701|P=345.121307 Y=271.612885 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_SCAR_DMR",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_SCAR_DMR",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_308_Ammobox",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_308_Black",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "AWM - Base Lootpoint 4",
+      "enabled": true,
+      "weight": 40,
+      "location": "[{X=352849.531 Y=-654546.500 Z=3679.411|P=345.278961 Y=90.215584 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_AWM",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_AWM",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_338_Ammobox",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_338_Black",
+          "quantity": 2,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "AWP - Base Lootpoint 4",
+      "enabled": true,
+      "weight": 40,
+      "location": "[{X=352849.531 Y=-654546.500 Z=3679.411|P=345.278961 Y=90.215584 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_AWP",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_AWP",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_308_Ammobox",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_308_Black",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "M249 - Base Lootpoint 4",
+      "enabled": true,
+      "weight": 60,
+      "location": "[{X=352849.531 Y=-654546.500 Z=3679.411|P=345.278961 Y=90.215584 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_M249",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_M249",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_5_56x45mm_Ammobox",
+          "quantity": 4,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_MK18",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "M82 - Base Lootpoint 4",
+      "enabled": true,
+      "weight": 15,
+      "location": "[{X=352849.531 Y=-654546.500 Z=3679.411|P=345.278961 Y=90.215584 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_M82A1_Black",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_M82A1",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_50BMG_Ammobox",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_M82A1_Black",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "MK18 - Base Lootpoint 4",
+      "enabled": true,
+      "weight": 40,
+      "location": "[{X=352849.531 Y=-654546.500 Z=3679.411|P=345.278961 Y=90.215584 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_MK18",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_M16",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_5_56x45mm_Ammobox",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_MK18",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "RPK - Base Lootpoint 4",
+      "enabled": true,
+      "weight": 30,
+      "location": "[{X=352849.531 Y=-654546.500 Z=3679.411|P=345.278961 Y=90.215584 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_RPK-74",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_RPK",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_7_62x39mm_Ammobox",
+          "quantity": 4,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_AK15",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "Scar-L - Base Lootpoint 4",
+      "enabled": true,
+      "weight": 50,
+      "location": "[{X=352849.531 Y=-654546.500 Z=3679.411|P=345.278961 Y=90.215584 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_SCAR_L",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_M16",
+          "quantity": 4,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_5_56x45mm_Ammobox",
+          "quantity": 4,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_MK18",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    },
+    {
+      "name": "Scar - Base Lootpoint 4",
+      "enabled": true,
+      "weight": 50,
+      "location": "[{X=352849.531 Y=-654546.500 Z=3679.411|P=345.278961 Y=90.215584 R=0.000000}]",
+      "items": [
+        {
+          "item": "Weapon_SCAR_DMR",
+          "quantity": 1,
+          "delayMs": 250
+        },
+        {
+          "item": "Magazine_SCAR_DMR",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "Cal_308_Ammobox",
+          "quantity": 2,
+          "delayMs": 250
+        },
+        {
+          "item": "WeaponSuppressor_308_Black",
+          "quantity": 1,
+          "delayMs": 250
+        }
+      ]
+    }
+  ],
+  "emptyBlock": {
+    "name": "EmptyBlock - Zone leer",
+    "enabled": true,
+    "commands": []
+  },
+  "cleanupBlock": {
+    "name": "CleanupBlock - Loot entfernen",
+    "enabled": true,
+    "commands": [
+      {
+        "name": "Cleanup loot 1 - Sector Z Base",
+        "enabled": true,
+        "command": "#DestroyAllItemsWithinRadius all 20 Location \"[{X=354301.281 Y=-653467.938 Z=3789.916|P=334.673645 Y=358.671295 R=0.000000}]\"",
+        "repeat": 1,
+        "delayMs": 250
+      },
+      {
+        "name": "Cleanup loot 2 - Sector Z Base",
+        "enabled": true,
+        "command": "#DestroyAllItemsWithinRadius all 20 Location \"[{X=354462.531 Y=-654137.438 Z=3789.939|P=339.739380 Y=43.941139 R=0.000000}]\"",
+        "repeat": 1,
+        "delayMs": 250
+      },
+      {
+        "name": "Cleanup loot 3 - Sector Z Base",
+        "enabled": true,
+        "command": "#DestroyAllItemsWithinRadius all 20 Location \"[{X=354664.000 Y=-651552.500 Z=3787.701|P=345.121307 Y=271.612885 R=0.000000}]\"",
+        "repeat": 1,
+        "delayMs": 250
+      },
+      {
+        "name": "Cleanup loot 4 - Sector Z Base",
+        "enabled": true,
+        "command": "#DestroyAllItemsWithinRadius all 20 Location \"[{X=352849.531 Y=-654546.500 Z=3679.411|P=345.278961 Y=90.215584 R=0.000000}]\"",
+        "repeat": 1,
+        "delayMs": 250
+      }
+    ]
+  },
+  "cleanupWhenEmptySeconds": 300,
+  "cooldownMinutes": 180,
+  "lootPackSpawnMode": "OnePerLocation",
+  "eventGroup": "sector_z",
+  "maxConcurrentInGroup": 1
+}
