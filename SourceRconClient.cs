@@ -135,7 +135,9 @@ public sealed class SourceRconClient : IAsyncDisposable
             {
                 return await SendCommandCoreAsync(command, cancellationToken);
             }
-            catch (Exception ex) when (IsConnectionException(ex) && !cancellationToken.IsCancellationRequested)
+            catch (Exception ex) when (IsConnectionException(ex) &&
+                                       IsSafeToRetry(command) &&
+                                       !cancellationToken.IsCancellationRequested)
             {
                 Close();
                 await EnsureConnectedCoreAsync(cancellationToken, forceReconnect: true);
@@ -263,6 +265,15 @@ public sealed class SourceRconClient : IAsyncDisposable
     {
         return ex is IOException || ex is SocketException ||
                ex.InnerException is IOException || ex.InnerException is SocketException;
+    }
+
+    private static bool IsSafeToRetry(string command)
+    {
+        var value = command?.Trim() ?? string.Empty;
+        return value.StartsWith("#List", StringComparison.OrdinalIgnoreCase) ||
+               value.StartsWith("#Get", StringComparison.OrdinalIgnoreCase) ||
+               value.StartsWith("#PlayerInfo", StringComparison.OrdinalIgnoreCase) ||
+               value.StartsWith("#ServerInfo", StringComparison.OrdinalIgnoreCase);
     }
 
     private static void AddPacket(RconPacket packet, List<string> bodies, List<string> debugPackets, int commandId)

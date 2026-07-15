@@ -11,10 +11,13 @@ namespace ScumRconTool.Services;
 
 public sealed class EventEngine : IDisposable
 {
+    private const string LootPuppetAsset = "BP_Zombie_Civilian_Skinny_Loot";
+
     private readonly SourceRconClient _rcon;
     private readonly Action<string> _log;
     private readonly Action? _stateChanged;
     private readonly List<EventRuntime> _events;
+    private readonly List<LootPack> _globalLootPacks;
     private readonly Random _random = new();
     private readonly BotSettings? _settings;
     private string? _scheduledRandomCycleKey;
@@ -29,16 +32,76 @@ public sealed class EventEngine : IDisposable
 
     public bool IsRunning => _loopTask is not null && !_loopTask.IsCompleted;
 
-    public EventEngine(SourceRconClient rcon, IEnumerable<EventDefinition> definitions, Action<string> log, Action? stateChanged = null, BotSettings? settings = null)
+    public EventEngine(SourceRconClient rcon, IEnumerable<EventDefinition> definitions, Action<string> log, Action? stateChanged = null, BotSettings? settings = null, IEnumerable<LootPack>? globalLootPacks = null)
     {
         _rcon = rcon;
         _log = log;
         _stateChanged = stateChanged;
         _settings = settings;
+        _globalLootPacks = (globalLootPacks ?? Enumerable.Empty<LootPack>()).ToList();
         _events = definitions.Select(x => new EventRuntime(x)).ToList();
     }
 
     public IReadOnlyList<EventRuntime> Events => _events;
+
+    public IReadOnlyList<BuyableEventSummary> GetBuyableEvents() => _events
+        .Where(r => r.Definition.Enabled)
+        .Where(IsBuyZone)
+        .Select(r => new BuyableEventSummary(
+            r.Definition.Id ?? string.Empty,
+            r.Definition.Name ?? string.Empty,
+            ResolveBuyEventDisplayName(r.Definition),
+            Math.Max(0, r.Definition.BuyPrice),
+            r.State,
+            r.CooldownUntilUtc))
+        .OrderBy(x => x.DisplayName, StringComparer.OrdinalIgnoreCase)
+        .ToList();
+
+    public async Task<BuyEventActivationResult> ActivateBuyEventAsync(string eventKey, string steamId, string playerName, CancellationToken cancellationToken = default)
+    {
+        var runtime = FindBuyEventRuntime(eventKey);
+        if (runtime is null)
+        {
+            return BuyEventActivationResult.Fail("Event nicht gefunden oder nicht kaufbar.");
+        }
+
+        var now = DateTime.UtcNow;
+        if (runtime.State == EventRuntimeState.Cooldown && runtime.CooldownUntilUtc <= now)
+        {
+            ResetRuntime(runtime, clearCooldown: true);
+            SetState(runtime, EventRuntimeState.Stopped, "Cooldown beendet und Runtime fuer BuyEvent zurueckgesetzt.");
+        }
+
+        var availability = GetActivationBlockReason(runtime, now);
+        if (!string.IsNullOrWhiteSpace(availability))
+        {
+            return BuyEventActivationResult.Fail(availability);
+        }
+
+        ScumPlayer? player = null;
+        if (!string.IsNullOrWhiteSpace(steamId))
+        {
+            try
+            {
+                var players = await FetchPlayersAsync(cancellationToken);
+                player = players.FirstOrDefault(p => !string.IsNullOrWhiteSpace(p.UserId) && p.UserId.Equals(steamId.Trim(), StringComparison.OrdinalIgnoreCase));
+            }
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                _log($"{runtime.Definition.Name}: Spielerposition fuer BuyEvent konnte nicht gelesen werden: {ex.Message}");
+                AppLogService.WriteException("ScriptEngine.BuyEvent.PlayerLookup", ex);
+            }
+        }
+
+        player ??= new ScumPlayer
+        {
+            UserId = steamId,
+            SteamName = playerName
+        };
+
+        await InitiateAsync(runtime, player, cancellationToken, manual: true);
+        return BuyEventActivationResult.Ok(runtime.Definition.Name ?? ResolveBuyEventDisplayName(runtime.Definition));
+    }
 
     public void Start(int pollSeconds)
     {
@@ -148,6 +211,8 @@ public sealed class EventEngine : IDisposable
             await RunRandomizerAsync(players, now, cancellationToken);
         }
 
+        await RunRandomActivatedAsync(players, now, cancellationToken);
+
         if (now - _lastEngineHealthLogUtc >= TimeSpan.FromMinutes(5))
         {
             LogRuntimeSummary("Script Engine Health");
@@ -229,7 +294,7 @@ public sealed class EventEngine : IDisposable
                 continue;
             }
 
-            if (runtime.Definition.EffectiveZone.Radius <= 0)
+            if (runtime.Definition.EffectiveZone.Radius <= 0 && !IsDirectLive(runtime))
             {
                 _log($"{runtime.Definition.Name}: WARNUNG Aktivierzone hat Radius <= 0 und kann nicht triggern.");
                 continue;
@@ -267,10 +332,12 @@ public sealed class EventEngine : IDisposable
         var enabled = _events.Count(e => e.Definition.Enabled);
         var silent = _events.Count(e => e.Definition.Enabled && IsSilentZone(e));
         var random = _events.Count(e => e.Definition.Enabled && IsRandomAnnouncedZone(e) && e.Definition.IncludeInRandomizer);
+        var randomActivated = _events.Count(e => e.Definition.Enabled && IsRandomActivated(e));
+        var buyzone = _events.Count(e => e.Definition.Enabled && IsBuyZone(e));
         var initiated = _events.Count(e => e.State == EventRuntimeState.Initiated);
         var live = _events.Count(e => e.State == EventRuntimeState.Live);
         var cooldown = _events.Count(e => e.State == EventRuntimeState.Cooldown);
-        _log($"{prefix}: {enabled} aktivierte Scripts, {silent} SilentZone, {random} RandomAnnouncedZone, Status: {initiated} initiiert, {live} live, {cooldown} cooldown.");
+        _log($"{prefix}: {enabled} aktivierte Scripts, {silent} SilentZone, {random} Random, {randomActivated} RandomActivated, {buyzone} Buyzone, Status: {initiated} initiiert, {live} live, {cooldown} cooldown.");
 
         foreach (var runtime in _events.Where(e => e.Definition.Enabled && e.State != EventRuntimeState.Stopped))
         {
@@ -537,6 +604,57 @@ public sealed class EventEngine : IDisposable
         }
     }
 
+    private async Task RunRandomActivatedAsync(List<ScumPlayer> players, DateTime now, CancellationToken cancellationToken)
+    {
+        var candidates = _events
+            .Where(r => r.Definition.Enabled)
+            .Where(IsRandomActivated)
+            .Where(r => r.State == EventRuntimeState.Stopped)
+            .Where(r => now >= r.CooldownUntilUtc)
+            .Where(r => now >= r.NextRandomizerUtc)
+            .ToList();
+
+        if (candidates.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var runtime in candidates)
+        {
+            var intervalMinutes = Math.Max(1, runtime.Definition.RandomizerEveryMinutes > 0 ? runtime.Definition.RandomizerEveryMinutes : runtime.Definition.AnnounceEveryMinutes);
+            runtime.NextRandomizerUtc = now.AddMinutes(intervalMinutes);
+
+            var playersInZone = GetPlayersInZone(runtime, players);
+            if (playersInZone.Count == 0)
+            {
+                continue;
+            }
+
+            if (IsGroupBlocked(runtime))
+            {
+                _log($"{runtime.Definition.Name}: RandomActivated faellig, aber Scriptgruppe '{runtime.Definition.EventGroup}' ist bereits aktiv.");
+                continue;
+            }
+
+            var chance = Math.Clamp(runtime.Definition.RandomActivationChancePercent, 0, 100);
+            if (chance <= 0)
+            {
+                continue;
+            }
+
+            var roll = _random.Next(1, 101);
+            if (roll > chance)
+            {
+                _log($"{runtime.Definition.Name}: RandomActivated nicht ausgeloest. Wurf {roll}/100, Chance {chance}%.");
+                continue;
+            }
+
+            var triggerPlayer = playersInZone[_random.Next(playersInZone.Count)];
+            _log($"{runtime.Definition.Name}: RandomActivated ausgeloest durch belegte Zone. Wurf {roll}/100, Chance {chance}%.");
+            await InitiateAsync(runtime, triggerPlayer, cancellationToken, manual: false);
+        }
+    }
+
     private static bool IsRandomScriptActive(EventRuntime runtime) =>
         runtime.State == EventRuntimeState.Initiated ||
         runtime.State == EventRuntimeState.Live ||
@@ -585,13 +703,40 @@ public sealed class EventEngine : IDisposable
     private async Task GoLiveAsync(EventRuntime runtime, ScumPlayer? triggerPlayer, CancellationToken cancellationToken)
     {
         _log($"{runtime.Definition.Name}: LiveBlock startet" + (triggerPlayer is null ? "." : $" durch {triggerPlayer.DisplayName} ({triggerPlayer.UserId})."));
+        await SendTriggerServerMessageAsync(runtime, triggerPlayer, cancellationToken);
+        if (runtime.Definition.ActivationDelayMs > 0)
+        {
+            _log($"{runtime.Definition.Name}: Aktivierungs-Timer wartet {runtime.Definition.ActivationDelayMs}ms.");
+            await Task.Delay(runtime.Definition.ActivationDelayMs, cancellationToken);
+        }
+
         await ExecuteBlockAsync(runtime.Definition.PreLiveCleanupBlock, runtime.Definition.PreLiveCleanupBlock.Commands, runtime, triggerPlayer, cancellationToken);
         await ExecuteBlockAsync(runtime.Definition.LiveBlock, runtime.Definition.GetLiveCommands(), runtime, triggerPlayer, cancellationToken);
         await ExecuteSpawnBlocksAsync(runtime, triggerPlayer, cancellationToken);
-        await ExecuteRandomLootPackAsync(runtime, triggerPlayer, cancellationToken);
-        await ExecuteRandomLootCommandPackAsync(runtime, triggerPlayer, cancellationToken);
+        var lootPackSpawned = await ExecuteRandomLootPackAsync(runtime, triggerPlayer, cancellationToken);
+        if (!lootPackSpawned)
+        {
+            await ExecuteRandomLootCommandPackAsync(runtime, triggerPlayer, cancellationToken);
+        }
+        else if (runtime.Definition.LootCommandPacks?.Any(pack => pack.Enabled && !string.IsNullOrWhiteSpace(pack.Command)) == true)
+        {
+            _log($"{runtime.Definition.Name}: alte LootCommandPacks ignoriert, weil bereits ein LootPack ausgegeben wurde.");
+        }
         runtime.LastLiveUtc = DateTime.UtcNow;
         SetState(runtime, EventRuntimeState.Live, "live.");
+    }
+
+    private async Task SendTriggerServerMessageAsync(EventRuntime runtime, ScumPlayer? triggerPlayer, CancellationToken cancellationToken)
+    {
+        var message = ReplacePlaceholders(runtime.Definition.TriggerServerMessage, runtime, triggerPlayer).Trim();
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        var command = CommandRegistry.Broadcast(runtime.Definition.TriggerServerMessageType, message);
+        MarkRuntime(runtime, "Trigger Servernachricht gesendet", command);
+        await SendAsync(command, cancellationToken);
     }
 
     private List<ScumPlayer> GetPlayersInZone(EventRuntime runtime, List<ScumPlayer> players)
@@ -605,7 +750,7 @@ public sealed class EventEngine : IDisposable
 
     private async Task ExecuteRandomLootCommandPackAsync(EventRuntime runtime, ScumPlayer? player, CancellationToken cancellationToken)
     {
-        var packs = runtime.Definition.LootCommandPacks
+        var packs = (runtime.Definition.LootCommandPacks ?? new List<LootCommandPack>())
             .Where(p => p.Enabled && !string.IsNullOrWhiteSpace(p.Command))
             .ToList();
 
@@ -660,33 +805,42 @@ public sealed class EventEngine : IDisposable
         }
     }
 
-    private async Task ExecuteRandomLootPackAsync(EventRuntime runtime, ScumPlayer? player, CancellationToken cancellationToken)
+    private async Task<bool> ExecuteRandomLootPackAsync(EventRuntime runtime, ScumPlayer? player, CancellationToken cancellationToken)
     {
-        var packs = runtime.Definition.LootPacks
-            .Where(p => p.Enabled && p.Items.Count > 0 && !string.IsNullOrWhiteSpace(p.Location))
+        var packs = ResolveLootPacks(runtime)
+            .Where(p => p.Enabled && p.Items.Any(item => !string.IsNullOrWhiteSpace(item.Item)))
             .ToList();
 
         if (packs.Count == 0)
         {
-            return;
+            return false;
+        }
+
+        var locations = ResolveLootPackLocations(runtime, player);
+        if (locations.Count == 0)
+        {
+            return false;
         }
 
         var mode = runtime.Definition.LootPackSpawnMode?.Trim() ?? "OneTotal";
         if (mode.Equals("OnePerLocation", StringComparison.OrdinalIgnoreCase) ||
-            mode.Equals("PerLocation", StringComparison.OrdinalIgnoreCase))
+            mode.Equals("PerLocation", StringComparison.OrdinalIgnoreCase) ||
+            mode.Equals("AllPoints", StringComparison.OrdinalIgnoreCase) ||
+            mode.Equals("AllePunkte", StringComparison.OrdinalIgnoreCase))
         {
-            var groups = packs.GroupBy(p => NormalizeLocationKey(ReplacePlaceholders(p.Location, runtime, player)));
-            foreach (var group in groups)
+            foreach (var location in locations)
             {
-                var selected = SelectWeighted(group.ToList());
-                await SpawnLootPackAsync(runtime, selected, player, cancellationToken);
+                var selected = SelectWeighted(packs);
+                await SpawnLootPackAsync(runtime, selected, location, player, cancellationToken);
             }
-            return;
+            return true;
         }
 
-        // Backward compatible: Single/OneTotal = genau ein Pack aus allen Packs.
+        // Single/OneTotal = genau ein Pack aus allen Packs an einem Lootpunkt.
         var one = SelectWeighted(packs);
-        await SpawnLootPackAsync(runtime, one, player, cancellationToken);
+        var oneLocation = locations[_random.Next(locations.Count)];
+        await SpawnLootPackAsync(runtime, one, oneLocation, player, cancellationToken);
+        return true;
     }
 
     private LootPack SelectWeighted(List<LootPack> packs)
@@ -706,9 +860,60 @@ public sealed class EventEngine : IDisposable
         return selected;
     }
 
-    private async Task SpawnLootPackAsync(EventRuntime runtime, LootPack selected, ScumPlayer? player, CancellationToken cancellationToken)
+    private IEnumerable<LootPack> ResolveLootPacks(EventRuntime runtime)
     {
-        var location = ReplacePlaceholders(selected.Location, runtime, player);
+        var selectedNames = runtime.Definition.LootPackNames?
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase) ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (selectedNames.Count > 0)
+        {
+            return _globalLootPacks.Where(pack => selectedNames.Contains(pack.Name ?? ""));
+        }
+
+        return runtime.Definition.LootPacks ?? new List<LootPack>();
+    }
+
+    private List<string> ResolveLootPackLocations(EventRuntime runtime, ScumPlayer? player)
+    {
+        var locations = new List<string>();
+        foreach (var variable in runtime.Definition.LocalVariables?.LootSpawnLocations ?? new List<ScriptLocationVariable>())
+        {
+            var location = NormalizeLocationKey(ReplacePlaceholders(variable.Location, runtime, player));
+            if (!string.IsNullOrWhiteSpace(location))
+            {
+                locations.Add(location);
+            }
+        }
+
+        if (locations.Count == 0)
+        {
+            foreach (var legacyPackLocation in (runtime.Definition.LootPacks ?? new List<LootPack>()).Select(pack => pack.Location ?? ""))
+            {
+                var location = NormalizeLocationKey(ReplacePlaceholders(legacyPackLocation, runtime, player));
+                if (!string.IsNullOrWhiteSpace(location))
+                {
+                    locations.Add(location);
+                }
+            }
+        }
+
+        if (locations.Count == 0)
+        {
+            var triggerZone = NormalizeLocationKey(ReplacePlaceholders("{triggerZone}", runtime, player));
+            if (!string.IsNullOrWhiteSpace(triggerZone))
+            {
+                locations.Add(triggerZone);
+            }
+        }
+
+        return locations.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private async Task SpawnLootPackAsync(EventRuntime runtime, LootPack selected, string location, ScumPlayer? player, CancellationToken cancellationToken)
+    {
         _log($"{runtime.Definition.Name}: LootPack gewaehlt: {selected.Name}");
         runtime.LastLootSummary = "LootPack: " + selected.Name + " @ " + location;
         var spawnedCount = 0;
@@ -753,8 +958,18 @@ public sealed class EventEngine : IDisposable
 
     private static bool IsRandomAnnouncedZone(EventRuntime runtime) =>
         runtime.Definition.Mode.Equals("RandomAnnouncedZone", StringComparison.OrdinalIgnoreCase) ||
+        runtime.Definition.Mode.Equals("Random", StringComparison.OrdinalIgnoreCase) ||
         runtime.Definition.Mode.Equals("A", StringComparison.OrdinalIgnoreCase) ||
         runtime.Definition.Mode.Equals("AnnouncedThenZone", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsRandomActivated(EventRuntime runtime) =>
+        runtime.Definition.Mode.Equals("RandomActivated", StringComparison.OrdinalIgnoreCase) ||
+        runtime.Definition.Mode.Equals("RandomActivatedZone", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsBuyZone(EventRuntime runtime) =>
+        runtime.Definition.Mode.Equals("Buyzone", StringComparison.OrdinalIgnoreCase) ||
+        runtime.Definition.Mode.Equals("BuyZone", StringComparison.OrdinalIgnoreCase) ||
+        runtime.Definition.Mode.Equals("BuyEvent", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSilentZone(EventRuntime runtime) =>
         runtime.Definition.Mode.Equals("SilentZone", StringComparison.OrdinalIgnoreCase) ||
@@ -762,7 +977,83 @@ public sealed class EventEngine : IDisposable
         runtime.Definition.Mode.Equals("Silent", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsDirectLive(EventRuntime runtime) =>
-        runtime.Definition.Mode.Equals("DirectLive", StringComparison.OrdinalIgnoreCase);
+        runtime.Definition.Mode.Equals("DirectLive", StringComparison.OrdinalIgnoreCase) ||
+        IsBuyZone(runtime);
+
+    private EventRuntime? FindBuyEventRuntime(string eventKey)
+    {
+        var key = (eventKey ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            return null;
+        }
+
+        var buyEvents = _events
+            .Where(r => r.Definition.Enabled)
+            .Where(IsBuyZone)
+            .ToList();
+
+        return buyEvents.FirstOrDefault(r => MatchesBuyEventKey(r.Definition, key, exactOnly: true))
+            ?? buyEvents.FirstOrDefault(r => MatchesBuyEventKey(r.Definition, key, exactOnly: false));
+    }
+
+    private static bool MatchesBuyEventKey(EventDefinition definition, string key, bool exactOnly)
+    {
+        var values = new[]
+        {
+            definition.BuyAlias,
+            definition.Name,
+            definition.Id
+        };
+
+        if (values.Any(value => !string.IsNullOrWhiteSpace(value) && value.Trim().Equals(key, StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        if (exactOnly)
+        {
+            return false;
+        }
+
+        var normalizedKey = NormalizeBuyEventKey(key);
+        return values.Any(value => !string.IsNullOrWhiteSpace(value) && NormalizeBuyEventKey(value).Equals(normalizedKey, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string NormalizeBuyEventKey(string? value) =>
+        Regex.Replace((value ?? string.Empty).Trim(), @"[\s_\-]+", "", RegexOptions.CultureInvariant).ToLowerInvariant();
+
+    private static string ResolveBuyEventDisplayName(EventDefinition definition)
+    {
+        if (!string.IsNullOrWhiteSpace(definition.BuyAlias)) return definition.BuyAlias.Trim();
+        if (!string.IsNullOrWhiteSpace(definition.Name)) return definition.Name.Trim();
+        return string.IsNullOrWhiteSpace(definition.Id) ? "Event" : definition.Id.Trim();
+    }
+
+    private string GetActivationBlockReason(EventRuntime runtime, DateTime now)
+    {
+        if (!runtime.Definition.Enabled)
+        {
+            return "Event ist deaktiviert.";
+        }
+
+        if (runtime.State == EventRuntimeState.Cooldown && runtime.CooldownUntilUtc > now)
+        {
+            return "Event ist noch im Cooldown bis " + runtime.CooldownUntilUtc.ToLocalTime().ToString("HH:mm:ss") + ".";
+        }
+
+        if (runtime.State is EventRuntimeState.Initiated or EventRuntimeState.Live or EventRuntimeState.CleanupPending)
+        {
+            return "Event ist bereits aktiv.";
+        }
+
+        if (IsGroupBlocked(runtime))
+        {
+            return "Eine Event-Gruppe blockiert diesen Event gerade.";
+        }
+
+        return string.Empty;
+    }
 
     private void SetState(EventRuntime runtime, EventRuntimeState state, string reason)
     {
@@ -793,7 +1084,6 @@ public sealed class EventEngine : IDisposable
     {
         var blocks = (runtime.Definition.SpawnBlocks ?? new List<SpawnBlock>())
             .Where(b => b.Enabled)
-            .Where(b => !string.IsNullOrWhiteSpace(b.Asset))
             .Where(b => !string.IsNullOrWhiteSpace(b.Location))
             .ToList();
 
@@ -804,7 +1094,7 @@ public sealed class EventEngine : IDisposable
 
         foreach (var block in blocks)
         {
-            var hasDelayedLoop = block.StartDelaySeconds > 0 || (block.Repeat > 1 && block.RepeatEverySeconds > 0);
+            var hasDelayedLoop = GetStartDelay(block) > TimeSpan.Zero || (block.Repeat > 1 && GetRepeatDelay(block) > TimeSpan.Zero);
             if (hasDelayedLoop)
             {
                 _log($"{runtime.Definition.Name}: SpawnBlock '{block.Name}' wurde als Hintergrund-Loop geplant.");
@@ -821,11 +1111,11 @@ public sealed class EventEngine : IDisposable
         try
         {
             var repeat = Math.Max(1, block.Repeat);
-            var startDelay = Math.Max(0, block.StartDelaySeconds);
-            if (startDelay > 0)
+            var startDelay = GetStartDelay(block);
+            if (startDelay > TimeSpan.Zero)
             {
-                _log($"{runtime.Definition.Name}: SpawnBlock '{block.Name}' startet in {startDelay}s.");
-                await Task.Delay(TimeSpan.FromSeconds(startDelay), cancellationToken);
+                _log($"{runtime.Definition.Name}: SpawnBlock '{block.Name}' startet in {FormatDelay(startDelay)}.");
+                await Task.Delay(startDelay, cancellationToken);
                 if (runtime.State == EventRuntimeState.Stopped || runtime.State == EventRuntimeState.Cooldown)
                 {
                     _log($"{runtime.Definition.Name}: SpawnBlock '{block.Name}' nach Startdelay gestoppt, Script ist nicht mehr aktiv.");
@@ -844,7 +1134,7 @@ public sealed class EventEngine : IDisposable
                 var command = BuildSpawnBlockCommand(block, runtime, player);
                 if (string.IsNullOrWhiteSpace(command))
                 {
-                    _log($"{runtime.Definition.Name}: SpawnBlock '{block.Name}' uebersprungen. Typ, Asset oder Location fehlen.");
+                    _log($"{runtime.Definition.Name}: SpawnBlock '{block.Name}' uebersprungen. Typ ungueltig/nicht unterstuetzt, Asset oder Location fehlen.");
                     return;
                 }
 
@@ -869,10 +1159,10 @@ public sealed class EventEngine : IDisposable
                     await Task.Delay(block.DelayMs, cancellationToken);
                 }
 
-                var loopDelay = Math.Max(0, block.RepeatEverySeconds);
-                if (i < repeat - 1 && loopDelay > 0)
+                var loopDelay = GetRepeatDelay(block);
+                if (i < repeat - 1 && loopDelay > TimeSpan.Zero)
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(loopDelay), cancellationToken);
+                    await Task.Delay(loopDelay, cancellationToken);
                 }
             }
         }
@@ -886,14 +1176,57 @@ public sealed class EventEngine : IDisposable
         }
     }
 
+    private static TimeSpan GetStartDelay(SpawnBlock block)
+    {
+        if (block.StartDelayMs > 0)
+        {
+            return TimeSpan.FromMilliseconds(block.StartDelayMs);
+        }
+
+        return TimeSpan.FromSeconds(Math.Max(0, block.StartDelaySeconds));
+    }
+
+    private static TimeSpan GetRepeatDelay(SpawnBlock block)
+    {
+        if (block.RepeatEveryMs > 0)
+        {
+            return TimeSpan.FromMilliseconds(block.RepeatEveryMs);
+        }
+
+        return TimeSpan.FromSeconds(Math.Max(0, block.RepeatEverySeconds));
+    }
+
+    private static string FormatDelay(TimeSpan delay)
+    {
+        return delay.TotalSeconds >= 1
+            ? delay.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture) + "s"
+            : delay.TotalMilliseconds.ToString("0", CultureInfo.InvariantCulture) + "ms";
+    }
+
     private string BuildSpawnBlockCommand(SpawnBlock block, EventRuntime runtime, ScumPlayer? player)
     {
         var type = NormalizeSpawnType(block.Type);
+        var location = ReplacePlaceholders(block.Location, runtime, player).Trim();
+
+        if (type == "Custom")
+        {
+            return BuildCustomSpawnBlockCommand(block, runtime, player, location);
+        }
+
+        if (type == "CargoDrop")
+        {
+            return BuildCargoDropSpawnBlockCommand(block, player, location);
+        }
+
+        var asset = ReplaceSpawnBlockScopedPlaceholders(block.Asset, runtime, player, location).Trim();
+        var isRandomZombie = type == "RandomZombie" || (type == "Zombie" && IsRandomZombieAsset(asset));
         var commandName = type switch
         {
             "Item" => "#SpawnItem",
             "ArmedNPC" => "#SpawnArmedNPC",
-            "NPC" => "#SpawnNPC",
+            "RandomZombie" => "#SpawnRandomZombie",
+            "Lootpuppet" => "#SpawnZombie",
+            "Zombie" when isRandomZombie => "#SpawnRandomZombie",
             "Zombie" => "#SpawnZombie",
             "Vehicle" => "#SpawnVehicle",
             _ => string.Empty
@@ -904,27 +1237,123 @@ public sealed class EventEngine : IDisposable
             return string.Empty;
         }
 
-        var asset = ReplacePlaceholders(block.Asset, runtime, player).Trim();
-        var location = ReplacePlaceholders(block.Location, runtime, player).Trim();
-        if (string.IsNullOrWhiteSpace(asset) || string.IsNullOrWhiteSpace(location))
+        if (string.IsNullOrWhiteSpace(location) ||
+            (RequiresSpawnAsset(type) && string.IsNullOrWhiteSpace(asset)))
         {
             return string.Empty;
         }
 
         var quantity = Math.Max(1, block.Quantity);
-        var command = $"{commandName} {asset} {quantity} Location \"{location}\"";
+        var command = type switch
+        {
+            "RandomZombie" => $"{commandName} {quantity} Location \"{location}\"",
+            "Lootpuppet" => $"{commandName} {LootPuppetAsset} {quantity} Location \"{location}\"",
+            "Zombie" when isRandomZombie => $"{commandName} {quantity} Location \"{location}\"",
+            "Zombie" => $"{commandName} {asset} {quantity} Location \"{location}\"",
+            _ => $"{commandName} {asset} {quantity} Location \"{location}\""
+        };
         if (block.DespawnLifetimeSeconds > 0)
         {
             command += " DespawnLifetime " + block.DespawnLifetimeSeconds.ToString(CultureInfo.InvariantCulture);
         }
 
-        var extra = ReplacePlaceholders(block.Extra, runtime, player).Trim();
+        var extra = ReplaceSpawnBlockScopedPlaceholders(block.Extra, runtime, player, location).Trim();
         if (!string.IsNullOrWhiteSpace(extra))
         {
             command += " " + extra;
         }
 
         return block.UseTriggerPlayer ? EnsureExecAsForTriggerPlayer(command, player) : command;
+    }
+
+    private string BuildCustomSpawnBlockCommand(SpawnBlock block, EventRuntime runtime, ScumPlayer? player, string location)
+    {
+        var command = ReplaceSpawnBlockScopedPlaceholders(block.Asset, runtime, player, location).Trim();
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            return string.Empty;
+        }
+
+        command = EnsureRconCommandPrefix(command);
+        return block.UseTriggerPlayer ? EnsureExecAsForTriggerPlayer(command, player) : command;
+    }
+
+    private static string BuildCargoDropSpawnBlockCommand(SpawnBlock block, ScumPlayer? player, string location)
+    {
+        var worldLocation = FormatWorldEventLocation(location);
+        if (string.IsNullOrWhiteSpace(worldLocation))
+        {
+            return string.Empty;
+        }
+
+        var command = "#ScheduleWorldEvent BP_CargoDropEvent " + worldLocation;
+        return block.UseTriggerPlayer ? EnsureExecAsForTriggerPlayer(command, player) : command;
+    }
+
+    private string ReplaceSpawnBlockScopedPlaceholders(string input, EventRuntime runtime, ScumPlayer? player, string location)
+    {
+        var normalizedLocation = NormalizeLocationKey(location);
+        var worldLocation = FormatWorldEventLocation(normalizedLocation);
+        return ReplacePlaceholders(input ?? string.Empty, runtime, player)
+            .Replace("{location}", normalizedLocation, StringComparison.OrdinalIgnoreCase)
+            .Replace("{spawnLocation}", normalizedLocation, StringComparison.OrdinalIgnoreCase)
+            .Replace("{worldLocation}", worldLocation, StringComparison.OrdinalIgnoreCase)
+            .Replace("{worldEventLocation}", worldLocation, StringComparison.OrdinalIgnoreCase)
+            .Replace("{cargoDropLocation}", worldLocation, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string EnsureRconCommandPrefix(string command)
+    {
+        var trimmed = command.Trim();
+        if (trimmed.StartsWith('#'))
+        {
+            return trimmed;
+        }
+
+        return Regex.IsMatch(trimmed, @"^[A-Za-z]") ? "#" + trimmed : trimmed;
+    }
+
+    private static string FormatWorldEventLocation(string location)
+    {
+        if (string.IsNullOrWhiteSpace(location))
+        {
+            return string.Empty;
+        }
+
+        var coordinatePart = location.Split('|')[0];
+        if (TryReadLocationCoordinate(coordinatePart, "X", out var x) &&
+            TryReadLocationCoordinate(coordinatePart, "Y", out var y) &&
+            TryReadLocationCoordinate(coordinatePart, "Z", out var z))
+        {
+            return "X=" + x.ToString("0.###", CultureInfo.InvariantCulture) +
+                   " Y=" + y.ToString("0.###", CultureInfo.InvariantCulture) +
+                   " Z=" + z.ToString("0.###", CultureInfo.InvariantCulture);
+        }
+
+        var values = Regex.Matches(location, @"-?\d+(?:[\.,]\d+)?")
+            .Cast<Match>()
+            .Select(match => match.Value.Replace(',', '.'))
+            .Take(3)
+            .ToArray();
+        if (values.Length == 3 &&
+            double.TryParse(values[0], NumberStyles.Float, CultureInfo.InvariantCulture, out x) &&
+            double.TryParse(values[1], NumberStyles.Float, CultureInfo.InvariantCulture, out y) &&
+            double.TryParse(values[2], NumberStyles.Float, CultureInfo.InvariantCulture, out z))
+        {
+            return "X=" + x.ToString("0.###", CultureInfo.InvariantCulture) +
+                   " Y=" + y.ToString("0.###", CultureInfo.InvariantCulture) +
+                   " Z=" + z.ToString("0.###", CultureInfo.InvariantCulture);
+        }
+
+        return NormalizeLocationKey(location.Trim().Trim('"'));
+    }
+
+    private static bool TryReadLocationCoordinate(string source, string key, out double value)
+    {
+        value = 0;
+        var match = Regex.Match(source, @"\b" + key + @"\s*=\s*(-?\d+(?:[\.,]\d+)?)", RegexOptions.IgnoreCase);
+        return match.Success &&
+               double.TryParse(match.Groups[1].Value.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out value);
     }
 
     private static string NormalizeSpawnType(string? type)
@@ -934,15 +1363,58 @@ public sealed class EventEngine : IDisposable
         {
             "ArmedNpc" => "ArmedNPC",
             "armednpc" => "ArmedNPC",
-            "npc" => "NPC",
+            "Armed NPC" => "ArmedNPC",
+            "armed npc" => "ArmedNPC",
+            "NPC" => "ArmedNPC",
+            "npc" => "ArmedNPC",
+            "Puppet" => "Zombie",
+            "puppet" => "Zombie",
+            "Puppets" => "Zombie",
+            "puppets" => "Zombie",
+            "RandomZombie" => "RandomZombie",
+            "randomZombie" => "RandomZombie",
+            "randomzombie" => "RandomZombie",
+            "Random Zombie" => "RandomZombie",
+            "random zombie" => "RandomZombie",
+            "Lootpuppet" => "Lootpuppet",
+            "lootpuppet" => "Lootpuppet",
+            "LootPuppet" => "Lootpuppet",
+            "Loot Puppet" => "Lootpuppet",
+            "loot puppet" => "Lootpuppet",
+            "BP_Zombie_Civilian_Skinny_Loot" => "Lootpuppet",
             "Item" => "Item",
             "item" => "Item",
             "Zombie" => "Zombie",
             "zombie" => "Zombie",
             "Vehicle" => "Vehicle",
             "vehicle" => "Vehicle",
+            "Custom" => "Custom",
+            "custom" => "Custom",
+            "Command" => "Custom",
+            "command" => "Custom",
+            "RawCommand" => "Custom",
+            "Raw Command" => "Custom",
+            "CargoDrop" => "CargoDrop",
+            "cargoDrop" => "CargoDrop",
+            "cargodrop" => "CargoDrop",
+            "Cargo Drop" => "CargoDrop",
+            "cargo drop" => "CargoDrop",
+            "ScheduleCargoDrop" => "CargoDrop",
+            "BP_CargoDropEvent" => "CargoDrop",
             _ => value
         };
+    }
+
+    private static bool RequiresSpawnAsset(string type) =>
+        type is "Item" or "ArmedNPC" or "Vehicle";
+
+    private static bool IsRandomZombieAsset(string? asset)
+    {
+        var value = asset?.Trim() ?? string.Empty;
+        return string.IsNullOrWhiteSpace(value) ||
+               value.Equals("Random Zombie", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("RandomZombie", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("Random", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task ExecuteCommandListAsync(IEnumerable<EventCommand> commands, EventRuntime runtime, ScumPlayer? player, CancellationToken cancellationToken)
@@ -1019,6 +1491,9 @@ public sealed class EventEngine : IDisposable
             ["triggerZ"] = zone.CenterZ.ToString("0.###", CultureInfo.InvariantCulture),
             ["triggerRadius"] = zone.Radius.ToString("0.###", CultureInfo.InvariantCulture),
             ["triggerZone"] = FormatLocation(zone.CenterX, zone.CenterY, zone.CenterZ),
+            ["buyPrice"] = Math.Max(0, runtime.Definition.BuyPrice).ToString(CultureInfo.InvariantCulture),
+            ["buyAlias"] = ResolveBuyEventDisplayName(runtime.Definition),
+            ["activationDelayMs"] = Math.Max(0, runtime.Definition.ActivationDelayMs).ToString(CultureInfo.InvariantCulture),
             ["initiatorMessage"] = FirstNonEmpty(runtime.Definition.LocalVariables?.InitiatorMessage, runtime.Definition.Announcement)
         };
 
@@ -1106,9 +1581,10 @@ public sealed class EventEngine : IDisposable
 
         var trimmed = command.Trim();
         return Regex.IsMatch(
-            trimmed,
-            @"^#(SpawnItem|SpawnInventory|SpawnInventoryFullOf|SpawnArmedNPC|SpawnNPC|SpawnZombie|SpawnVehicle)\b",
-            RegexOptions.IgnoreCase);
+                   trimmed,
+                   @"^#(SpawnItem|SpawnInventory|SpawnInventoryFullOf|SpawnArmedNPC|SpawnRandomZombie|SpawnZombie|SpawnRazor|SpawnVehicle|ScheduleCargoDrop)\b",
+                   RegexOptions.IgnoreCase) ||
+               Regex.IsMatch(trimmed, @"^#ScheduleWorldEvent\s+BP_CargoDropEvent\b", RegexOptions.IgnoreCase);
     }
 
     private void MarkRuntime(EventRuntime runtime, string action, string rawCommand)
@@ -1160,4 +1636,18 @@ public sealed class EventRuntime
     public DateTime LastUpdatedUtc { get; set; } = DateTime.MinValue;
 
     public override string ToString() => $"{Definition.Name} - {State}";
+}
+
+public sealed record BuyableEventSummary(
+    string Id,
+    string Name,
+    string DisplayName,
+    int Price,
+    EventRuntimeState State,
+    DateTime CooldownUntilUtc);
+
+public sealed record BuyEventActivationResult(bool Success, string Message, string EventName)
+{
+    public static BuyEventActivationResult Ok(string eventName) => new(true, string.Empty, eventName);
+    public static BuyEventActivationResult Fail(string message) => new(false, message, string.Empty);
 }

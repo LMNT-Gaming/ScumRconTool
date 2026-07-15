@@ -228,8 +228,7 @@ public static class EventDefinitionStore
             return;
         }
 
-        Save(BuildRandomC4BunkerScript());
-        Save(BuildRandomA3CarCrashScript());
+        // Keine Beispiel-Scripts automatisch erzeugen. Der Nutzer legt Scripts explizit an.
     }
 
     private static void MigrateLegacyArrayFile(string path)

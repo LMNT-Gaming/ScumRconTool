@@ -1,6 +1,6 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.0.31903.59
+# Visual Studio Version 18
+VisualStudioVersion = 18.7.11925.98 stable
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ScumRconTool.Wpf", "ScumRconTool.Wpf.csproj", "{87818B19-708D-4C23-8D4F-92147E89AC8F}"
 EndProject
@@ -14,5 +14,11 @@ Global
 		{87818B19-708D-4C23-8D4F-92147E89AC8F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{87818B19-708D-4C23-8D4F-92147E89AC8F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{87818B19-708D-4C23-8D4F-92147E89AC8F}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {108BB9E3-8B5C-4264-8E81-46D040DB89DE}
 	EndGlobalSection
 EndGlobal

@@ -1,3 +1,4 @@
+using System.Net.Http;
 using Discord;
 using Discord.WebSocket;
 using ScumRconTool.Models;
@@ -14,6 +15,7 @@ public sealed class DiscordBridgeService : IAsyncDisposable
     private string _messageType = "Cyan";
     private TaskCompletionSource<bool>? _readyTcs;
     private readonly HashSet<ulong> _legacyStatusCleanupDone = new();
+    private static readonly HttpClient ItemImageClient = new() { Timeout = TimeSpan.FromSeconds(6) };
 
     public DiscordBridgeService(Action<string> log, Action<bool>? connectionChanged = null)
     {
@@ -342,33 +344,65 @@ public sealed class DiscordBridgeService : IAsyncDisposable
         }
 
         var definition = progress.Definition;
-        var progressLine = $"{progress.Progress:N0}/{Math.Max(1, definition.Target):N0} ({progress.Percent:0.0}%)";
+        var perPlayer = string.Equals(definition.GoalScope, "PerPlayer", StringComparison.OrdinalIgnoreCase);
+        var progressLine = perPlayer
+            ? $"{progress.CompletedPlayerCount:N0} Spieler haben das Ziel erreicht\nBester Stand: {progress.Progress:N0}/{Math.Max(1, definition.Target):N0} ({progress.Percent:0.0}%)"
+            : $"{progress.Progress:N0}/{Math.Max(1, definition.Target):N0} ({progress.Percent:0.0}%)";
         var bar = BuildProgressBar(progress.Percent);
         var kind = WeeklyCommunityTaskService.GetTaskKind(definition);
-        var title = string.IsNullOrWhiteSpace(definition.Title) ? kind + " Community Aufgabe" : CleanDiscordName(definition.Title);
-        var discordTitle = kind + " Community Aufgabe: " + title;
-        var description = string.IsNullOrWhiteSpace(definition.Description) ? "Community Aufgabe" : definition.Description.Trim();
-        var reward = string.IsNullOrWhiteSpace(definition.RewardText) ? "Reward wird manuell gesetzt." : definition.RewardText.Trim();
-        var completedText = string.IsNullOrWhiteSpace(definition.CompletedText) ? "Ziel erreicht!" : definition.CompletedText.Trim();
+        var title = string.IsNullOrWhiteSpace(definition.Title) ? kind + " Aufgabe" : CleanDiscordName(definition.Title);
+        var discordTitle = kind + (perPlayer ? " Pro-Spieler-Aufgabe: " : " Community Aufgabe: ") + title;
+        var description = string.IsNullOrWhiteSpace(definition.Description) ? "Challenge" : definition.Description.Trim();
+        var rewardItems = WeeklyRewardItems.GetConfigured(definition);
+        var rewardItemVisuals = await Task.WhenAll(rewardItems.Take(9).Select(async item =>
+        {
+            var url = WeeklyRewardItems.GetIconUrl(item.Item);
+            return (Item: item, Url: url, Available: await IsItemImageAvailableAsync(url));
+        }));
 
-        var squadText = BuildSquadContributionText(progress);
+        var rewardParts = rewardItems.Select(x => "• " + WeeklyRewardItems.Format(x)).ToList();
+        if (definition.RewardMoney > 0) rewardParts.Add($"• {definition.RewardMoney:N0}$ pro Empfaenger");
+        if (!string.IsNullOrWhiteSpace(definition.RewardText)) rewardParts.Add(definition.RewardText.Trim());
+        var reward = Truncate(rewardParts.Count == 0 ? "Reward wird manuell gesetzt." : string.Join("\n", rewardParts), 1024);
+        var completedText = string.IsNullOrWhiteSpace(definition.CompletedText) ? "Ziel erreicht!" : definition.CompletedText.Trim();
 
         var embedBuilder = new EmbedBuilder()
             .WithTitle(discordTitle)
             .WithColor(progress.IsCompleted ? new Color(46, 204, 113) : new Color(241, 196, 15))
             .WithDescription(description)
-            .AddField("Fortschritt", progressLine + "\n" + bar, false)
-            .AddField("Offen", progress.IsCompleted ? "0" : progress.Remaining.ToString("N0"), true)
+            .AddField(perPlayer ? "Individueller Fortschritt" : "Fortschritt", progressLine + "\n" + bar, false)
+            .AddField(perPlayer ? "Ziel pro Spieler" : "Offen", perPlayer ? Math.Max(1, definition.Target).ToString("N0") : (progress.IsCompleted ? "0" : progress.Remaining.ToString("N0")), true)
             .AddField("Reward", reward, true)
             .AddField("Laufzeit", BuildChallengeRuntimeText(progress), false);
 
-        embedBuilder.AddField("Beitrag pro Squad", squadText, false);
+        var firstAvailableImage = rewardItemVisuals.FirstOrDefault(x => x.Available);
+        if (firstAvailableImage.Available)
+        {
+            embedBuilder.WithThumbnailUrl(firstAvailableImage.Url);
+        }
+
+        embedBuilder.AddField(perPlayer ? "Spielerfortschritt" : "Beitrag pro Squad",
+            perPlayer ? BuildPlayerContributionText(progress) : BuildSquadContributionText(progress), false);
 
         var embed = embedBuilder
-            .AddField("Status", progress.IsCompleted ? completedText : "Aktiv", false)
-            .WithFooter($"Typ: {kind} | Stat: {definition.StatColumn} | Startwert: {progress.Baseline.BaselineValue:N0}")
+            .AddField("Status", perPlayer ? $"Aktiv · {progress.CompletedPlayerCount:N0} Spieler abgeschlossen" : (progress.IsCompleted ? completedText : "Aktiv"), false)
+            .WithFooter(perPlayer
+                ? $"Typ: {kind} | Modus: Pro Spieler | Stat: {definition.StatColumn}"
+                : $"Typ: {kind} | Modus: Community | Stat: {definition.StatColumn} | Startwert: {progress.Baseline.BaselineValue:N0}")
             .WithTimestamp(progress.UpdatedUtc)
             .Build();
+
+        var itemEmbeds = rewardItemVisuals
+            .Select(itemVisual =>
+            {
+                var itemEmbed = new EmbedBuilder()
+                    .WithTitle(WeeklyRewardItems.Format(itemVisual.Item))
+                    .WithDescription(itemVisual.Available ? "Item-Reward" : $"Item: **{itemVisual.Item.Item}** (kein Bild verfuegbar)")
+                    .WithColor(new Color(88, 101, 242));
+                if (itemVisual.Available) itemEmbed.WithThumbnailUrl(itemVisual.Url);
+                return itemEmbed.Build();
+            });
+        var embeds = new[] { embed }.Concat(itemEmbeds).ToArray();
 
         var ownMessage = await FindOwnMessageByTitleAsync(channel, discordTitle);
         if (ownMessage is not null)
@@ -376,14 +410,28 @@ public sealed class DiscordBridgeService : IAsyncDisposable
             await ownMessage.ModifyAsync(x =>
             {
                 x.Content = string.Empty;
-                x.Embed = embed;
+                x.Embeds = embeds;
             });
             return;
         }
 
-        await channel.SendMessageAsync(embed: embed);
+        await channel.SendMessageAsync(embeds: embeds);
     }
-
+    private static async Task<bool> IsItemImageAvailableAsync(string url)
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Head, url);
+            request.Headers.TryAddWithoutValidation("User-Agent", "RedRavenRconTool/1.0");
+            using var response = await ItemImageClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+            var mediaType = response.Content.Headers.ContentType?.MediaType ?? string.Empty;
+            return response.IsSuccessStatusCode && mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
     private static string BuildChallengeRuntimeText(WeeklyCommunityTaskProgress progress)
     {
         var configuredStartUtc = WeeklyCommunityTaskService.GetTaskStartUtc(progress.Definition);
@@ -427,6 +475,25 @@ public sealed class DiscordBridgeService : IAsyncDisposable
         return $"{Math.Max(0, value.Minutes)}m";
     }
 
+    private static string BuildPlayerContributionText(WeeklyCommunityTaskProgress progress)
+    {
+        if (progress.PlayerProgress.Count == 0)
+        {
+            return "Noch keine Spielerstatistiken seit dem Startwert gefunden.";
+        }
+
+        var lines = progress.PlayerProgress
+            .Take(10)
+            .Select(player => $"{(player.IsCompleted ? "✅" : "▫️")} **{CleanDiscordName(player.PlayerName)}**: {player.Progress:N0}/{Math.Max(1, progress.Definition.Target):N0}")
+            .ToList();
+        if (progress.PlayerProgress.Count > 10)
+        {
+            lines.Add($"Weitere Spieler: {progress.PlayerProgress.Count - 10:N0}");
+        }
+
+        var text = string.Join("\n", lines);
+        return text.Length <= 1024 ? text : text[..1020] + "...";
+    }
     private static string BuildSquadContributionText(WeeklyCommunityTaskProgress progress)
     {
         if (progress.SquadProgress.Count == 0)

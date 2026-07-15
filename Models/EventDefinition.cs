@@ -10,8 +10,10 @@ public sealed class EventDefinition
     public string Name { get; set; } = "Script";
     public bool Enabled { get; set; } = true;
 
-    // RandomAnnouncedZone: Randomizer initiiert Script, dann wartet es auf Spieler in Zone.
+    // RandomAnnouncedZone/Random: Randomizer initiiert Script, dann wartet es auf Spieler in Zone.
     // SilentZone: Script ist dauerhaft scharf, wartet still auf Spieler in Zone.
+    // Buyzone: Script kann per /buyevent gekauft werden und geht direkt live.
+    // RandomActivated: prueft zufaellig belegte Zonen und startet mit Chance direkt.
     // DirectLive: Script wird bei Initiierung direkt live geschaltet.
     public string Mode { get; set; } = "RandomAnnouncedZone";
     public bool IncludeInRandomizer { get; set; } = true;
@@ -26,16 +28,37 @@ public sealed class EventDefinition
     // 0 = kein Limit. Das kleinste positive Limit aller aktivierten Random-Scripts gewinnt.
     public int MaxConcurrentRandomEvents { get; set; } = 1;
 
+    // RandomActivated: Chance pro Faelligkeit, wenn aktuell mindestens ein Spieler
+    // in der Aktivierzone steht. 100 = immer aktivieren.
+    public int RandomActivationChancePercent { get; set; } = 25;
+
     // Optional: Scripts mit derselben Gruppe blockieren sich gegenseitig.
     // Beispiel: Sector-Z-Unterzonen koennen alle eventGroup="sector_z" nutzen,
     // damit nicht mehrere ueberlappende Zonen gleichzeitig live gehen.
     public string EventGroup { get; set; } = "";
     public int MaxConcurrentInGroup { get; set; } = 0;
 
-    // Loot-Auswahl:
+    // Buyzone: Preis und optionaler Alias fuer /buyevent <name>.
+    // BuyAlias leer = Name oder Id werden als Kaufname genutzt.
+    public int BuyPrice { get; set; } = 0;
+    public string BuyAlias { get; set; } = "";
+
+    // Optionaler Trigger-Timer zwischen Aktivierung und Liveblock/Spawns/Loot.
+    // Wird in Millisekunden gespeichert, damit kurze Event-Takte moeglich sind.
+    public int ActivationDelayMs { get; set; } = 0;
+
+    // Nachricht beim eigentlichen Trigger/Live-Start, getrennt von der Initiierung.
+    public string TriggerServerMessageType { get; set; } = "Yellow";
+    public string TriggerServerMessage { get; set; } = "";
+
+    // Loot-Ausfuehrung im Script:
     // OneTotal/Single = genau ein Pack insgesamt.
-    // OnePerLocation = je Location genau ein Pack aus den Packs dieser Location.
+    // OnePerLocation = je Lootpunkt genau ein Pack.
     public string LootPackSpawnMode { get; set; } = "OneTotal";
+
+    // Namen aus der globalen Lootpack-Bibliothek Data/lootpacks.json.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<string>? LootPackNames { get; set; }
 
     // Backward-compatible Felder aus Phase 2.
     public int AnnounceEveryMinutes { get; set; } = 360;
@@ -58,12 +81,13 @@ public sealed class EventDefinition
     // nach dem LiveBlock ausgefuehrt und koennen optional wiederholt laufen.
     public List<SpawnBlock> SpawnBlocks { get; set; } = new();
 
-    // Optional: pro Live-Start wird genau ein LootPack zufaellig gewaehlt und als einzelne #SpawnItem-Commands gespawnt.
-    public List<LootPack> LootPacks { get; set; } = new();
+    // Legacy: frueher waren Lootpacks direkt im Script gespeichert.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<LootPack>? LootPacks { get; set; }
 
-    // Optional: pro Live-Start wird genau ein kompletter Loot-Command zufaellig gewaehlt.
-    // Gedacht fuer Befehle wie #SpawnInventoryFullOf ..., bei denen der Inhalt komplett im Command steckt.
-    public List<LootCommandPack> LootCommandPacks { get; set; } = new();
+    // Legacy: frueher konnten komplette Loot-Commands im Script liegen.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<LootCommandPack>? LootCommandPacks { get; set; }
 
     public ScriptBlock EmptyBlock { get; set; } = new();
 
@@ -161,7 +185,7 @@ public sealed class SpawnBlock
     public string Name { get; set; } = "Spawn";
     public bool Enabled { get; set; } = true;
 
-    // Item, ArmedNPC, NPC, Zombie oder Vehicle.
+    // Zombie, ArmedNPC, Vehicle, Item, Custom oder CargoDrop.
     public string Type { get; set; } = "ArmedNPC";
     public string Asset { get; set; } = "BP_Guard_Lvl_1";
     public int Quantity { get; set; } = 1;
@@ -174,8 +198,10 @@ public sealed class SpawnBlock
     // StartDelaySeconds verzoegert den ersten Spawn. RepeatEverySeconds ist
     // der Abstand zwischen Wiederholungen, falls Repeat > 1.
     public int StartDelaySeconds { get; set; } = 0;
+    public int StartDelayMs { get; set; } = 0;
     public int Repeat { get; set; } = 1;
     public int RepeatEverySeconds { get; set; } = 0;
+    public int RepeatEveryMs { get; set; } = 0;
     public int DelayMs { get; set; } = 250;
     public bool UseTriggerPlayer { get; set; } = true;
 }
@@ -188,9 +214,10 @@ public sealed class LootPack
     // Gewicht fuer die Zufallsauswahl. 1 = normal, 2 = doppelt so wahrscheinlich.
     public int Weight { get; set; } = 1;
 
-    // SCUM Location-String ohne extra Quotes, z. B.:
-    // [{X=577961.125 Y=115021.242 Z=5877.507|P=296.218018 Y=230.051529 R=0.000000}]
-    public string Location { get; set; } = "";
+    // Legacy-Kompatibilitaet: neue Lootpacks sind nur Item-Sammlungen.
+    // Spawnorte liegen in LocalVariables.LootSpawnLocations.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Location { get; set; }
 
     public List<LootItem> Items { get; set; } = new();
 }

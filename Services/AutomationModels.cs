@@ -32,11 +32,24 @@ public sealed class ChatAutomationRule
     public bool RequireSteamIdForExecas { get; set; } = true;
 }
 
+public sealed class RedeemCodeRule
+{
+    public bool Enabled { get; set; } = true;
+    public string Code { get; set; } = string.Empty;
+    public string Command { get; set; } = string.Empty;
+    public string Response { get; set; } = string.Empty;
+    public bool ExecuteAsChatPlayer { get; set; } = true;
+    public int DelaySeconds { get; set; }
+    public int MaxUses { get; set; } = 1;
+    public int Uses { get; set; }
+}
+
 public sealed class JoinAutomationRule
 {
     public bool Enabled { get; set; } = true;
     public int DelaySeconds { get; set; } = 300;
     public string Command { get; set; } = string.Empty;
+    public string TargetSteamId { get; set; } = string.Empty;
     public bool OnlyOncePerSession { get; set; } = true;
     public int CooldownSeconds { get; set; } = 300;
 
@@ -201,6 +214,17 @@ public static partial class AutomationLogParser
     public static string BuildGlobalChatCooldownKey(ChatAutomationRule rule)
     {
         return $"global-safety|{rule.Trigger}|{rule.MatchMode}|{rule.Command}|{rule.Response}";
+    }
+
+    public static bool IsJoinTargetMatch(JoinAutomationRule rule, PlayerJoinEvent join)
+    {
+        var target = (rule.TargetSteamId ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(target)) return true;
+        if (string.IsNullOrWhiteSpace(join.SteamId)) return false;
+
+        return Regex.Split(target, @"[\s,;]+")
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Any(x => string.Equals(x.Trim(), join.SteamId.Trim(), StringComparison.OrdinalIgnoreCase));
     }
 
     public static bool TryBuildChatCommand(ChatAutomationRule rule, ChatLogMessage message, out string command, out string error)

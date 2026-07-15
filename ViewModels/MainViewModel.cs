@@ -5,10 +5,12 @@ using ScumRconTool.Services;
 using ScumRconTool.Models;
 using System.IO;
 using System.Diagnostics;
+using System.Globalization;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Runtime.CompilerServices;
+using ScumRconTool.Views;
 
 namespace ScumRconTool.ViewModels;
 
@@ -22,12 +24,18 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private KillFeedAutomationService? _killFeed;
     private WeeklyCommunityTaskService? _weeklyTasks;
     private AutoMessageService? _autoMessages;
+    private readonly UsageDirectoryService _usageDirectory = new();
+    private bool _usageDirectoryEnabledAtLastSave;
     private EventEngine? _eventEngine;
     private CancellationTokenSource? _discordServerStatusMessageCts;
+    private CancellationTokenSource? _playerStatusCts;
     private readonly SemaphoreSlim _discordStartLock = new(1, 1);
     private bool _discordServerStatusMessageLoopStarted;
     private bool _chatForwarderRequested;
     private readonly SemaphoreSlim _playerScanLock = new(1, 1);
+    private readonly SemaphoreSlim _weeklyRewardClaimLock = new(1, 1);
+    private readonly SemaphoreSlim _weeklyRewardNotificationLock = new(1, 1);
+    private readonly WeeklyRewardStore _weeklyRewardStore = new();
     private List<ScumPlayer> _cachedPlayers = new();
     private DateTime _cachedPlayersUtc = DateTime.MinValue;
     private readonly TimeSpan _playerCacheDuration = TimeSpan.FromSeconds(25);
@@ -39,21 +47,62 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public ObservableCollection<ScriptRuntimeStatusViewModel> ScriptRuntimeStatuses { get; } = new();
     public ObservableCollection<ScriptZoneMapItemViewModel> ScriptZoneMapItems { get; } = new();
     public ObservableCollection<ChatCommandRuleEditorViewModel> ChatCommandRules { get; } = new();
+    public ObservableCollection<RedeemCodeEditorViewModel> RedeemCodeRules { get; } = new();
     public ObservableCollection<JoinCommandRuleEditorViewModel> JoinCommandRules { get; } = new();
     public ObservableCollection<AutoMessageEditorViewModel> AutoMessageEditors { get; } = new();
+    public ObservableCollection<LootPackEditorViewModel> GlobalLootPacks { get; } = new();
     public IReadOnlyList<string> ChatMatchModes { get; } = new[] { "equals", "startswith", "contains", "regex" };
     public IReadOnlyList<string> ChatCooldownScopes { get; } = new[] { "player", "global" };
     public IReadOnlyList<string> ScumCommandSuggestions { get; } = ScumCommandCatalog.Commands;
+    public IReadOnlyList<string> LootItemSuggestions { get; } = new[]
+    {
+        "Weapon_SKS",
+        "Magazine_Clip_SKS",
+        "Cal_7_62x39mm_Ammobox",
+        "Copper_Coins",
+        "MRE_Stew",
+        "Bandage",
+        "Emergency_Bandage",
+        "Painkillers",
+        "Screwdriver",
+        "Lockpick",
+        "Advanced_Lockpick",
+        "Fireplace",
+        "Tent",
+        "Improved_Wooden_Chest"
+    };
     public IReadOnlyList<string> BroadcastMessageTypes { get; } = new[] { "Yellow", "White", "Cyan", "Green", "Red", "ServerMessage", "Error" };
     public IReadOnlyList<string> AutoMessageModes { get; } = new[] { "Queue", "Standalone" };
     public IReadOnlyList<string> AutoMessageTypes { get; } = new[] { "Text", "Challenges" };
-    public IReadOnlyList<string> ScriptModes { get; } = new[] { "RandomAnnouncedZone", "SilentZone", "DirectLive" };
-    public IReadOnlyList<string> SpawnBlockTypes { get; } = new[] { "ArmedNPC", "NPC", "Zombie", "Vehicle", "Item" };
-    public IReadOnlyList<string> LootSpawnModes { get; } = new[] { "OneTotal", "OnePerLocation" };
+    public IReadOnlyList<string> ScriptModes { get; } = new[] { "Random", "SilentZone", "Buyzone", "RandomActivated", "DirectLive", "RandomAnnouncedZone" };
+    public IReadOnlyList<string> SpawnBlockTypes { get; } = new[] { "Zombie", "Random Zombie", "Lootpuppet", "Item", "Custom", "CargoDrop", "ArmedNPC", "Vehicle" };
+    public IReadOnlyList<LootSpawnModeOption> LootSpawnModeOptions { get; } = new[]
+    {
+        new LootSpawnModeOption("OneTotal", "Ein Lootpack insgesamt"),
+        new LootSpawnModeOption("OnePerLocation", "Ein Lootpack je Lootpunkt")
+    };
     public IReadOnlyList<WeeklyCommunityTaskStatTarget> WeeklyTaskStatTargets { get; } = WeeklyCommunityTaskService.AvailableStatTargets;
 
     public ObservableCollection<WeeklyTaskEditorViewModel> WeeklyTaskEditors { get; } = new();
+    public ObservableCollection<WeeklySquadOverviewViewModel> WeeklySquadOverview { get; } = new();
+    public ObservableCollection<WeeklyRewardClaimViewModel> WeeklyRewardClaims { get; } = new();
+    public IReadOnlyList<string> WeeklyRewardModes { get; } = new[] { "FreeText", "Item" };
+    public IReadOnlyList<string> WeeklyRewardDistributions { get; } = new[] { "PerParticipant", "PerSquad" };
+    public IReadOnlyList<string> WeeklyGoalScopes { get; } = new[] { "Community", "PerPlayer" };
 
+    private string _weeklyRewardStatus = "Squads und Rewards wurden noch nicht geladen.";
+    public string WeeklyRewardStatus
+    {
+        get => _weeklyRewardStatus;
+        set => SetProperty(ref _weeklyRewardStatus, value);
+    }
+
+    private string _usageDirectoryStatus = "LMNT Serverliste: noch keine Entscheidung fuer diese Version.";
+    public string UsageDirectoryStatus
+    {
+        get => _usageDirectoryStatus;
+        set => SetProperty(ref _usageDirectoryStatus, value);
+    }
     private WeeklyTaskEditorViewModel? _selectedWeeklyTaskEditor;
     public WeeklyTaskEditorViewModel? SelectedWeeklyTaskEditor
     {
@@ -95,7 +144,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         set { }
     }
 
-    private string _scriptRuntimeSummary = "Script Engine nicht gestartet.";
+    private string _scriptRuntimeSummary = string.Empty;
     public string ScriptRuntimeSummary
     {
         get => _scriptRuntimeSummary;
@@ -150,7 +199,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    private string _scriptValidation = "Noch nicht validiert.";
+    private string _scriptValidation = string.Empty;
     public string ScriptValidation
     {
         get => _scriptValidation;
@@ -171,8 +220,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
     public string ScriptDirtyStatus => ScriptHasUnsavedChanges
-        ? "Ungespeicherte Aenderungen im geladenen Script."
-        : "Script-Ansicht ist gespeichert.";
+        ? T("ScriptUnsavedChanges")
+        : T("ScriptViewSaved");
 
     private string _rconCommand = "#ListPlayersJson";
     public string RconCommand
@@ -193,6 +242,13 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     {
         get => _rconConnected;
         set => SetProperty(ref _rconConnected, value);
+    }
+
+    private string _currentPlayersStatus = "-/-";
+    public string CurrentPlayersStatus
+    {
+        get => _currentPlayersStatus;
+        set => SetProperty(ref _currentPlayersStatus, value);
     }
 
     private bool _discordConnected;
@@ -237,11 +293,29 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         set => SetProperty(ref _weeklyTasksRunning, value);
     }
 
-    private string _weeklyTaskStatus = "Weekly Tasks nicht gestartet.";
+    private string _weeklyTaskStatus = string.Empty;
     public string WeeklyTaskStatus
     {
         get => _weeklyTaskStatus;
         set => SetProperty(ref _weeklyTaskStatus, value);
+    }
+
+    private bool _weeklyTaskScanInProgress;
+    public bool WeeklyTaskScanInProgress
+    {
+        get => _weeklyTaskScanInProgress;
+        private set
+        {
+            if (SetProperty(ref _weeklyTaskScanInProgress, value)) OnPropertyChanged(nameof(WeeklyTaskScanButtonEnabled));
+        }
+    }
+    public bool WeeklyTaskScanButtonEnabled => !WeeklyTaskScanInProgress;
+
+    private string _weeklyTaskNextScanText = "Naechster Scan: nicht geplant";
+    public string WeeklyTaskNextScanText
+    {
+        get => _weeklyTaskNextScanText;
+        private set => SetProperty(ref _weeklyTaskNextScanText, value);
     }
 
     private WeeklyCommunityTaskProgress? _weeklyTaskProgress;
@@ -260,7 +334,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         set => SetProperty(ref _autoMessagesRunning, value);
     }
 
-    private string _autoMessageStatus = "Auto Messages nicht gestartet.";
+    private string _autoMessageStatus = string.Empty;
     public string AutoMessageStatus
     {
         get => _autoMessageStatus;
@@ -281,14 +355,14 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         set => SetProperty(ref _versionText, value);
     }
 
-    private string _updateStatusText = "Update: noch nicht geprueft";
+    private string _updateStatusText = string.Empty;
     public string UpdateStatusText
     {
         get => _updateStatusText;
         set => SetProperty(ref _updateStatusText, value);
     }
 
-    private string _updateButtonText = "Update pruefen";
+    private string _updateButtonText = string.Empty;
     public string UpdateButtonText
     {
         get => _updateButtonText;
@@ -319,6 +393,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public ICommand InsertDefaultChatCommandsCommand { get; }
     public ICommand AddChatCommandRuleCommand { get; }
     public ICommand RemoveChatCommandRuleCommand { get; }
+    public ICommand InsertDefaultRedeemCodesCommand { get; }
+    public ICommand AddRedeemCodeCommand { get; }
+    public ICommand RemoveRedeemCodeCommand { get; }
     public ICommand StartJoinCommandsCommand { get; }
     public ICommand StopJoinCommandsCommand { get; }
     public ICommand ScanJoinCommandsCommand { get; }
@@ -340,6 +417,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public ICommand DeleteWeeklyTaskEditorCommand { get; }
     public ICommand ApplyWeeklyTaskEditorCommand { get; }
     public ICommand ReloadWeeklyTaskEditorCommand { get; }
+    public ICommand AddWeeklyRewardItemCommand { get; }
+    public ICommand RemoveWeeklyRewardItemCommand { get; }
+    public ICommand AcknowledgeWeeklyRewardCommand { get; }
     public ICommand StartAutoMessagesCommand { get; }
     public ICommand StopAutoMessagesCommand { get; }
     public ICommand SendAutoMessageNowCommand { get; }
@@ -363,25 +443,35 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     public ICommand RemoveSpawnBlockCommand { get; }
     public ICommand AddLootLocationVariableCommand { get; }
     public ICommand AddNpcLocationVariableCommand { get; }
+    public ICommand PasteLocationVariableFromClipboardCommand { get; }
     public ICommand RemoveLocationVariableCommand { get; }
     public ICommand AddLootPackCommand { get; }
     public ICommand RemoveLootPackCommand { get; }
+    public ICommand AddGlobalLootPackCommand { get; }
+    public ICommand RemoveGlobalLootPackCommand { get; }
+    public ICommand SaveGlobalLootPacksCommand { get; }
     public ICommand AddLootItemCommand { get; }
     public ICommand RemoveLootItemCommand { get; }
+    public ICommand AddGlobalLootItemCommand { get; }
+    public ICommand RemoveGlobalLootItemCommand { get; }
     public ICommand AddLootCommandPackCommand { get; }
     public ICommand RemoveLootCommandPackCommand { get; }
+    public ICommand AddLootCleanupCommandsCommand { get; }
     public ICommand ClearLogCommand { get; }
     public ICommand OpenLogFolderCommand { get; }
     public ICommand CheckForUpdatesCommand { get; }
     public ICommand OpenUpdateDownloadCommand { get; }
     public ICommand OpenGgconDocsCommand { get; }
+    public ICommand OpenUsageDirectorySourceCommand { get; }
     public ICommand SwitchLanguageCommand { get; }
 
     public MainViewModel()
     {
         Texts = new UiTextProvider(Settings.UiLanguage);
+        CurrentPlayersStatus = $"-/{GetConfiguredMaxPlayers()}";
+        ApplyLocalizedInitialStatusTexts();
         UpdateButtonText = Texts["CheckUpdate"];
-        SaveSettingsCommand = new RelayCommand(_ => SaveSettings());
+        SaveSettingsCommand = new RelayCommand(async _ => await SaveSettingsAsync());
         ConnectRconCommand = new RelayCommand(async _ => await ConnectRconAsync());
         SendRconCommand = new RelayCommand(async _ => await SendRconAsync());
         StartDiscordCommand = new RelayCommand(async _ => await StartDiscordAsync());
@@ -395,6 +485,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         InsertDefaultChatCommandsCommand = new RelayCommand(_ => InsertDefaultChatCommands());
         AddChatCommandRuleCommand = new RelayCommand(_ => AddChatCommandRule());
         RemoveChatCommandRuleCommand = new RelayCommand(rule => RemoveChatCommandRule(rule as ChatCommandRuleEditorViewModel));
+        InsertDefaultRedeemCodesCommand = new RelayCommand(_ => InsertDefaultRedeemCodes());
+        AddRedeemCodeCommand = new RelayCommand(_ => AddRedeemCode());
+        RemoveRedeemCodeCommand = new RelayCommand(rule => RemoveRedeemCode(rule as RedeemCodeEditorViewModel));
         StartJoinCommandsCommand = new RelayCommand(async _ => await StartJoinCommandsAsync());
         StopJoinCommandsCommand = new RelayCommand(_ => StopJoinCommands());
         ScanJoinCommandsCommand = new RelayCommand(async _ => await ScanJoinCommandsOnceAsync());
@@ -416,6 +509,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         DeleteWeeklyTaskEditorCommand = new RelayCommand(parameter => DeleteWeeklyTaskEditor(parameter as WeeklyTaskEditorViewModel));
         ApplyWeeklyTaskEditorCommand = new RelayCommand(_ => ApplyWeeklyTaskEditorToJson());
         ReloadWeeklyTaskEditorCommand = new RelayCommand(_ => LoadWeeklyTaskEditorsFromSettings());
+        AddWeeklyRewardItemCommand = new RelayCommand(task => AddWeeklyRewardItem(task as WeeklyTaskEditorViewModel));
+        RemoveWeeklyRewardItemCommand = new RelayCommand(item => RemoveWeeklyRewardItem(item as WeeklyRewardItemEditorViewModel));
+        AcknowledgeWeeklyRewardCommand = new RelayCommand(claim => AcknowledgeWeeklyReward(claim as WeeklyRewardClaimViewModel));
         StartAutoMessagesCommand = new RelayCommand(async _ => await StartAutoMessagesAsync());
         StopAutoMessagesCommand = new RelayCommand(_ => StopAutoMessages());
         SendAutoMessageNowCommand = new RelayCommand(async _ => await SendAutoMessageNowAsync());
@@ -439,29 +535,58 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         RemoveSpawnBlockCommand = new RelayCommand(block => RemoveSpawnBlock(block as SpawnBlockEditorViewModel));
         AddLootLocationVariableCommand = new RelayCommand(_ => AddLootLocationVariable());
         AddNpcLocationVariableCommand = new RelayCommand(_ => AddNpcLocationVariable());
+        PasteLocationVariableFromClipboardCommand = new RelayCommand(location => PasteLocationVariableFromClipboard(location as ScriptLocationVariableEditorViewModel));
         RemoveLocationVariableCommand = new RelayCommand(location => RemoveLocationVariable(location as ScriptLocationVariableEditorViewModel));
-        AddLootPackCommand = new RelayCommand(_ => AddLootPack());
-        RemoveLootPackCommand = new RelayCommand(pack => RemoveLootPack(pack as LootPackEditorViewModel));
+        AddLootPackCommand = new RelayCommand(_ => AddLootPackReference());
+        RemoveLootPackCommand = new RelayCommand(pack => RemoveLootPackReference(pack as string));
+        AddGlobalLootPackCommand = new RelayCommand(_ => AddGlobalLootPack());
+        RemoveGlobalLootPackCommand = new RelayCommand(pack => RemoveGlobalLootPack(pack as LootPackEditorViewModel));
+        SaveGlobalLootPacksCommand = new RelayCommand(_ => SaveGlobalLootPacks());
         AddLootItemCommand = new RelayCommand(pack => AddLootItem(pack as LootPackEditorViewModel));
         RemoveLootItemCommand = new RelayCommand(item => RemoveLootItem(item as LootItemEditorViewModel));
+        AddGlobalLootItemCommand = new RelayCommand(pack => AddGlobalLootItem(pack as LootPackEditorViewModel));
+        RemoveGlobalLootItemCommand = new RelayCommand(item => RemoveGlobalLootItem(item as LootItemEditorViewModel));
         AddLootCommandPackCommand = new RelayCommand(_ => AddLootCommandPack());
         RemoveLootCommandPackCommand = new RelayCommand(pack => RemoveLootCommandPack(pack as LootCommandPackEditorViewModel));
+        AddLootCleanupCommandsCommand = new RelayCommand(_ => AddLootCleanupCommands());
         ClearLogCommand = new RelayCommand(_ => ClearLog());
         OpenLogFolderCommand = new RelayCommand(_ => OpenLogFolder());
         CheckForUpdatesCommand = new RelayCommand(async _ => await CheckForUpdatesAsync(showMessage: true));
         OpenUpdateDownloadCommand = new RelayCommand(_ => OpenUpdateDownload());
         OpenGgconDocsCommand = new RelayCommand(_ => OpenGgconDocs());
+        OpenUsageDirectorySourceCommand = new RelayCommand(_ => OpenUsageDirectorySource());
         SwitchLanguageCommand = new RelayCommand(_ => SwitchLanguage());
 
         EnsureLogDirectory();
         EnsureLocalLogDirectories();
+        LoadGlobalLootPacks();
         RefreshScripts();
         LoadChatCommandRulesFromSettings();
+        LoadRedeemCodesFromSettings();
         LoadJoinCommandRulesFromSettings();
         LoadWeeklyTaskEditorsFromSettings();
+        ClearInactiveWeeklyRewardCodes();
+        RefreshWeeklyRewardClaims();
         LoadAutoMessageEditorsFromSettings();
+        _usageDirectoryEnabledAtLastSave = Settings.UsageDirectoryEnabled;
         Log("Red Raven Rcon Tool geladen. Logdatei: " + LogFilePath);
     }
+
+    private void ApplyLocalizedInitialStatusTexts()
+    {
+        ScriptRuntimeSummary = T("ScriptEngineNotStarted");
+        ScriptValidation = T("ScriptNotValidated");
+        WeeklyTaskStatus = T("WeeklyTasksNotStarted");
+        AutoMessageStatus = T("AutoMessagesNotStarted");
+        UpdateStatusText = T("UpdateNotChecked");
+        UsageDirectoryStatus = Settings.UsageDirectoryEnabled ? T("UsageDirectoryStatusEnabled") : T("UsageDirectoryStatusDisabled");
+        OnPropertyChanged(nameof(ScriptDirtyStatus));
+    }
+
+    private string T(string key) => Texts[key];
+
+    private string Tf(string key, params object[] args) =>
+        string.Format(CultureInfo.CurrentCulture, Texts[key], args);
 
 
     public async Task CheckForUpdatesAsync(bool showMessage = false, bool silentIfCurrent = false, CancellationToken cancellationToken = default)
@@ -474,7 +599,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             {
                 UpdateAvailable = false;
                 UpdateButtonText = Texts["CheckUpdate"];
-                UpdateStatusText = "Update: keine Update-URL konfiguriert";
+                UpdateStatusText = T("UpdateNoUrl");
                 if (showMessage && !silentIfCurrent)
                 {
                     MessageBox.Show("Keine Update-URL konfiguriert.", "Red Raven Rcon Tool Update", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -482,7 +607,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 return;
             }
 
-            UpdateStatusText = "Update: pruefe...";
+            UpdateStatusText = T("UpdateChecking");
             var updater = new UpdateService();
             var latest = await updater.GetLatestAsync(Settings.UpdateLatestJsonUrl, cancellationToken);
 
@@ -490,7 +615,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             {
                 UpdateAvailable = false;
                 UpdateButtonText = Texts["CheckUpdate"];
-                UpdateStatusText = "Update: keine gueltige Antwort";
+                UpdateStatusText = T("UpdateInvalidResponse");
                 if (showMessage && !silentIfCurrent)
                 {
                     MessageBox.Show("Update-Check lieferte keine gueltige Antwort.", "Red Raven Rcon Tool Update", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -505,7 +630,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             {
                 UpdateAvailable = false;
                 UpdateButtonText = Texts["CheckUpdate"];
-                UpdateStatusText = $"Update: aktuell ({UpdateService.GetCurrentVersionText()})";
+                UpdateStatusText = Tf("UpdateCurrentFormat", UpdateService.GetCurrentVersionText());
                 if (showMessage && !silentIfCurrent)
                 {
                     MessageBox.Show($"Du nutzt bereits die aktuelle Version {UpdateService.GetCurrentVersionText()}.", "Red Raven Rcon Tool Update", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -516,8 +641,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             UpdateAvailable = true;
             UpdateButtonText = Texts["DownloadUpdate"];
             UpdateStatusText = latest.mandatory
-                ? $"Pflichtupdate verfuegbar: v{latest.version}"
-                : $"Update verfuegbar: v{latest.version}";
+                ? Tf("UpdateMandatoryAvailableFormat", latest.version)
+                : Tf("UpdateAvailableFormat", latest.version);
             Log(UpdateStatusText);
 
             if (showMessage)
@@ -538,7 +663,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             UpdateAvailable = false;
             UpdateButtonText = Texts["CheckUpdate"];
-            UpdateStatusText = "Update: Pruefung fehlgeschlagen";
+            UpdateStatusText = T("UpdateCheckFailed");
             Log("Update-Check Fehler: " + ex.Message);
 
             if (showMessage && !silentIfCurrent)
@@ -574,25 +699,137 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         });
     }
 
+    private static void OpenUsageDirectorySource()
+    {
+        Process.Start(new ProcessStartInfo("https://github.com/LMNT-Gaming/ScumRconTool")
+        {
+            UseShellExecute = true
+        });
+    }
     private void SwitchLanguage()
     {
         Texts.Toggle();
         Settings.UiLanguage = Texts.Language;
         SettingsStore.SaveUiLanguage(Settings.UiLanguage);
         UpdateButtonText = UpdateAvailable ? Texts["DownloadUpdate"] : Texts["CheckUpdate"];
+        if (!UpdateAvailable && UpdateStatusText is not null && UpdateStatusText.StartsWith("Update:", StringComparison.OrdinalIgnoreCase))
+        {
+            UpdateStatusText = T("UpdateNotChecked");
+        }
+
+        if (!ScriptEngineRunning)
+        {
+            ScriptRuntimeSummary = T("ScriptEngineNotStarted");
+        }
+        else
+        {
+            RefreshScriptRuntimeStatuses();
+        }
+
+        if (!WeeklyTasksRunning && WeeklyTaskProgress is null)
+        {
+            WeeklyTaskStatus = T("WeeklyTasksNotStarted");
+        }
+
+        if (!AutoMessagesRunning)
+        {
+            AutoMessageStatus = T("AutoMessagesNotStarted");
+        }
+
+        if (!ScriptHasUnsavedChanges && (ScriptValidation.Contains("validiert", StringComparison.OrdinalIgnoreCase) || ScriptValidation.Contains("validated", StringComparison.OrdinalIgnoreCase)))
+        {
+            ScriptValidation = T("ScriptNotValidated");
+        }
+
+        OnPropertyChanged(nameof(ScriptDirtyStatus));
+        UsageDirectoryStatus = Settings.UsageDirectoryEnabled ? T("UsageDirectoryStatusEnabled") : T("UsageDirectoryStatusDisabled");
         Log(Texts.IsGerman ? "Sprache auf Deutsch umgestellt." : "Language switched to English.");
     }
 
-    private void SaveSettings()
+    public async Task InitializeUsageDirectoryAsync(CancellationToken cancellationToken = default)
     {
+        var currentVersion = UpdateService.GetCurrentVersionText();
+        var needsConsent = !string.Equals(Settings.UsageDirectoryConsentVersion, currentVersion, StringComparison.OrdinalIgnoreCase);
+        if (needsConsent)
+        {
+            var wasEnabled = Settings.UsageDirectoryEnabled;
+            var accepted = UsageDirectoryConsentDialog.ShowConsent(Texts.IsGerman);
+
+            Settings.UsageDirectoryConsentVersion = currentVersion;
+            Settings.UsageDirectoryEnabled = accepted;
+            if (Settings.UsageDirectoryEnabled)
+            {
+                UsageDirectoryService.EnsureIdentity(Settings);
+                Settings.UsageDirectoryConsentUtc = DateTime.UtcNow.ToString("O");
+                Settings.UsageDirectoryRemovalPending = false;
+            }
+            else if (wasEnabled)
+            {
+                Settings.UsageDirectoryRemovalPending = true;
+            }
+            SettingsStore.Save(Settings);
+        }
+
+        if (Settings.UsageDirectoryEnabled)
+        {
+            UsageDirectoryService.EnsureIdentity(Settings);
+            Settings.UsageDirectoryRemovalPending = false;
+            SettingsStore.Save(Settings);
+            _usageDirectory.Start(Settings, currentVersion, Log);
+            UsageDirectoryStatus = T("UsageDirectoryStatusEnabled");
+        }
+        else
+        {
+            _usageDirectory.Stop();
+            if (Settings.UsageDirectoryRemovalPending)
+            {
+                Settings.UsageDirectoryRemovalPending = !await _usageDirectory.RemoveAsync(Settings, cancellationToken);
+                SettingsStore.Save(Settings);
+            }
+            UsageDirectoryStatus = T("UsageDirectoryStatusDisabled");
+        }
+
+        _usageDirectoryEnabledAtLastSave = Settings.UsageDirectoryEnabled;
+    }
+
+    private async Task SaveSettingsAsync()
+    {
+        var wasEnabled = _usageDirectoryEnabledAtLastSave;
         SyncChatCommandRulesToSettings();
+        SyncRedeemCodesToSettings();
         SyncJoinCommandRulesToSettings();
         SyncWeeklyTaskEditorsToSettings();
         SyncAutoMessageEditorsToSettings();
         SettingsStore.Save(Settings);
+
+        if (Settings.UsageDirectoryEnabled)
+        {
+            if (!wasEnabled)
+            {
+                Settings.UsageDirectoryConsentVersion = UpdateService.GetCurrentVersionText();
+                Settings.UsageDirectoryConsentUtc = DateTime.UtcNow.ToString("O");
+            }
+            UsageDirectoryService.EnsureIdentity(Settings);
+            Settings.UsageDirectoryRemovalPending = false;
+            SettingsStore.Save(Settings);
+            _usageDirectory.Start(Settings, UpdateService.GetCurrentVersionText(), Log);
+            UsageDirectoryStatus = T("UsageDirectoryStatusEnabled");
+        }
+        else
+        {
+            _usageDirectory.Stop();
+            if (wasEnabled) Settings.UsageDirectoryRemovalPending = true;
+            if (Settings.UsageDirectoryRemovalPending)
+            {
+                Settings.UsageDirectoryRemovalPending = !await _usageDirectory.RemoveAsync(Settings);
+                SettingsStore.Save(Settings);
+            }
+            UsageDirectoryStatus = T("UsageDirectoryStatusDisabled");
+        }
+
+        _usageDirectoryEnabledAtLastSave = Settings.UsageDirectoryEnabled;
         Log("Einstellungen gespeichert.");
     }
-
     private async Task ConnectRconAsync()
     {
         if (_rcon is not null && !_rcon.Matches(Settings.Host, Settings.Port, Settings.Password))
@@ -612,6 +849,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         await _rcon.ReconnectAsync();
         RconConnected = true;
         ClearPlayerCache();
+        StartPlayerStatusLoop();
         Log("RCON verbunden.");
     }
 
@@ -634,7 +872,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             if (_discord is not null && _discord.IsStarted)
             {
                 DiscordConnected = _discord.IsReady;
-                DiscordStatus = _discord.IsReady ? "Online" : "Gestartet, nicht bereit";
+                DiscordStatus = _discord.IsReady ? "Online" : T("DiscordStartedNotReady");
                 StartDiscordDependentLoops();
                 return;
             }
@@ -645,7 +883,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 App.Current?.Dispatcher.Invoke(() =>
                 {
                     DiscordConnected = isReady;
-                    DiscordStatus = isReady ? "Online" : "Nicht bereit";
+                    DiscordStatus = isReady ? "Online" : T("DiscordNotReady");
                 });
 
                 if (isReady)
@@ -684,7 +922,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 Settings.DiscordGameBridgeMessageType);
 
             DiscordConnected = _discord.IsReady;
-            DiscordStatus = _discord.IsReady ? "Online" : "Gestartet, nicht bereit";
+            DiscordStatus = _discord.IsReady ? "Online" : T("DiscordStartedNotReady");
             StartDiscordDependentLoops();
 
             // Nicht awaiten: Discord-Ready und Message-Updates duerfen den App-Autostart niemals blockieren.
@@ -1043,6 +1281,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
             _cachedPlayers = players;
             _cachedPlayersUtc = DateTime.UtcNow;
+            UpdateCurrentPlayersStatus(players.Count);
             return players.ToList();
         }
         finally
@@ -1057,11 +1296,319 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _cachedPlayersUtc = DateTime.MinValue;
     }
 
+    private int GetConfiguredMaxPlayers()
+    {
+        return Settings.DiscordMaxPlayers > 0 ? Settings.DiscordMaxPlayers : 64;
+    }
 
-    private async Task StartChatCommandsAsync(bool persistAutoStart = true)
+    private void UpdateCurrentPlayersStatus(int? playerCount)
+    {
+        void Apply()
+        {
+            CurrentPlayersStatus = playerCount.HasValue
+                ? $"{playerCount.Value}/{GetConfiguredMaxPlayers()}"
+                : $"-/{GetConfiguredMaxPlayers()}";
+        }
+
+        var dispatcher = App.Current?.Dispatcher;
+        if (dispatcher is not null && !dispatcher.CheckAccess())
+        {
+            dispatcher.Invoke(Apply);
+        }
+        else
+        {
+            Apply();
+        }
+    }
+
+    private void StartPlayerStatusLoop()
+    {
+        if (_playerStatusCts is not null && !_playerStatusCts.IsCancellationRequested)
+        {
+            return;
+        }
+
+        _playerStatusCts?.Dispose();
+        _playerStatusCts = new CancellationTokenSource();
+        var token = _playerStatusCts.Token;
+
+        _ = Task.Run(async () =>
+        {
+            while (!token.IsCancellationRequested)
+            {
+                try
+                {
+                    var players = await FetchPlayersAsync(token);
+                    UpdateCurrentPlayersStatus(players.Count);
+                    ClearInactiveWeeklyRewardCodes();
+                    await NotifyPendingWeeklyRewardsAsync(players, token);
+                    await Task.Delay(TimeSpan.FromSeconds(30), token);
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    UpdateCurrentPlayersStatus(null);
+                    AppLogService.WriteException("PlayerStatusLoop", ex);
+                    await SafeDelayAsync(TimeSpan.FromSeconds(10), token);
+                }
+            }
+        }, token);
+    }
+
+
+    private void ClearInactiveWeeklyRewardCodes()
+    {
+        var removed = _weeklyRewardStore.ClearInactiveCodes(Settings.GetWeeklyTaskDefinitions(), DateTime.UtcNow);
+        if (removed <= 0) return;
+        void Apply()
+        {
+            WeeklyRewardStatus = $"{removed} offene Reward-Code(s) deaktivierter oder geloeschter Cards wurden entfernt.";
+            RefreshWeeklyRewardClaims();
+        }
+        var dispatcher = App.Current?.Dispatcher;
+        if (dispatcher is not null && !dispatcher.CheckAccess()) dispatcher.Invoke(Apply); else Apply();
+        Log($"Weekly Rewards: {removed} offene Codes deaktivierter oder geloeschter Cards entfernt.");
+    }
+
+    private void AcknowledgeWeeklyReward(WeeklyRewardClaimViewModel? claim)
+    {
+        if (claim is null || !_weeklyRewardStore.Acknowledge(claim.Id)) return;
+        RefreshWeeklyRewardClaims();
+        WeeklyRewardStatus = $"Reward für {claim.PlayerName} wurde durch einen Admin quittiert.";
+        Log($"Weekly Reward durch Admin quittiert: {claim.TaskTitle} -> {claim.PlayerName}/{claim.SteamId}.");
+    }
+
+    private async Task ProcessWeeklyRewardsAsync(IReadOnlyList<WeeklyCommunityTaskProgress> progresses, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            ClearInactiveWeeklyRewardCodes();
+            static bool HasReward(WeeklyCommunityTaskProgress x) =>
+                x.Definition.RewardMoney > 0 ||
+                WeeklyRewardItems.GetConfigured(x.Definition).Count > 0 ||
+                !string.IsNullOrWhiteSpace(x.Definition.RewardText);
+
+            var playerRewards = progresses
+                .Where(x => string.Equals(x.Definition.GoalScope, "PerPlayer", StringComparison.OrdinalIgnoreCase))
+                .Where(HasReward)
+                .ToList();
+            var communityRewards = progresses
+                .Where(x => !string.Equals(x.Definition.GoalScope, "PerPlayer", StringComparison.OrdinalIgnoreCase) && x.IsCompleted)
+                .Where(HasReward)
+                .ToList();
+
+            var created = false;
+            foreach (var progress in playerRewards)
+            {
+                created |= _weeklyRewardStore.EnsurePlayerClaims(progress, Log);
+            }
+
+            if (communityRewards.Count > 0)
+            {
+                var api = new GgconHttpApiService(Settings);
+                var squadsResponse = await api.GetSquadsAsync(cancellationToken);
+                foreach (var progress in communityRewards)
+                {
+                    created |= _weeklyRewardStore.EnsureClaims(progress, squadsResponse.Squads, Log);
+                }
+            }
+
+            RefreshWeeklyRewardClaims();
+            WeeklyRewardStatus = $"{_weeklyRewardStore.GetAll().Count} Reward-Empfaenger gespeichert.";
+
+            if ((created || _weeklyRewardStore.HasPendingClaims()) && _chatCommands?.IsRunning != true)
+            {
+                await StartChatCommandsAsync(persistAutoStart: false, ensureDefaultRules: false);
+            }
+
+            if (created)
+            {
+                Log("Weekly Rewards: Neue Empfaenger und Claim-Codes erstellt.");
+            }
+        }
+        catch (Exception ex)
+        {
+            WeeklyRewardStatus = "Rewards konnten nicht geladen werden: " + ex.Message;
+            Log("Weekly Rewards: Empfaenger konnten nicht geladen werden: " + ex.Message);
+            AppLogService.WriteException("WeeklyRewards.Process", ex);
+        }
+    }
+    private async Task NotifyPendingWeeklyRewardsAsync(IReadOnlyCollection<ScumPlayer> players, CancellationToken cancellationToken)
+    {
+        if (!await _weeklyRewardNotificationLock.WaitAsync(0, cancellationToken)) return;
+        try
+        {
+            var onlineIds = players.Select(x => x.UserId ?? string.Empty).Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
+            var claims = _weeklyRewardStore.GetUnnotifiedFor(onlineIds);
+            foreach (var claim in claims)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                try
+                {
+                    await SendWeeklyRewardNoticeAsync(claim.SteamId,
+                        $"[Reward] {claim.TaskTitle}: {claim.RewardSummary}. Zum Erhalten Code im Chat eingeben: {claim.Code}", cancellationToken);
+                    claim.NotifiedUtc = DateTime.UtcNow;
+                    claim.LastError = string.Empty;
+                    _weeklyRewardStore.Save();
+                    Log($"Weekly Reward: Claim-Code an {claim.PlayerName}/{claim.SteamId} gesendet.");
+                }
+                catch (Exception ex)
+                {
+                    claim.LastError = "Code-DM fehlgeschlagen: " + ex.Message;
+                    _weeklyRewardStore.Save();
+                    AppLogService.WriteException("WeeklyRewards.Notify", ex);
+                }
+            }
+            RefreshWeeklyRewardClaims();
+        }
+        finally
+        {
+            _weeklyRewardNotificationLock.Release();
+        }
+    }
+
+    private async Task<bool> HandleWeeklyRewardClaimAsync(ChatLogMessage message, CancellationToken cancellationToken)
+    {
+        var code = (message.Message ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(code) || !code.StartsWith("/reward-", StringComparison.OrdinalIgnoreCase)) return false;
+
+        await _weeklyRewardClaimLock.WaitAsync(cancellationToken);
+        try
+        {
+            var claim = _weeklyRewardStore.FindByCode(code);
+            if (claim is null)
+            {
+                await SendWeeklyRewardNoticeAsync(message.SteamId, "[Reward] Dieser Code ist unbekannt oder bereits eingeloest.", cancellationToken);
+                return true;
+            }
+
+            if (string.IsNullOrWhiteSpace(message.SteamId) || !claim.SteamId.Equals(message.SteamId.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                await SendWeeklyRewardNoticeAsync(message.SteamId, "[Reward] Dieser Code gehoert einem anderen Spieler.", cancellationToken);
+                return true;
+            }
+
+            try
+            {
+                if (claim.NeedsItem)
+                {
+                    if (_rcon is null || !_rcon.IsConnected) await ConnectRconAsync();
+                    if (_rcon is null) throw new InvalidOperationException("RCON ist nicht verbunden.");
+
+                    foreach (var item in claim.GetOrCreateRewardItems().Where(x => !string.IsNullOrWhiteSpace(x.Item) && !x.DeliveredUtc.HasValue))
+                    {
+                        var command = $"#GiveItem {claim.SteamId} {item.Item} {Math.Max(1, item.Quantity)}";
+                        if (item.StackCount > 0) command += $" StackCount {item.StackCount}";
+                        var response = await _rcon.SendCommandAsync(command, cancellationToken);
+                        if (!IsSuccessfulGgconResponse(response)) throw new InvalidOperationException($"Item-Ausgabe für {item.Item} wurde von ggCON abgelehnt: " + TrimForLog(response));
+                        item.DeliveredUtc = DateTime.UtcNow;
+                        _weeklyRewardStore.Save();
+                    }
+
+                    if (claim.GetOrCreateRewardItems().Where(x => !string.IsNullOrWhiteSpace(x.Item)).All(x => x.DeliveredUtc.HasValue))
+                    {
+                        claim.ItemDeliveredUtc ??= DateTime.UtcNow;
+                        _weeklyRewardStore.Save();
+                    }
+                }
+
+                if (claim.NeedsMoney && !claim.MoneyDeliveredUtc.HasValue)
+                {
+                    await new GgconHttpApiService(Settings).AddPlayerCurrencyAsync(claim.SteamId, claim.RewardMoney, cancellationToken);
+                    claim.MoneyDeliveredUtc = DateTime.UtcNow;
+                    _weeklyRewardStore.Save();
+                }
+
+                if (claim.NeedsText && !claim.TextClaimedUtc.HasValue)
+                {
+                    claim.TextClaimedUtc = DateTime.UtcNow;
+                    _weeklyRewardStore.Save();
+                }
+
+                if (claim.IsComplete)
+                {
+                    claim.ClaimedUtc = DateTime.UtcNow;
+                    claim.LastError = string.Empty;
+                    _weeklyRewardStore.Save();
+                    await SendWeeklyRewardNoticeAsync(claim.SteamId, $"[Reward] Erfolgreich erhalten: {claim.RewardSummary}", cancellationToken);
+                    Log($"Weekly Reward eingeloest: {claim.TaskTitle} -> {claim.PlayerName}/{claim.SteamId}: {claim.RewardSummary}");
+                }
+            }
+            catch (Exception ex)
+            {
+                claim.LastError = ex.Message;
+                _weeklyRewardStore.Save();
+                await SendWeeklyRewardNoticeAsync(claim.SteamId, "[Reward] Auszahlung noch nicht vollstaendig. Bitte Code spaeter erneut eingeben.", cancellationToken);
+                AppLogService.WriteException("WeeklyRewards.Claim", ex);
+            }
+
+            RefreshWeeklyRewardClaims();
+            return true;
+        }
+        finally
+        {
+            _weeklyRewardClaimLock.Release();
+        }
+    }
+
+    private async Task SendWeeklyRewardNoticeAsync(string steamId, string text, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(steamId)) return;
+        if (_rcon is null || !_rcon.IsConnected) await ConnectRconAsync();
+        if (_rcon is null) throw new InvalidOperationException("RCON ist nicht verbunden.");
+        await _rcon.SendCommandAsync(CommandRegistry.MessagePlayer(steamId.Trim(), "Cyan", text.Replace("\r", " ").Replace("\n", " ").Trim()), cancellationToken);
+    }
+
+    private static bool IsSuccessfulGgconResponse(string response)
+    {
+        if (string.IsNullOrWhiteSpace(response)) return false;
+        try
+        {
+            var start = response.IndexOf('{');
+            var end = response.LastIndexOf('}');
+            if (start < 0 || end <= start) return false;
+            using var document = JsonDocument.Parse(response.Substring(start, end - start + 1));
+            return document.RootElement.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.True;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void RefreshWeeklySquadOverview(IEnumerable<GgconSquadResponse> squads)
+    {
+        void Apply()
+        {
+            WeeklySquadOverview.Clear();
+            foreach (var squad in squads.OrderByDescending(x => x.Score).ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                WeeklySquadOverview.Add(new WeeklySquadOverviewViewModel(squad));
+            }
+        }
+        var dispatcher = App.Current?.Dispatcher;
+        if (dispatcher is not null && !dispatcher.CheckAccess()) dispatcher.Invoke(Apply); else Apply();
+    }
+
+    private void RefreshWeeklyRewardClaims()
+    {
+        void Apply()
+        {
+            WeeklyRewardClaims.Clear();
+            foreach (var claim in _weeklyRewardStore.GetAll()) WeeklyRewardClaims.Add(new WeeklyRewardClaimViewModel(claim));
+        }
+        var dispatcher = App.Current?.Dispatcher;
+        if (dispatcher is not null && !dispatcher.CheckAccess()) dispatcher.Invoke(Apply); else Apply();
+    }
+
+    private async Task StartChatCommandsAsync(bool persistAutoStart = true, bool ensureDefaultRules = true)
     {
         EnsureLocalLogDirectories();
         SyncChatCommandRulesToSettings();
+        SyncRedeemCodesToSettings();
 
         if (persistAutoStart)
         {
@@ -1069,7 +1616,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             SettingsStore.Save(Settings);
         }
 
-        if (string.IsNullOrWhiteSpace(Settings.ChatAutomationRulesJson))
+        if (ensureDefaultRules && string.IsNullOrWhiteSpace(Settings.ChatAutomationRulesJson))
         {
             Settings.ChatAutomationRulesJson = ChatCommandAutomationService.BuildDefaultRulesJson();
             SettingsStore.Save(Settings);
@@ -1090,7 +1637,14 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 if (!string.IsNullOrWhiteSpace(response)) Log("RCON Antwort: " + TrimForLog(response));
                 return response;
             },
-            Log);
+            Log,
+            BuildChatCommandDynamicPlaceholders,
+            BuildAutoMessageChallengeTextAsync,
+            HandleBuyEventCommandAsync,
+            BuildRedeemCodeRules,
+            MarkRedeemCodeUsedAsync,
+            () => _weeklyRewardStore.HasPendingClaims(),
+            HandleWeeklyRewardClaimAsync);
 
         _chatCommands.Start(Settings);
         ChatCommandsRunning = true;
@@ -1113,6 +1667,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     {
         EnsureLocalLogDirectories();
         SyncChatCommandRulesToSettings();
+        SyncRedeemCodesToSettings();
         if (_rcon is null || !_rcon.IsConnected) await ConnectRconAsync();
         if (_rcon is null) return;
 
@@ -1126,10 +1681,251 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 if (!string.IsNullOrWhiteSpace(response)) Log("RCON Antwort: " + TrimForLog(response));
                 return response;
             },
-            Log);
+            Log,
+            BuildChatCommandDynamicPlaceholders,
+            BuildAutoMessageChallengeTextAsync,
+            HandleBuyEventCommandAsync,
+            BuildRedeemCodeRules,
+            MarkRedeemCodeUsedAsync,
+            () => _weeklyRewardStore.HasPendingClaims(),
+            HandleWeeklyRewardClaimAsync);
 
         await service.ScanOnceAsync(Settings);
     }
+
+    private IReadOnlyDictionary<string, string> BuildChatCommandDynamicPlaceholders()
+    {
+        var activeRandomEvents = (_eventEngine?.Events ?? Array.Empty<EventRuntime>())
+            .Where(x => x.Definition.Enabled)
+            .Where(IsRandomizedEventRuntime)
+            .Where(x => x.State is EventRuntimeState.Initiated or EventRuntimeState.Live or EventRuntimeState.CleanupPending)
+            .OrderByDescending(x => x.State == EventRuntimeState.Live)
+            .ThenBy(x => x.Definition.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var randomEventsText = BuildRandomEventsText(activeRandomEvents);
+        var randomEventNamesText = activeRandomEvents.Count == 0
+            ? "Keine"
+            : BuildLimitedList(activeRandomEvents.Select(x => x.Definition.Name));
+
+        return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["randomEvents"] = randomEventsText,
+            ["startedRandomEvents"] = randomEventsText,
+            ["activeRandomEvents"] = randomEventsText,
+            ["randomEventNames"] = randomEventNamesText,
+            ["randomEventsCount"] = activeRandomEvents.Count.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ["randomEventsLive"] = activeRandomEvents.Count(x => x.State == EventRuntimeState.Live).ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ["randomEventsInitiated"] = activeRandomEvents.Count(x => x.State == EventRuntimeState.Initiated).ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ["randomEventsCleanup"] = activeRandomEvents.Count(x => x.State == EventRuntimeState.CleanupPending).ToString(System.Globalization.CultureInfo.InvariantCulture)
+        };
+    }
+
+    private async Task<string> HandleBuyEventCommandAsync(ChatLogMessage message, string? requestedEvent, CancellationToken cancellationToken)
+    {
+        await EnsureBuyEventEngineAsync();
+        var buyEvents = _eventEngine?.GetBuyableEvents() ?? Array.Empty<BuyableEventSummary>();
+
+        if (string.IsNullOrWhiteSpace(requestedEvent))
+        {
+            return BuildBuyEventListResponse(buyEvents);
+        }
+
+        if (string.IsNullOrWhiteSpace(message.SteamId))
+        {
+            Log($"BuyEvent: {message.PlayerName} kann nicht kaufen, weil die Chat-Zeile keine SteamID enthaelt.");
+            return string.Empty;
+        }
+
+        var selected = FindBuyableEvent(buyEvents, requestedEvent);
+        if (selected is null)
+        {
+            return "[Server] Event nicht gefunden. Nutze /buyevent fuer die Liste.";
+        }
+
+        var unavailable = BuildBuyEventUnavailableReason(selected);
+        if (!string.IsNullOrWhiteSpace(unavailable))
+        {
+            return unavailable;
+        }
+
+        var price = Math.Max(0, selected.Price);
+        var charged = false;
+        var balance = 0d;
+        var api = new GgconHttpApiService(Settings);
+
+        try
+        {
+            if (price > 0)
+            {
+                var player = await api.GetPlayerAccountAsync(message.SteamId, cancellationToken);
+                if (!player.AccountBalance.HasValue)
+                {
+                    return "[Server] Kontostand konnte nicht gelesen werden. Bitte spaeter erneut versuchen.";
+                }
+
+                balance = player.AccountBalance.Value;
+                if (balance < price)
+                {
+                    return $"[Server] {message.PlayerName}, du hast nicht genug Geld. {selected.DisplayName} kostet {price}$, dein Kontostand: {FormatMoney(balance)}$.";
+                }
+
+                await api.RemovePlayerCurrencyAsync(message.SteamId, price, cancellationToken);
+                charged = true;
+            }
+
+            var result = await _eventEngine!.ActivateBuyEventAsync(requestedEvent, message.SteamId, message.PlayerName, cancellationToken);
+            if (!result.Success)
+            {
+                if (charged)
+                {
+                    await api.AddPlayerCurrencyAsync(message.SteamId, price, cancellationToken);
+                    Log($"BuyEvent: {price}$ fuer {message.PlayerName} erstattet, weil Aktivierung fehlschlug: {result.Message}");
+                }
+
+                return "[Server] " + result.Message;
+            }
+
+            Log($"BuyEvent: {message.PlayerName}/{message.SteamId} hat {selected.DisplayName} fuer {price}$ gekauft.");
+            return price > 0
+                ? $"[Server] {selected.DisplayName} gekauft und aktiviert. Bezahlt: {price}$."
+                : $"[Server] {selected.DisplayName} aktiviert.";
+        }
+        catch (Exception ex)
+        {
+            if (charged)
+            {
+                try
+                {
+                    await api.AddPlayerCurrencyAsync(message.SteamId, price, cancellationToken);
+                    Log($"BuyEvent: {price}$ fuer {message.PlayerName} nach Fehler erstattet.");
+                }
+                catch (Exception refundEx)
+                {
+                    AppLogService.WriteException("BuyEventRefund", refundEx);
+                    Log($"BuyEvent: Erstattung fuer {message.PlayerName} fehlgeschlagen: {refundEx.Message}");
+                }
+            }
+
+            AppLogService.WriteException("BuyEvent", ex);
+            Log("BuyEvent Fehler: " + ex.Message);
+            return "[Server] Event-Kauf konnte nicht abgeschlossen werden. Bitte spaeter erneut versuchen.";
+        }
+    }
+
+    private async Task EnsureBuyEventEngineAsync()
+    {
+        if (_eventEngine?.IsRunning == true)
+        {
+            return;
+        }
+
+        await StartScriptsAsync();
+    }
+
+    private static string BuildBuyEventListResponse(IReadOnlyList<BuyableEventSummary> buyEvents)
+    {
+        var available = buyEvents
+            .Where(x => x.State is EventRuntimeState.Stopped or EventRuntimeState.Cooldown)
+            .ToList();
+
+        if (available.Count == 0)
+        {
+            return "[Server] Aktuell sind keine kaufbaren Events konfiguriert.";
+        }
+
+        var items = available.Select(x => x.Price > 0 ? $"{x.DisplayName} ({x.Price}$)" : $"{x.DisplayName} (gratis)");
+        return "[Server] Kaufbare Events: " + BuildLimitedList(items, maxItems: 8, maxLength: 210) + ". Nutze /buyevent <Name>.";
+    }
+
+    private static BuyableEventSummary? FindBuyableEvent(IReadOnlyList<BuyableEventSummary> buyEvents, string requestedEvent)
+    {
+        var key = (requestedEvent ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(key)) return null;
+
+        return buyEvents.FirstOrDefault(x =>
+                   x.DisplayName.Equals(key, StringComparison.OrdinalIgnoreCase) ||
+                   x.Name.Equals(key, StringComparison.OrdinalIgnoreCase) ||
+                   x.Id.Equals(key, StringComparison.OrdinalIgnoreCase))
+               ?? buyEvents.FirstOrDefault(x =>
+                   NormalizeBuyEventKey(x.DisplayName).Equals(NormalizeBuyEventKey(key), StringComparison.OrdinalIgnoreCase) ||
+                   NormalizeBuyEventKey(x.Name).Equals(NormalizeBuyEventKey(key), StringComparison.OrdinalIgnoreCase) ||
+                   NormalizeBuyEventKey(x.Id).Equals(NormalizeBuyEventKey(key), StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string NormalizeBuyEventKey(string? value) =>
+        System.Text.RegularExpressions.Regex.Replace((value ?? string.Empty).Trim(), @"[\s_\-]+", "", System.Text.RegularExpressions.RegexOptions.CultureInvariant).ToLowerInvariant();
+
+    private static string BuildBuyEventUnavailableReason(BuyableEventSummary summary)
+    {
+        if (summary.State is EventRuntimeState.Initiated or EventRuntimeState.Live or EventRuntimeState.CleanupPending)
+        {
+            return $"[Server] {summary.DisplayName} ist bereits aktiv.";
+        }
+
+        if (summary.State == EventRuntimeState.Cooldown && summary.CooldownUntilUtc > DateTime.UtcNow)
+        {
+            return $"[Server] {summary.DisplayName} ist noch im Cooldown bis {summary.CooldownUntilUtc.ToLocalTime():HH:mm:ss}.";
+        }
+
+        return string.Empty;
+    }
+
+    private static string FormatMoney(double value)
+    {
+        if (double.IsNaN(value) || double.IsInfinity(value))
+        {
+            return "0";
+        }
+
+        return Math.Round(value, 0, MidpointRounding.AwayFromZero).ToString("0", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private static bool IsRandomizedEventRuntime(EventRuntime runtime)
+        => runtime.Definition.IncludeInRandomizer &&
+           (runtime.Definition.Mode.Equals("RandomAnnouncedZone", StringComparison.OrdinalIgnoreCase) ||
+            runtime.Definition.Mode.Equals("Random", StringComparison.OrdinalIgnoreCase) ||
+            runtime.Definition.Mode.Equals("RandomActivated", StringComparison.OrdinalIgnoreCase));
+
+    private static string BuildRandomEventsText(IReadOnlyList<EventRuntime> runtimes)
+    {
+        if (runtimes.Count == 0)
+        {
+            return "Keine randomisierten Events aktiv.";
+        }
+
+        return BuildLimitedList(runtimes.Select(x => $"{x.Definition.Name} ({FormatEventStateForChat(x.State)})"));
+    }
+
+    private static string BuildLimitedList(IEnumerable<string?> values, int maxItems = 8, int maxLength = 220)
+    {
+        var clean = values
+            .Select(x => (x ?? string.Empty).Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToList();
+
+        if (clean.Count == 0)
+        {
+            return "Keine";
+        }
+
+        var shown = clean.Take(maxItems).ToList();
+        var text = string.Join(", ", shown);
+        if (clean.Count > shown.Count)
+        {
+            text += $" +{clean.Count - shown.Count} weitere";
+        }
+
+        return text.Length <= maxLength ? text : text[..Math.Max(0, maxLength - 3)] + "...";
+    }
+
+    private static string FormatEventStateForChat(EventRuntimeState state) => state switch
+    {
+        EventRuntimeState.Initiated => "wartet",
+        EventRuntimeState.Live => "live",
+        EventRuntimeState.CleanupPending => "cleanup",
+        _ => state.ToString()
+    };
 
     private void InsertDefaultChatCommands()
     {
@@ -1209,6 +2005,142 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             .ToList();
 
         Settings.ChatAutomationRulesJson = JsonSerializer.Serialize(rules, new JsonSerializerOptions { WriteIndented = true });
+    }
+
+    private void InsertDefaultRedeemCodes()
+    {
+        var example = new List<RedeemCodeRule>
+        {
+            new()
+            {
+                Enabled = true,
+                Code = "/starter",
+                Command = "#SpawnItem Weapon_SKS 1",
+                Response = "[Server] {name}, dein Starter-Code wurde eingeloest.",
+                ExecuteAsChatPlayer = true,
+                MaxUses = 1,
+                Uses = 0
+            }
+        };
+
+        Settings.RedeemCodeRulesJson = JsonSerializer.Serialize(example, new JsonSerializerOptions { WriteIndented = true });
+        LoadRedeemCodesFromSettings();
+        OnPropertyChanged(nameof(Settings));
+        SettingsStore.Save(Settings);
+        Log("RedeemCodes: Beispiel-Code eingefuegt.");
+    }
+
+    private void AddRedeemCode()
+    {
+        RedeemCodeRules.Add(new RedeemCodeEditorViewModel
+        {
+            Enabled = true,
+            Code = "/starter",
+            Command = "#SpawnItem Weapon_SKS 1",
+            Response = "[Server] {name}, dein Code wurde eingeloest.",
+            ExecuteAsChatPlayer = true,
+            DelaySeconds = 0,
+            MaxUses = 1,
+            Uses = 0
+        });
+    }
+
+    private void RemoveRedeemCode(RedeemCodeEditorViewModel? rule)
+    {
+        if (rule is null) return;
+        RedeemCodeRules.Remove(rule);
+    }
+
+    private void LoadRedeemCodesFromSettings()
+    {
+        RedeemCodeRules.Clear();
+        if (string.IsNullOrWhiteSpace(Settings.RedeemCodeRulesJson))
+        {
+            return;
+        }
+
+        try
+        {
+            foreach (var rule in DeserializeRedeemCodes(Settings.RedeemCodeRulesJson))
+            {
+                RedeemCodeRules.Add(RedeemCodeEditorViewModel.FromRule(rule));
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLogService.WriteException("RedeemCodeEditorLoad", ex);
+            Log("RedeemCodes: Codes konnten nicht geladen werden: " + ex.Message);
+        }
+    }
+
+    private void SyncRedeemCodesToSettings()
+    {
+        var rules = RedeemCodeRules
+            .Where(x => !string.IsNullOrWhiteSpace(x.Code) && (!string.IsNullOrWhiteSpace(x.Command) || !string.IsNullOrWhiteSpace(x.Response)))
+            .Select(x => x.ToRule())
+            .ToList();
+
+        Settings.RedeemCodeRulesJson = JsonSerializer.Serialize(rules, new JsonSerializerOptions { WriteIndented = true });
+    }
+
+    private IReadOnlyList<RedeemCodeRule> BuildRedeemCodeRules()
+    {
+        try
+        {
+            return DeserializeRedeemCodes(Settings.RedeemCodeRulesJson);
+        }
+        catch (Exception ex)
+        {
+            AppLogService.WriteException("RedeemCodeRuntimeLoad", ex);
+            Log("RedeemCodes: Runtime-Laden fehlgeschlagen: " + ex.Message);
+            return Array.Empty<RedeemCodeRule>();
+        }
+    }
+
+    private async Task MarkRedeemCodeUsedAsync(RedeemCodeRule rule, ChatLogMessage message, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var dispatcher = App.Current?.Dispatcher;
+        if (dispatcher is null)
+        {
+            return;
+        }
+
+        await dispatcher.InvokeAsync(() =>
+        {
+            var code = (rule.Code ?? string.Empty).Trim();
+            var editor = RedeemCodeRules.FirstOrDefault(x => string.Equals((x.Code ?? string.Empty).Trim(), code, StringComparison.OrdinalIgnoreCase));
+            if (editor is not null)
+            {
+                editor.Uses++;
+                SyncRedeemCodesToSettings();
+                SettingsStore.Save(Settings);
+                Log($"RedeemCodes: '{code}' eingeloest von {message.PlayerName}. Nutzung: {editor.Uses}/{(editor.MaxUses <= 0 ? "unbegrenzt" : editor.MaxUses.ToString(CultureInfo.InvariantCulture))}.");
+                return;
+            }
+
+            var rules = DeserializeRedeemCodes(Settings.RedeemCodeRulesJson);
+            var savedRule = rules.FirstOrDefault(x => string.Equals((x.Code ?? string.Empty).Trim(), code, StringComparison.OrdinalIgnoreCase));
+            if (savedRule is null)
+            {
+                return;
+            }
+
+            savedRule.Uses = Math.Max(0, savedRule.Uses) + 1;
+            Settings.RedeemCodeRulesJson = JsonSerializer.Serialize(rules, new JsonSerializerOptions { WriteIndented = true });
+            SettingsStore.Save(Settings);
+        });
+    }
+
+    private static List<RedeemCodeRule> DeserializeRedeemCodes(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return new List<RedeemCodeRule>();
+        return JsonSerializer.Deserialize<List<RedeemCodeRule>>(json, new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+            ReadCommentHandling = JsonCommentHandling.Skip,
+            AllowTrailingCommas = true
+        }) ?? new List<RedeemCodeRule>();
     }
 
 
@@ -1453,6 +2385,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
         _weeklyTasks?.Stop();
         _weeklyTasks = new WeeklyCommunityTaskService(new SftpLogService(Settings), Log);
+        _weeklyTasks.ScanStateChanged += ApplyWeeklyTaskScanState;
         _weeklyTasks.Start(
             Settings,
             async token =>
@@ -1467,6 +2400,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 {
                     SetWeeklyTaskProgresses(progressList);
                 });
+
+                await ProcessWeeklyRewardsAsync(progressList);
 
                 if (_discord is null || !_discord.IsReady) return;
                 var channelId = Settings.WeeklyTaskDiscordChannelId != 0
@@ -1484,6 +2419,31 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         Log("Weekly Tasks AutoStart: " + Settings.AutoStartWeeklyTasks);
     }
 
+    private void ApplyWeeklyTaskScanState(bool isScanning, DateTime? nextScanUtc)
+    {
+        void Apply()
+        {
+            WeeklyTaskScanInProgress = isScanning;
+            if (isScanning)
+            {
+                WeeklyTaskNextScanText = "Scan laeuft gerade ...";
+            }
+            else if (nextScanUtc.HasValue)
+            {
+                var local = nextScanUtc.Value.ToLocalTime();
+                var remaining = nextScanUtc.Value - DateTime.UtcNow;
+                var minutes = Math.Max(0, (int)Math.Ceiling(remaining.TotalMinutes));
+                WeeklyTaskNextScanText = $"Naechster Scan: {local:dd.MM.yyyy HH:mm:ss} (in ca. {minutes} Min.)";
+            }
+            else
+            {
+                WeeklyTaskNextScanText = WeeklyTasksRunning ? "Naechster Scan wird geplant ..." : "Naechster automatischer Scan: gestoppt";
+            }
+        }
+
+        var dispatcher = App.Current?.Dispatcher;
+        if (dispatcher is not null && !dispatcher.CheckAccess()) dispatcher.Invoke(Apply); else Apply();
+    }
     private void StopWeeklyTasks(bool persistAutoStart = true)
     {
         if (persistAutoStart)
@@ -1501,7 +2461,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     {
         EnsureLocalLogDirectories();
         var service = _weeklyTasks ?? new WeeklyCommunityTaskService(new SftpLogService(Settings), Log);
+        if (_weeklyTasks is null) service.ScanStateChanged += ApplyWeeklyTaskScanState;
         var progresses = await service.ScanAllOnceAsync(Settings);
+        await ProcessWeeklyRewardsAsync(progresses);
         if (progresses.Count == 0) return;
 
         SetWeeklyTaskProgresses(progresses);
@@ -1529,6 +2491,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         if (progresses.Count == 0) return;
 
         SetWeeklyTaskProgresses(progresses);
+        await ProcessWeeklyRewardsAsync(progresses);
 
         if (_discord is null || !_discord.IsReady) await StartDiscordAsync();
         if (_discord is not null && _discord.IsReady)
@@ -1547,8 +2510,10 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void InsertDefaultWeeklyTask()
     {
-        Settings.WeeklyTaskJson = WeeklyCommunityTaskService.BuildDefaultTaskJson();
+        WeeklyTaskDefinitionStore.Save(JsonSerializer.Deserialize<List<WeeklyCommunityTaskDefinition>>(WeeklyCommunityTaskService.BuildDefaultTaskJson(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new List<WeeklyCommunityTaskDefinition>());
+        Settings.WeeklyTaskJson = "";
         SettingsStore.Save(Settings);
+        LoadWeeklyTaskEditorsFromSettings();
         OnPropertyChanged(nameof(Settings));
         Log("Weekly Task Beispiel eingefuegt.");
     }
@@ -1589,32 +2554,15 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             WeeklyTaskEditors.Add(WeeklyTaskEditorViewModel.FromDefinition(definition, WeeklyTaskStatTargets));
         }
 
-        var existingIds = new HashSet<string>(WeeklyTaskEditors.Select(x => x.Id), StringComparer.OrdinalIgnoreCase);
-        var recoveredCount = 0;
-        foreach (var baseline in WeeklyCommunityTaskService.LoadSavedBaselines())
-        {
-            if (string.IsNullOrWhiteSpace(baseline.TaskId) || existingIds.Contains(baseline.TaskId)) continue;
-
-            var recovered = WeeklyCommunityTaskService.CreateDefinitionFromBaseline(baseline);
-            WeeklyTaskEditors.Add(WeeklyTaskEditorViewModel.FromDefinition(recovered, WeeklyTaskStatTargets));
-            existingIds.Add(recovered.Id);
-            recoveredCount++;
-        }
-
-        if (WeeklyTaskEditors.Count == 0)
-        {
-            WeeklyTaskEditors.Add(WeeklyTaskEditorViewModel.FromDefinition(new WeeklyCommunityTaskDefinition(), WeeklyTaskStatTargets));
-        }
-
         SelectedWeeklyTaskEditor = WeeklyTaskEditors.FirstOrDefault();
-        Log("Challenge-Planer geladen: " + WeeklyTaskEditors.Count + " Eintraege" + (recoveredCount > 0 ? " (" + recoveredCount + " aus vorhandenen Startwerten wiederhergestellt)." : "."));
+        Log("Challenge-Planer geladen: " + WeeklyTaskEditors.Count + " Eintraege.");
     }
 
     private void SyncWeeklyTaskEditorsToSettings()
     {
-        if (WeeklyTaskEditors.Count == 0) return;
         var definitions = WeeklyTaskEditors.Select(x => x.ToDefinition()).ToList();
-        Settings.WeeklyTaskJson = JsonSerializer.Serialize(definitions, new JsonSerializerOptions { WriteIndented = true });
+        WeeklyTaskDefinitionStore.Save(definitions);
+        Settings.WeeklyTaskJson = "";
         OnPropertyChanged(nameof(Settings));
     }
 
@@ -1665,11 +2613,26 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         Log("Challenge aus Planer entfernt: " + removed.Id);
     }
 
+    private void AddWeeklyRewardItem(WeeklyTaskEditorViewModel? task)
+    {
+        task ??= SelectedWeeklyTaskEditor;
+        task?.RewardItems.Add(new WeeklyRewardItemEditorViewModel());
+    }
+
+    private void RemoveWeeklyRewardItem(WeeklyRewardItemEditorViewModel? item)
+    {
+        if (item is null) return;
+        foreach (var task in WeeklyTaskEditors)
+        {
+            if (task.RewardItems.Remove(item)) return;
+        }
+    }
+
     private void ApplyWeeklyTaskEditorToJson()
     {
         SyncWeeklyTaskEditorsToSettings();
         SettingsStore.Save(Settings);
-        Log("Challenge-Planer in JSON uebernommen. Eintraege: " + WeeklyTaskEditors.Count);
+        Log("Challenge-Planer in Data/weekly_tasks.json gespeichert. Eintraege: " + WeeklyTaskEditors.Count);
     }
 
     private void SetWeeklyTaskProgresses(IReadOnlyList<WeeklyCommunityTaskProgress> progresses)
@@ -1681,7 +2644,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
     private static string FormatWeeklyTaskStatus(IReadOnlyList<WeeklyCommunityTaskProgress> progresses)
     {
-        if (progresses.Count == 0) return "Keine aktiven Weekly/Daily Tasks.";
+        if (progresses.Count == 0) return "No active Weekly/Daily Tasks.";
         return string.Join(" | ", progresses.Select(FormatWeeklyTaskStatus));
     }
 
@@ -1689,7 +2652,9 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     {
         var title = string.IsNullOrWhiteSpace(progress.Definition.Title) ? progress.Definition.Id : progress.Definition.Title;
         var kind = WeeklyCommunityTaskService.GetTaskKind(progress.Definition);
-        return $"{kind} {title}: {progress.Progress:N0}/{progress.Definition.Target:N0} ({progress.Percent:0.0}%)" + (progress.IsCompleted ? " - erreicht" : "");
+        return string.Equals(progress.Definition.GoalScope, "PerPlayer", StringComparison.OrdinalIgnoreCase)
+            ? $"{kind} {title}: {progress.CompletedPlayerCount} Spieler erreicht, bester Stand {progress.Progress:N0}/{progress.Definition.Target:N0}"
+            : $"{kind} {title}: {progress.Progress:N0}/{progress.Definition.Target:N0} ({progress.Percent:0.0}%)" + (progress.IsCompleted ? " - erreicht" : "");
     }
 
 
@@ -1721,7 +2686,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             });
 
         AutoMessagesRunning = true;
-        AutoMessageStatus = $"Auto Messages laufen: Queue alle {Math.Max(1, Settings.AutoMessagesIntervalMinutes)} Minuten, Standalone nach eigenem Intervall.";
+        AutoMessageStatus = Tf("AutoMessagesRunningStatus", Math.Max(1, Settings.AutoMessagesIntervalMinutes));
         Log("Auto Messages gestartet.");
     }
 
@@ -1735,7 +2700,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _autoMessages?.Stop();
         _autoMessages = null;
         AutoMessagesRunning = false;
-        AutoMessageStatus = "Auto Messages gestoppt.";
+        AutoMessageStatus = T("AutoMessagesStopped");
         Log("Auto Messages deaktiviert.");
     }
 
@@ -1759,7 +2724,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
                 await _rcon.SendCommandAsync(command, token);
             });
 
-        AutoMessageStatus = "Auto Message manuell gesendet/ausgefuehrt.";
+        AutoMessageStatus = T("AutoMessageManualSent");
     }
 
     private void InsertDefaultAutoMessages()
@@ -1811,7 +2776,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private void ResetAutoMessageFlow()
     {
         _autoMessages?.ResetFlow();
-        AutoMessageStatus = "Auto Messages Flow auf Anfang gesetzt.";
+        AutoMessageStatus = T("AutoMessagesFlowReset");
     }
 
     private async Task<string> BuildAutoMessageChallengeTextAsync(CancellationToken cancellationToken = default)
@@ -1874,6 +2839,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     {
         if (_eventEngine?.IsRunning == true)
         {
+            StartPlayerStatusLoop();
             _eventEngine.Start(Settings.ScriptPollSeconds);
             ScriptEngineRunning = true;
             RefreshScriptRuntimeStatuses();
@@ -1881,10 +2847,11 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
 
         _rcon ??= new SourceRconClient(Settings.Host, Settings.Port, Settings.Password);
+        StartPlayerStatusLoop();
 
         var definitions = EventDefinitionStore.Load();
         _eventEngine?.Dispose();
-        _eventEngine = new EventEngine(_rcon, definitions, Log, OnScriptEngineStateChanged, Settings);
+        _eventEngine = new EventEngine(_rcon, definitions, Log, OnScriptEngineStateChanged, Settings, GlobalLootPacks.Select(pack => pack.ToPack()));
         _eventEngine.Start(Settings.ScriptPollSeconds);
         ScriptEngineRunning = true;
         RefreshScriptRuntimeStatuses();
@@ -1910,7 +2877,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         if (_eventEngine is null)
         {
             var definitions = EventDefinitionStore.Load();
-            _eventEngine = new EventEngine(_rcon, definitions, Log, OnScriptEngineStateChanged, Settings);
+            _eventEngine = new EventEngine(_rcon, definitions, Log, OnScriptEngineStateChanged, Settings, GlobalLootPacks.Select(pack => pack.ToPack()));
             Log($"Script Engine geladen: {definitions.Count} Scripts.");
         }
 
@@ -1938,7 +2905,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
 
             if (_eventEngine is null)
             {
-                ScriptRuntimeSummary = "Script Engine nicht gestartet.";
+                ScriptRuntimeSummary = T("ScriptEngineNotStarted");
                 return;
             }
 
@@ -1958,7 +2925,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             var live = runtimes.Count(x => x.State == EventRuntimeState.Live);
             var cleanup = runtimes.Count(x => x.State == EventRuntimeState.CleanupPending);
             var cooldown = runtimes.Count(x => x.State == EventRuntimeState.Cooldown);
-            ScriptRuntimeSummary = $"{initiated} initiiert, {live} gestartet/live, {cleanup} cleanup, {cooldown} cooldown.";
+            ScriptRuntimeSummary = Tf("ScriptRuntimeSummaryFormat", initiated, live, cleanup, cooldown);
         });
     }
 
@@ -2028,6 +2995,11 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         try
         {
             var definition = JsonSerializer.Deserialize<EventDefinition>(ScriptJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (definition is not null)
+            {
+                ImportLegacyLootPacksIntoGlobalStore(definition.LootPacks ?? new List<LootPack>());
+            }
+
             ScriptEditorModel = definition is null ? null : ScriptStructuredEditorViewModel.FromDefinition(definition);
         }
         catch
@@ -2081,7 +3053,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         var result = MessageBoxResult.Cancel;
         var window = new Window
         {
-            Title = "Skriptzone - nicht gespeichert",
+            Title = T("UnsavedScriptDialogTitle"),
             Width = 460,
             Height = 210,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
@@ -2095,7 +3067,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         var root = new DockPanel { Margin = new Thickness(18) };
         var text = new TextBlock
         {
-            Text = "Das aktuelle Skript hat ungespeicherte Aenderungen. Was soll passieren?",
+            Text = T("UnsavedScriptDialogText"),
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 0, 0, 18),
             FontSize = 15
@@ -2141,7 +3113,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private void AddScriptCommand(ScriptBlockEditorViewModel? block)
     {
         if (block is null) return;
-        block.Commands.Add(new ScriptCommandEditorViewModel { Name = "Neuer Command", DelayMs = 50 });
+        block.Commands.Add(new ScriptCommandEditorViewModel { Name = T("NewCommand"), DelayMs = 50 });
         MarkScriptDirty();
         SyncStructuredScriptToJson();
     }
@@ -2160,12 +3132,17 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private void AddSpawnBlock()
     {
         if (ScriptEditorModel is null) return;
+        var defaultLocation = ScriptEditorModel.NpcLocationPlaceholders
+            .FirstOrDefault(x => !string.Equals(x, "{triggerZone}", StringComparison.OrdinalIgnoreCase))
+            ?? ScriptEditorModel.NpcLocationPlaceholders.FirstOrDefault()
+            ?? "{triggerZone}";
         var block = new SpawnBlockEditorViewModel
         {
             Name = "Neuer Spawn",
             Type = "ArmedNPC",
             Asset = "BP_Guard_Lvl_1",
             Quantity = 1,
+            Location = defaultLocation,
             DelayMs = 250
         };
         ScriptEditorModel.SpawnBlocks.Add(block);
@@ -2187,7 +3164,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private void AddLootLocationVariable()
     {
         if (ScriptEditorModel is null) return;
-        ScriptEditorModel.LootSpawnLocations.Add(new ScriptLocationVariableEditorViewModel("loot", "loot_" + (ScriptEditorModel.LootSpawnLocations.Count + 1), "[{X=0 Y=0 Z=0|P=0 Y=0 R=0}]"));
+        ScriptEditorModel.LootSpawnLocations.Add(new ScriptLocationVariableEditorViewModel("loot", "loot_" + (ScriptEditorModel.LootSpawnLocations.Count + 1), "[{X=0 Y=0 Z=0}]"));
         ScriptEditorModel.RefreshLocalVariablePlaceholders();
         MarkScriptDirty();
         SyncStructuredScriptToJson();
@@ -2196,10 +3173,48 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     private void AddNpcLocationVariable()
     {
         if (ScriptEditorModel is null) return;
-        ScriptEditorModel.NpcSpawnLocations.Add(new ScriptLocationVariableEditorViewModel("npc", "npc_" + (ScriptEditorModel.NpcSpawnLocations.Count + 1), "[{X=0 Y=0 Z=0|P=0 Y=0 R=0}]"));
+        var variable = new ScriptLocationVariableEditorViewModel("npc", "npc_" + (ScriptEditorModel.NpcSpawnLocations.Count + 1), "[{X=0 Y=0 Z=0}]");
+        ScriptEditorModel.NpcSpawnLocations.Add(variable);
         ScriptEditorModel.RefreshLocalVariablePlaceholders();
+        foreach (var block in ScriptEditorModel.SpawnBlocks.Where(block => string.IsNullOrWhiteSpace(block.Location)))
+        {
+            block.Location = variable.Placeholder;
+        }
         MarkScriptDirty();
         SyncStructuredScriptToJson();
+    }
+
+    private void PasteLocationVariableFromClipboard(ScriptLocationVariableEditorViewModel? location)
+    {
+        if (ScriptEditorModel is null || location is null) return;
+
+        string text;
+        try
+        {
+            if (!Clipboard.ContainsText())
+            {
+                Log("Koordinaten einfuegen: Zwischenablage enthaelt keinen Text.");
+                return;
+            }
+
+            text = Clipboard.GetText()?.Trim() ?? string.Empty;
+        }
+        catch (Exception ex)
+        {
+            Log("Koordinaten einfuegen: Zwischenablage konnte nicht gelesen werden: " + ex.Message);
+            AppLogService.WriteException("PasteLocationVariableFromClipboard.Read", ex);
+            return;
+        }
+
+        if (!location.TrySetFromText(text))
+        {
+            Log("Koordinaten einfuegen: Format nicht erkannt. Erwartet z.B. {X=-861133.875 Y=-861688.938 Z=1541.331|P=345.912994 Y=106.210098 R=0.000000}");
+            return;
+        }
+
+        MarkScriptDirty();
+        SyncStructuredScriptToJson();
+        Log($"Koordinaten eingefuegt fuer {location.Name}: X={location.X:0.###}, Y={location.Y:0.###}, Z={location.Z:0.###}");
     }
 
     private void RemoveLocationVariable(ScriptLocationVariableEditorViewModel? location)
@@ -2215,43 +3230,132 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         SyncStructuredScriptToJson();
     }
 
-    private void AddLootPack()
+    private void LoadGlobalLootPacks()
+    {
+        GlobalLootPacks.Clear();
+        foreach (var pack in LootPackStore.Load())
+        {
+            GlobalLootPacks.Add(LootPackEditorViewModel.FromPack(pack));
+        }
+    }
+
+    private void SaveGlobalLootPacks()
+    {
+        LootPackStore.Save(GlobalLootPacks.Select(pack => pack.ToPack()));
+        Log("Globale Lootpacks gespeichert: " + GlobalLootPacks.Count);
+    }
+
+    private void ImportLegacyLootPacksIntoGlobalStore(IEnumerable<LootPack> packs)
+    {
+        var imported = packs
+            .Where(pack => !string.IsNullOrWhiteSpace(pack.Name))
+            .Where(pack => pack.Items.Any(item => !string.IsNullOrWhiteSpace(item.Item)))
+            .ToList();
+
+        if (imported.Count == 0)
+        {
+            return;
+        }
+
+        var current = GlobalLootPacks.Select(pack => pack.ToPack()).ToList();
+        if (!LootPackStore.MergeMissing(current, imported))
+        {
+            return;
+        }
+
+        LootPackStore.Save(current);
+        LoadGlobalLootPacks();
+        Log("Legacy-Lootpacks in globale Bibliothek uebernommen.");
+    }
+
+    private void AddLootPackReference()
     {
         if (ScriptEditorModel is null) return;
-        var pack = new LootPackEditorViewModel { Name = "Neues LootPack", Weight = 1 };
-        ScriptEditorModel.LootPacks.Add(pack);
+        var selectedName = ScriptEditorModel.SelectedLootPackNameToAdd?.Trim() ?? "";
+        if (string.IsNullOrWhiteSpace(selectedName))
+        {
+            selectedName = GlobalLootPacks.FirstOrDefault(pack => pack.Enabled)?.Name ?? GlobalLootPacks.FirstOrDefault()?.Name ?? "";
+        }
+
+        if (string.IsNullOrWhiteSpace(selectedName))
+        {
+            return;
+        }
+
+        if (ScriptEditorModel.LootPackNames.Any(name => string.Equals(name, selectedName, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        ScriptEditorModel.LootPackNames.Add(selectedName);
         ScriptEditorModel.RebuildFlow();
-        ScriptEditorModel.SelectFlowTarget(pack);
         MarkScriptDirty();
         SyncStructuredScriptToJson();
     }
 
-    private void RemoveLootPack(LootPackEditorViewModel? pack)
+    private void RemoveLootPackReference(string? packName)
     {
-        if (ScriptEditorModel is null || pack is null) return;
-        ScriptEditorModel.LootPacks.Remove(pack);
+        if (ScriptEditorModel is null || string.IsNullOrWhiteSpace(packName)) return;
+        var match = ScriptEditorModel.LootPackNames.FirstOrDefault(name => string.Equals(name, packName, StringComparison.OrdinalIgnoreCase));
+        if (match is null)
+        {
+            return;
+        }
+
+        ScriptEditorModel.LootPackNames.Remove(match);
         ScriptEditorModel.RebuildFlow();
         MarkScriptDirty();
         SyncStructuredScriptToJson();
     }
 
-    private void AddLootItem(LootPackEditorViewModel? pack)
+    private void AddGlobalLootPack()
+    {
+        var pack = new LootPackEditorViewModel { Name = NextLootPackName(), Weight = 1 };
+        GlobalLootPacks.Add(pack);
+        SaveGlobalLootPacks();
+    }
+
+    private void RemoveGlobalLootPack(LootPackEditorViewModel? pack)
+    {
+        if (pack is null) return;
+        GlobalLootPacks.Remove(pack);
+        if (ScriptEditorModel?.LootPackNames.Remove(pack.Name) == true)
+        {
+            MarkScriptDirty();
+            SyncStructuredScriptToJson();
+        }
+        SaveGlobalLootPacks();
+    }
+
+    private void AddLootItem(LootPackEditorViewModel? pack) => AddGlobalLootItem(pack);
+
+    private void AddGlobalLootItem(LootPackEditorViewModel? pack)
     {
         if (pack is null) return;
         pack.Items.Add(new LootItemEditorViewModel { Quantity = 1, DelayMs = 50 });
-        MarkScriptDirty();
-        SyncStructuredScriptToJson();
     }
 
-    private void RemoveLootItem(LootItemEditorViewModel? item)
+    private void RemoveLootItem(LootItemEditorViewModel? item) => RemoveGlobalLootItem(item);
+
+    private void RemoveGlobalLootItem(LootItemEditorViewModel? item)
     {
-        if (ScriptEditorModel is null || item is null) return;
-        foreach (var pack in ScriptEditorModel.LootPacks)
+        if (item is null) return;
+        foreach (var pack in GlobalLootPacks)
         {
             if (pack.Items.Remove(item)) break;
         }
-        MarkScriptDirty();
-        SyncStructuredScriptToJson();
+    }
+
+    private string NextLootPackName()
+    {
+        var index = GlobalLootPacks.Count + 1;
+        var name = "LootPack_" + index;
+        while (GlobalLootPacks.Any(pack => string.Equals(pack.Name, name, StringComparison.OrdinalIgnoreCase)))
+        {
+            name = "LootPack_" + ++index;
+        }
+
+        return name;
     }
 
     private void AddLootCommandPack()
@@ -2270,6 +3374,52 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         if (ScriptEditorModel is null || pack is null) return;
         ScriptEditorModel.LootCommandPacks.Remove(pack);
         ScriptEditorModel.RebuildFlow();
+        MarkScriptDirty();
+        SyncStructuredScriptToJson();
+    }
+
+    private void AddLootCleanupCommands()
+    {
+        if (ScriptEditorModel is null) return;
+
+        var locations = ScriptEditorModel.LootSpawnLocations
+            .Where(location => !string.IsNullOrWhiteSpace(location.Placeholder))
+            .ToList();
+
+        if (locations.Count == 0)
+        {
+            locations.Add(new ScriptLocationVariableEditorViewModel("loot", "triggerZone", "{triggerZone}"));
+        }
+
+        var existingCommands = new HashSet<string>(
+            ScriptEditorModel.CleanupBlock.Commands.Select(command => command.Command?.Trim() ?? string.Empty),
+            StringComparer.OrdinalIgnoreCase);
+
+        var added = false;
+        foreach (var location in locations)
+        {
+            var target = location.Name.Equals("triggerZone", StringComparison.OrdinalIgnoreCase) ? "{triggerZone}" : location.Placeholder;
+            var command = $"#DestroyAllItemsWithinRadius all 20 Location \"{target}\"";
+            if (!existingCommands.Add(command))
+            {
+                continue;
+            }
+
+            ScriptEditorModel.CleanupBlock.Commands.Add(new ScriptCommandEditorViewModel
+            {
+                Name = "Cleanup " + (location.Name.Equals("triggerZone", StringComparison.OrdinalIgnoreCase) ? "Triggerzone" : location.Name),
+                Command = command,
+                Repeat = 1,
+                DelayMs = 50
+            });
+            added = true;
+        }
+
+        if (!added)
+        {
+            return;
+        }
+
         MarkScriptDirty();
         SyncStructuredScriptToJson();
     }
@@ -2342,12 +3492,12 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         {
             using var _ = JsonDocument.Parse(ScriptJson);
             if (ScriptEditorModel is null) LoadStructuredScriptFromJson();
-            ScriptValidation = "JSON ist gueltig.";
+            ScriptValidation = T("JsonValid");
             if (SelectedScript is not null) SelectedScript.HasErrors = false;
         }
         catch (Exception ex)
         {
-            ScriptValidation = "JSON Fehler: " + ex.Message;
+            ScriptValidation = Tf("JsonErrorFormat", ex.Message);
             if (SelectedScript is not null) SelectedScript.HasErrors = true;
         }
     }
@@ -2364,7 +3514,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         }
         catch (Exception ex)
         {
-            ScriptValidation = "Formatieren fehlgeschlagen: " + ex.Message;
+            ScriptValidation = Tf("FormatFailedFormat", ex.Message);
         }
     }
 
@@ -2487,6 +3637,8 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
     {
         _discordServerStatusMessageCts?.Cancel();
         _discordServerStatusMessageCts?.Dispose();
+        _playerStatusCts?.Cancel();
+        _playerStatusCts?.Dispose();
         _chatForwarder?.Stop();
         _chatCommands?.Stop();
         _joinCommands?.Stop();
@@ -2494,15 +3646,22 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _weeklyTasks?.Stop();
         _autoMessages?.Stop();
         _eventEngine?.Dispose();
+        _usageDirectory.Dispose();
         if (_discord is not null) await _discord.DisposeAsync();
         if (_rcon is not null) await _rcon.DisposeAsync();
         _playerScanLock.Dispose();
+        _weeklyRewardClaimLock.Dispose();
+        _weeklyRewardNotificationLock.Dispose();
     }
 }
 
 
+public sealed record LootSpawnModeOption(string Value, string Name);
+
 public sealed class ScriptStructuredEditorViewModel : ObservableObject
 {
+    private string _mode = "RandomAnnouncedZone";
+
     public ScriptStructuredEditorViewModel()
     {
         LootRandomBlock = new ScriptLootRandomBlockEditorViewModel(this);
@@ -2511,13 +3670,42 @@ public sealed class ScriptStructuredEditorViewModel : ObservableObject
     public string Id { get; set; } = "script";
     public string Name { get; set; } = "Script";
     public bool Enabled { get; set; } = true;
-    public string Mode { get; set; } = "RandomAnnouncedZone";
+    public string Mode
+    {
+        get => _mode;
+        set
+        {
+            var next = string.IsNullOrWhiteSpace(value) ? "RandomAnnouncedZone" : value.Trim();
+            if (!SetProperty(ref _mode, next))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(IsRandomAnnouncedMode));
+            OnPropertyChanged(nameof(IsRandomActivatedMode));
+            OnPropertyChanged(nameof(IsBuyzoneMode));
+            OnPropertyChanged(nameof(ShowsRandomizerSettings));
+            OnPropertyChanged(nameof(ShowsRandomActivatedSettings));
+            OnPropertyChanged(nameof(ShowsBuySettings));
+            OnPropertyChanged(nameof(ShowsInitiatorRepeatSettings));
+            if (FlowNodes.Count > 0)
+            {
+                RebuildFlow();
+            }
+        }
+    }
     public bool IncludeInRandomizer { get; set; } = true;
     public int RandomizerEveryMinutes { get; set; } = 360;
     public int InitiatorRepeatEveryMinutes { get; set; }
     public int MaxConcurrentRandomEvents { get; set; } = 1;
+    public int RandomActivationChancePercent { get; set; } = 25;
     public string EventGroup { get; set; } = "";
     public int MaxConcurrentInGroup { get; set; }
+    public int BuyPrice { get; set; }
+    public string BuyAlias { get; set; } = "";
+    public int ActivationDelayMs { get; set; }
+    public string TriggerServerMessageType { get; set; } = "Yellow";
+    public string TriggerServerMessage { get; set; } = "";
     public string LootPackSpawnMode { get; set; } = "OneTotal";
     public int CleanupWhenEmptySeconds { get; set; } = 300;
     public int CooldownMinutes { get; set; } = 60;
@@ -2537,12 +3725,23 @@ public sealed class ScriptStructuredEditorViewModel : ObservableObject
     public ObservableCollection<ScriptLocationVariableEditorViewModel> LootSpawnLocations { get; } = new();
     public ObservableCollection<ScriptLocationVariableEditorViewModel> NpcSpawnLocations { get; } = new();
     public ObservableCollection<string> LocationPlaceholders { get; } = new();
-    public ObservableCollection<LootPackEditorViewModel> LootPacks { get; } = new();
+    public ObservableCollection<string> LootLocationPlaceholders { get; } = new();
+    public ObservableCollection<string> NpcLocationPlaceholders { get; } = new();
+    public ObservableCollection<string> LootPackNames { get; } = new();
     public ObservableCollection<LootCommandPackEditorViewModel> LootCommandPacks { get; } = new();
+    public string SelectedLootPackNameToAdd { get; set; } = "";
     public IReadOnlyList<ScriptBlockEditorViewModel> Blocks => new[] { PreLiveCleanupBlock, InitiatorBlock, LiveBlock, EmptyBlock, CleanupBlock };
     public ScriptLootRandomBlockEditorViewModel LootRandomBlock { get; }
     public ObservableCollection<ScriptFlowNodeViewModel> FlowNodes { get; } = new();
     public ObservableCollection<ScriptFlowConnectionViewModel> FlowConnections { get; } = new();
+
+    public bool IsRandomAnnouncedMode => IsMode("RandomAnnouncedZone") || IsMode("Random");
+    public bool IsRandomActivatedMode => IsMode("RandomActivated") || IsMode("RandomActivatedZone");
+    public bool IsBuyzoneMode => IsMode("Buyzone") || IsMode("BuyZone") || IsMode("BuyEvent");
+    public bool ShowsRandomizerSettings => IsRandomAnnouncedMode || IsRandomActivatedMode;
+    public bool ShowsRandomActivatedSettings => IsRandomActivatedMode;
+    public bool ShowsBuySettings => IsBuyzoneMode;
+    public bool ShowsInitiatorRepeatSettings => IsRandomAnnouncedMode;
 
     private ScriptFlowNodeViewModel? _selectedFlowNode;
     public ScriptFlowNodeViewModel? SelectedFlowNode
@@ -2568,9 +3767,15 @@ public sealed class ScriptStructuredEditorViewModel : ObservableObject
             RandomizerEveryMinutes = definition.RandomizerEveryMinutes,
             InitiatorRepeatEveryMinutes = definition.InitiatorRepeatEveryMinutes,
             MaxConcurrentRandomEvents = definition.MaxConcurrentRandomEvents,
+            RandomActivationChancePercent = Math.Clamp(definition.RandomActivationChancePercent, 0, 100),
             EventGroup = definition.EventGroup ?? "",
             MaxConcurrentInGroup = definition.MaxConcurrentInGroup,
-            LootPackSpawnMode = string.IsNullOrWhiteSpace(definition.LootPackSpawnMode) ? "OneTotal" : definition.LootPackSpawnMode,
+            BuyPrice = Math.Max(0, definition.BuyPrice),
+            BuyAlias = definition.BuyAlias ?? "",
+            ActivationDelayMs = Math.Max(0, definition.ActivationDelayMs),
+            TriggerServerMessageType = string.IsNullOrWhiteSpace(definition.TriggerServerMessageType) ? "Yellow" : definition.TriggerServerMessageType,
+            TriggerServerMessage = definition.TriggerServerMessage ?? "",
+            LootPackSpawnMode = NormalizeLootPackSpawnMode(definition.LootPackSpawnMode),
             CleanupWhenEmptySeconds = definition.CleanupWhenEmptySeconds,
             CooldownMinutes = definition.CooldownMinutes,
             ZoneName = zone.Name ?? "Zone",
@@ -2586,12 +3791,41 @@ public sealed class ScriptStructuredEditorViewModel : ObservableObject
             CleanupBlock = ScriptBlockEditorViewModel.FromBlock(definition.CleanupBlock, "Cleanup Block")
         };
 
-        foreach (var pack in definition.LootPacks) model.LootPacks.Add(LootPackEditorViewModel.FromPack(pack));
-        foreach (var pack in definition.LootCommandPacks) model.LootCommandPacks.Add(LootCommandPackEditorViewModel.FromPack(pack));
+        var legacyLootPacks = definition.LootPacks ?? new List<LootPack>();
+        var selectedLootPackNames = definition.LootPackNames?.Where(name => !string.IsNullOrWhiteSpace(name)).ToList() ?? new List<string>();
+        if (selectedLootPackNames.Count == 0)
+        {
+            selectedLootPackNames = legacyLootPacks
+                .Select(pack => pack.Name?.Trim() ?? "")
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        foreach (var name in selectedLootPackNames)
+        {
+            model.LootPackNames.Add(name);
+        }
+
         foreach (var block in definition.SpawnBlocks ?? new List<SpawnBlock>()) model.SpawnBlocks.Add(SpawnBlockEditorViewModel.FromBlock(block));
         foreach (var location in definition.LocalVariables?.LootSpawnLocations ?? new List<ScriptLocationVariable>()) model.LootSpawnLocations.Add(ScriptLocationVariableEditorViewModel.FromVariable("loot", location));
         foreach (var location in definition.LocalVariables?.NpcSpawnLocations ?? new List<ScriptLocationVariable>()) model.NpcSpawnLocations.Add(ScriptLocationVariableEditorViewModel.FromVariable("npc", location));
+        if (model.LootSpawnLocations.Count == 0)
+        {
+            var legacyLootLocations = legacyLootPacks
+                .Select(pack => pack.Location?.Trim() ?? "")
+                .Where(location => !string.IsNullOrWhiteSpace(location))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            foreach (var location in legacyLootLocations)
+            {
+                model.LootSpawnLocations.Add(new ScriptLocationVariableEditorViewModel("loot", "loot_" + (model.LootSpawnLocations.Count + 1), location));
+            }
+        }
+
         model.RefreshLocalVariablePlaceholders();
+        model.EnsureSpawnBlockLocations();
         return model;
     }
 
@@ -2605,9 +3839,20 @@ public sealed class ScriptStructuredEditorViewModel : ObservableObject
         RandomizerEveryMinutes = Math.Max(0, RandomizerEveryMinutes),
         InitiatorRepeatEveryMinutes = Math.Max(0, InitiatorRepeatEveryMinutes),
         MaxConcurrentRandomEvents = Math.Max(0, MaxConcurrentRandomEvents),
+        RandomActivationChancePercent = Math.Clamp(RandomActivationChancePercent, 0, 100),
         EventGroup = EventGroup?.Trim() ?? "",
         MaxConcurrentInGroup = Math.Max(0, MaxConcurrentInGroup),
-        LootPackSpawnMode = string.IsNullOrWhiteSpace(LootPackSpawnMode) ? "OneTotal" : LootPackSpawnMode.Trim(),
+        BuyPrice = Math.Max(0, BuyPrice),
+        BuyAlias = BuyAlias?.Trim() ?? "",
+        ActivationDelayMs = Math.Max(0, ActivationDelayMs),
+        TriggerServerMessageType = string.IsNullOrWhiteSpace(TriggerServerMessageType) ? "Yellow" : TriggerServerMessageType.Trim(),
+        TriggerServerMessage = TriggerServerMessage?.Trim() ?? "",
+        LootPackSpawnMode = NormalizeLootPackSpawnMode(LootPackSpawnMode),
+        LootPackNames = LootPackNames
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList() is { Count: > 0 } names ? names : null,
         Announcement = InitiatorMessage?.Trim() ?? "",
         Zone = new EventZone { Name = string.IsNullOrWhiteSpace(ZoneName) ? "Zone" : ZoneName.Trim(), CenterX = ZoneX, CenterY = ZoneY, CenterZ = ZoneZ, Radius = Math.Max(0, ZoneRadius) },
         LocalVariables = new ScriptLocalVariables
@@ -2622,26 +3867,66 @@ public sealed class ScriptStructuredEditorViewModel : ObservableObject
         SpawnBlocks = SpawnBlocks.Select(x => x.ToBlock()).ToList(),
         EmptyBlock = EmptyBlock.ToBlock(),
         CleanupBlock = CleanupBlock.ToBlock(),
-        LootPacks = LootPacks.Select(x => x.ToPack()).ToList(),
-        LootCommandPacks = LootCommandPacks.Select(x => x.ToPack()).ToList(),
+        LootPacks = null,
+        LootCommandPacks = null,
         CleanupWhenEmptySeconds = Math.Max(0, CleanupWhenEmptySeconds),
         CooldownMinutes = Math.Max(0, CooldownMinutes)
     };
 
     public void RefreshLocalVariablePlaceholders()
     {
-        var values = new List<string>
+        var sharedValues = new List<string>
         {
             "{triggerZone}"
         };
 
-        values.AddRange(LootSpawnLocations.Select(x => x.Placeholder));
-        values.AddRange(NpcSpawnLocations.Select(x => x.Placeholder));
+        var lootValues = sharedValues.Concat(LootSpawnLocations.Select(x => x.Placeholder)).ToList();
+        var npcValues = sharedValues.Concat(NpcSpawnLocations.Select(x => x.Placeholder)).ToList();
 
-        LocationPlaceholders.Clear();
-        foreach (var value in values.Where(v => !string.IsNullOrWhiteSpace(v)).Distinct(StringComparer.OrdinalIgnoreCase))
+        ReplacePlaceholders(LootLocationPlaceholders, lootValues);
+        ReplacePlaceholders(NpcLocationPlaceholders, npcValues);
+        ReplacePlaceholders(LocationPlaceholders, lootValues.Concat(NpcSpawnLocations.Select(x => x.Placeholder)));
+    }
+
+    public void EnsureSpawnBlockLocations()
+    {
+        var defaultLocation = NpcLocationPlaceholders
+            .FirstOrDefault(x => !string.Equals(x, "{triggerZone}", StringComparison.OrdinalIgnoreCase))
+            ?? NpcLocationPlaceholders.FirstOrDefault()
+            ?? "{triggerZone}";
+
+        foreach (var spawn in SpawnBlocks.Where(spawn => string.IsNullOrWhiteSpace(spawn.Location)))
         {
-            LocationPlaceholders.Add(value);
+            spawn.Location = defaultLocation;
+        }
+    }
+
+    private static void ReplacePlaceholders(ObservableCollection<string> target, IEnumerable<string> values)
+    {
+        var nextValues = values
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (target.SequenceEqual(nextValues, StringComparer.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        target.Clear();
+        foreach (var value in nextValues)
+        {
+            target.Add(value);
+        }
+    }
+
+    public void EnsureActivationDelayMs(int fallbackDelayMs)
+    {
+        if (ActivationDelayMs <= 0)
+        {
+            ActivationDelayMs = Math.Max(0, fallbackDelayMs);
+            OnPropertyChanged(nameof(ActivationDelayMs));
+            RebuildFlow();
         }
     }
 
@@ -2657,40 +3942,34 @@ public sealed class ScriptStructuredEditorViewModel : ObservableObject
         FlowConnections.Clear();
         FlowNodes.Clear();
 
-        var zone = AddFlowNode("zone", "Trigger", "Aktivierungszone", $"{ZoneName} | Radius {ZoneRadius:0}", this, 24, 24, oldPositions);
-        var initiator = AddFlowNode("initiator", "Block", "Initiator", $"{InitiatorBlock.Commands.Count} Commands", InitiatorBlock, 24, 130, oldPositions);
+        var triggerInfo = Mode.Equals("RandomActivated", StringComparison.OrdinalIgnoreCase)
+            ? $"Chance {RandomActivationChancePercent}% | Cooldown {CooldownMinutes}m"
+            : $"{Mode} | Cooldown {CooldownMinutes}m";
+        var zone = AddFlowNode("zone", "Trigger", "Zone / Server Message", triggerInfo, this, 24, 24, oldPositions);
+        var initiator = AddFlowNode("initiator", "Initiierung", "Servernachricht", $"{InitiatorBlock.Commands.Count} Commands", InitiatorBlock, 24, 130, oldPositions);
         var preLive = AddFlowNode("prelive", "Block", "Cleanup vor Live", $"{PreLiveCleanupBlock.Commands.Count} Commands", PreLiveCleanupBlock, 24, 236, oldPositions);
-        var live = AddFlowNode("live", "Block", "Live", $"{LiveBlock.Commands.Count} Commands", LiveBlock, 24, 342, oldPositions);
-        var empty = AddFlowNode("empty", "Block", "Zone leer", $"{EmptyBlock.Commands.Count} Commands", EmptyBlock, 708, 342, oldPositions);
-        var cleanup = AddFlowNode("cleanup", "Block", "Cleanup", $"{CleanupBlock.Commands.Count} Commands", CleanupBlock, 708, 448, oldPositions);
+        var timer = AddFlowNode("timer", "Timer", "Optional Timer", ActivationDelayMs > 0 ? $"{ActivationDelayMs}ms" : "sofort", this, 24, 342, oldPositions);
+        var live = AddFlowNode("live", "Block", "Live", $"{LiveBlock.Commands.Count} Commands", LiveBlock, 24, 448, oldPositions);
+        var empty = AddFlowNode("empty", "Block", "Zone leer", $"{EmptyBlock.Commands.Count} Commands", EmptyBlock, 708, 448, oldPositions);
+        var cleanup = AddFlowNode("cleanup", "Block", "Cleanup", $"{CleanupBlock.Commands.Count} Commands", CleanupBlock, 708, 554, oldPositions);
 
         Connect(zone, initiator);
         Connect(initiator, preLive);
-        Connect(preLive, live);
+        Connect(preLive, timer);
+        Connect(timer, live);
 
         var branchTargets = new List<ScriptFlowNodeViewModel>();
         var branchY = 24d;
         var branchIndex = 0;
         foreach (var spawn in SpawnBlocks)
         {
-            branchTargets.Add(AddFlowNode(TargetNodeId("spawn", spawn), "Spawn", spawn.Name, $"{spawn.Type} x{spawn.Quantity}", spawn, 252, branchY + branchIndex++ * 106, oldPositions));
+            var wait = spawn.StartDelayMs > 0 ? $"{spawn.StartDelayMs}ms" : (spawn.StartDelaySeconds > 0 ? $"{spawn.StartDelaySeconds}s" : "sofort");
+            branchTargets.Add(AddFlowNode(TargetNodeId("spawn", spawn), "Spawns", spawn.Name, $"{wait} | {spawn.Type} x{spawn.Quantity}", spawn, 252, branchY + branchIndex++ * 106, oldPositions));
         }
 
         var randomLootY = branchY + branchIndex++ * 106;
-        var randomLoot = AddFlowNode("random_loot", "Random", "Random Loot", $"{LootPacks.Count} Packs | {LootPackSpawnMode}", LootRandomBlock, 252, randomLootY, oldPositions);
+        var randomLoot = AddFlowNode("random_loot", "Optional Loot", "Lootpacks", $"{LootPackNames.Count} Packs | {LootPackSpawnMode}", LootRandomBlock, 252, randomLootY, oldPositions);
         branchTargets.Add(randomLoot);
-
-        var packIndex = 0;
-        foreach (var pack in LootPacks)
-        {
-            var packNode = AddFlowNode(TargetNodeId("loot", pack), "LootPack", pack.Name, $"{pack.Items.Count} Items | Gewicht {pack.Weight}", pack, 480, randomLootY + packIndex++ * 92, oldPositions);
-            Connect(randomLoot, packNode);
-        }
-
-        foreach (var pack in LootCommandPacks)
-        {
-            branchTargets.Add(AddFlowNode(TargetNodeId("lootcommand", pack), "Command", pack.Name, $"Gewicht {pack.Weight}", pack, 252, branchY + branchIndex++ * 106, oldPositions));
-        }
 
         if (branchTargets.Count == 0)
         {
@@ -2788,6 +4067,22 @@ public sealed class ScriptStructuredEditorViewModel : ObservableObject
 
         return string.Empty;
     }
+
+    private bool IsMode(string value) => Mode.Equals(value, StringComparison.OrdinalIgnoreCase);
+
+    private static string NormalizeLootPackSpawnMode(string? value)
+    {
+        var mode = (value ?? string.Empty).Trim();
+        if (mode.Equals("OnePerLocation", StringComparison.OrdinalIgnoreCase) ||
+            mode.Equals("PerLocation", StringComparison.OrdinalIgnoreCase) ||
+            mode.Equals("AllPoints", StringComparison.OrdinalIgnoreCase) ||
+            mode.Equals("AllePunkte", StringComparison.OrdinalIgnoreCase))
+        {
+            return "OnePerLocation";
+        }
+
+        return "OneTotal";
+    }
 }
 
 public sealed class ScriptBlockEditorViewModel : ObservableObject
@@ -2799,7 +4094,7 @@ public sealed class ScriptBlockEditorViewModel : ObservableObject
 
     public static ScriptBlockEditorViewModel FromBlock(ScriptBlock? block, string fallbackName)
     {
-        var model = new ScriptBlockEditorViewModel { Name = string.IsNullOrWhiteSpace(block?.Name) ? fallbackName : block!.Name, Enabled = block?.Enabled ?? true };
+        var model = new ScriptBlockEditorViewModel { Name = string.IsNullOrWhiteSpace(block?.Name) ? fallbackName : block!.Name, Enabled = true };
         foreach (var command in block?.Commands ?? new List<EventCommand>()) model.Commands.Add(ScriptCommandEditorViewModel.FromCommand(command));
         return model;
     }
@@ -2807,7 +4102,7 @@ public sealed class ScriptBlockEditorViewModel : ObservableObject
     public ScriptBlock ToBlock() => new()
     {
         Name = string.IsNullOrWhiteSpace(Name) ? "Block" : Name.Trim(),
-        Enabled = Enabled,
+        Enabled = true,
         Commands = Commands.Select(x => x.ToCommand()).ToList()
     };
 }
@@ -2842,13 +4137,15 @@ public sealed class ScriptCommandEditorViewModel : ObservableObject
 public sealed class ScriptLocationVariableEditorViewModel : ObservableObject
 {
     private string _name;
-    private string _location;
+    private double _x;
+    private double _y;
+    private double _z;
 
     public ScriptLocationVariableEditorViewModel(string prefix, string name, string location)
     {
         Prefix = prefix;
         _name = name;
-        _location = location;
+        SetCoordinatesFromLocation(location);
     }
 
     public string Prefix { get; }
@@ -2867,8 +4164,52 @@ public sealed class ScriptLocationVariableEditorViewModel : ObservableObject
 
     public string Location
     {
-        get => _location;
-        set => SetProperty(ref _location, value);
+        get => BuildLocation(X, Y, Z);
+        set
+        {
+            if (TryParseLocation(value, out var x, out var y, out var z))
+            {
+                X = x;
+                Y = y;
+                Z = z;
+            }
+        }
+    }
+
+    public double X
+    {
+        get => _x;
+        set
+        {
+            if (SetProperty(ref _x, value))
+            {
+                OnPropertyChanged(nameof(Location));
+            }
+        }
+    }
+
+    public double Y
+    {
+        get => _y;
+        set
+        {
+            if (SetProperty(ref _y, value))
+            {
+                OnPropertyChanged(nameof(Location));
+            }
+        }
+    }
+
+    public double Z
+    {
+        get => _z;
+        set
+        {
+            if (SetProperty(ref _z, value))
+            {
+                OnPropertyChanged(nameof(Location));
+            }
+        }
     }
 
     public string Placeholder => "{" + Prefix + "_" + SanitizePlaceholderName(Name) + "}";
@@ -2876,11 +4217,61 @@ public sealed class ScriptLocationVariableEditorViewModel : ObservableObject
     public static ScriptLocationVariableEditorViewModel FromVariable(string prefix, ScriptLocationVariable variable) =>
         new(prefix, variable.Name ?? "position", variable.Location ?? "");
 
+    public bool TrySetFromText(string? text)
+    {
+        if (!TryParseLocation(text, out var x, out var y, out var z))
+        {
+            return false;
+        }
+
+        X = x;
+        Y = y;
+        Z = z;
+        return true;
+    }
+
     public ScriptLocationVariable ToVariable() => new()
     {
         Name = string.IsNullOrWhiteSpace(Name) ? "position" : Name.Trim(),
-        Location = Location?.Trim() ?? ""
+        Location = Location
     };
+
+    private void SetCoordinatesFromLocation(string? location)
+    {
+        if (TryParseLocation(location, out var x, out var y, out var z))
+        {
+            _x = x;
+            _y = y;
+            _z = z;
+        }
+    }
+
+    private static bool TryParseLocation(string? location, out double x, out double y, out double z)
+    {
+        x = 0;
+        y = 0;
+        z = 0;
+
+        if (string.IsNullOrWhiteSpace(location))
+        {
+            return false;
+        }
+
+        var coordinatePart = location.Split('|')[0];
+        return TryReadCoordinate(coordinatePart, "X", out x)
+               && TryReadCoordinate(coordinatePart, "Y", out y)
+               && TryReadCoordinate(coordinatePart, "Z", out z);
+    }
+
+    private static bool TryReadCoordinate(string source, string key, out double value)
+    {
+        value = 0;
+        var match = System.Text.RegularExpressions.Regex.Match(source, @"\b" + key + @"\s*=\s*(-?\d+(?:[\.,]\d+)?)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return match.Success && double.TryParse(match.Groups[1].Value.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+    }
+
+    private static string BuildLocation(double x, double y, double z) =>
+        string.Create(CultureInfo.InvariantCulture, $"[{{X={x} Y={y} Z={z}}}]");
 
     private static string SanitizePlaceholderName(string? value)
     {
@@ -3000,7 +4391,13 @@ public sealed class ScriptLootRandomBlockEditorViewModel : ObservableObject
     }
 
     public string Name => "Random Loot";
-    public ObservableCollection<LootPackEditorViewModel> LootPacks => _owner.LootPacks;
+    public ObservableCollection<string> LootPackNames => _owner.LootPackNames;
+
+    public string SelectedLootPackNameToAdd
+    {
+        get => _owner.SelectedLootPackNameToAdd;
+        set => _owner.SelectedLootPackNameToAdd = value ?? string.Empty;
+    }
 
     public string LootPackSpawnMode
     {
@@ -3008,6 +4405,18 @@ public sealed class ScriptLootRandomBlockEditorViewModel : ObservableObject
         set
         {
             var next = string.IsNullOrWhiteSpace(value) ? "OneTotal" : value.Trim();
+            if (next.Equals("OnePerLocation", StringComparison.OrdinalIgnoreCase) ||
+                next.Equals("PerLocation", StringComparison.OrdinalIgnoreCase) ||
+                next.Equals("AllPoints", StringComparison.OrdinalIgnoreCase) ||
+                next.Equals("AllePunkte", StringComparison.OrdinalIgnoreCase))
+            {
+                next = "OnePerLocation";
+            }
+            else
+            {
+                next = "OneTotal";
+            }
+
             if (string.Equals(_owner.LootPackSpawnMode, next, StringComparison.Ordinal))
             {
                 return;
@@ -3018,7 +4427,7 @@ public sealed class ScriptLootRandomBlockEditorViewModel : ObservableObject
         }
     }
 
-    public string Summary => $"{LootPacks.Count} LootPacks";
+    public string Summary => $"{LootPackNames.Count} LootPacks";
 }
 
 public sealed class ScriptFlowNodeViewModel : ObservableObject
@@ -3113,17 +4522,202 @@ public sealed class ScriptFlowConnectionViewModel : ObservableObject, IDisposabl
 
 public sealed class SpawnBlockEditorViewModel : ObservableObject
 {
+    private const string RandomZombieType = "Random Zombie";
+    private const string LootPuppetType = "Lootpuppet";
+    private const string LootPuppetAsset = "BP_Zombie_Civilian_Skinny_Loot";
+
+    private static readonly IReadOnlyList<string> ZombieSuggestions = new[]
+    {
+        "BP_Zombie2",
+        "BP_Zombie_Civilian",
+        "BP_Zombie_Civilian_Fat_Female",
+        "BP_Zombie_Civilian_Fat_Male",
+        "BP_Zombie_Civilian_Muscular_Female",
+        "BP_Zombie_Civilian_Muscular_Male",
+        "BP_Zombie_Civilian_Normal_Male",
+        "BP_Zombie_Civilian_Skinny_Female",
+        "BP_Zombie_Civilian_Skinny_Male",
+        "BP_Zombie_Hospital",
+        "BP_Zombie_Hospital_Fat",
+        "BP_Zombie_Hospital_Female",
+        "BP_Zombie_Hospital_Muscle",
+        "BP_Zombie_Hospital_Normal",
+        "BP_Zombie_Military",
+        "BP_Zombie_Military_Armored",
+        "BP_Zombie_Military_Female",
+        "BP_Zombie_Military_Muscle",
+        "BP_Zombie_Nuclear",
+        "BP_Zombie_Nuclear_Fat_Female",
+        "BP_Zombie_Nuclear_Fat_Male",
+        "BP_Zombie_Nuclear_Muscular_Female",
+        "BP_Zombie_Nuclear_Muscular_Male",
+        "BP_Zombie_Police",
+        "BP_Zombie_Police_Armored",
+        "BP_Zombie_Police_Fat",
+        "BP_Zombie_Police_Female",
+        "BP_Zombie_Police_Muscle",
+        "BP_Zombie_SuicideVest"
+    };
+
+    private static readonly IReadOnlyList<string> ArmedNpcSuggestions = new[]
+    {
+        "BP_Drifter_Lvl_1",
+        "BP_Drifter_Lvl_2",
+        "BP_Drifter_Lvl_3",
+        "BP_Drifter_Lvl_3_Radiation",
+        "BP_Drifter_Lvl_4",
+        "BP_Drifter_Lvl_4_AbandonedBunker",
+        "BP_Drifter_Lvl_4_Radiation",
+        "BP_Drifter_Lvl_5",
+        "BP_Drifter_Lvl_5_AbandonedBunker",
+        "BP_Drifter_Lvl_5_Radiation",
+        "BP_Guard_Lvl_1",
+        "BP_Guard_Lvl_2",
+        "BP_Guard_Lvl_3",
+        "BP_Guard_Lvl_4",
+        "BP_Guard_Lvl_4_AbandonedBunker",
+        "BP_Guard_Lvl_4_Radiation",
+        "BP_Guard_Lvl_5",
+        "BP_Guard_Lvl_5_AbandonedBunker",
+        "BP_Guard_Lvl_5_Radiation"
+    };
+
+    private static readonly IReadOnlyList<string> VehicleSuggestions = new[]
+    {
+        "BPC_Rager",
+        "BPC_WolfsWagen",
+        "BPC_Laika",
+        "BPC_Kinglet_Duster",
+        "BPC_Dirtbike"
+    };
+
+    private static readonly IReadOnlyList<string> ItemSuggestions = new[]
+    {
+        "Weapon_SKS",
+        "Magazine_Clip_SKS",
+        "Cal_7_62x39mm_Ammobox",
+        "Copper_Coins",
+        "MRE_Stew",
+        "Bandage",
+        "Fireplace",
+        "Tent"
+    };
+
+    private static readonly IReadOnlyList<string> CustomCommandSuggestions = new[]
+    {
+        "#SpawnItem Weapon_SKS 1 Location \"{location}\"",
+        "#SpawnRandomZombie 5 Location \"{location}\"",
+        "#SpawnVehicle BPC_Rager 1 Location \"{location}\" Modifier minimalfunctional",
+        "#ScheduleWorldEvent BP_CargoDropEvent {worldLocation}"
+    };
+
+    private string _type = "ArmedNPC";
+    private string _asset = "BP_Guard_Lvl_1";
+    private string _location = "";
+
     public string Name { get; set; } = "Spawn";
     public bool Enabled { get; set; } = true;
-    public string Type { get; set; } = "ArmedNPC";
-    public string Asset { get; set; } = "BP_Guard_Lvl_1";
+    public string Type
+    {
+        get => _type;
+        set
+        {
+            var next = string.IsNullOrWhiteSpace(value) ? "ArmedNPC" : value.Trim();
+            if (SetProperty(ref _type, next))
+            {
+                OnPropertyChanged(nameof(AssetSuggestions));
+                OnPropertyChanged(nameof(IsAssetInputEnabled));
+                OnPropertyChanged(nameof(IsQuantityInputEnabled));
+                OnPropertyChanged(nameof(IsDespawnLifetimeInputEnabled));
+                OnPropertyChanged(nameof(IsExtraInputEnabled));
+                OnPropertyChanged(nameof(AssetFieldLabel));
+                OnPropertyChanged(nameof(AssetFieldHint));
+                OnPropertyChanged(nameof(LocationFieldHint));
+                OnPropertyChanged(nameof(CommandModeHint));
+                if (IsCustomCommandType(next) || IsCargoDropType(next) || IsRandomZombieType(next) || IsLootPuppetType(next))
+                {
+                    Asset = "";
+                }
+                else
+                {
+                    var suggestions = AssetSuggestions;
+                    Asset = suggestions.Count > 0 ? suggestions[0] : "";
+                }
+            }
+        }
+    }
+
+    public string Asset
+    {
+        get => _asset;
+        set => SetProperty(ref _asset, NormalizeEditorAsset(Type, value));
+    }
+
+    public IReadOnlyList<string> AssetSuggestions => GetAssetSuggestions(Type);
+    public bool IsAssetInputEnabled => RequiresAssetInput(Type);
+    public bool IsQuantityInputEnabled => !IsCustomCommandType(Type) && !IsCargoDropType(Type);
+    public bool IsDespawnLifetimeInputEnabled => !IsCustomCommandType(Type) && !IsCargoDropType(Type);
+    public bool IsExtraInputEnabled => !IsCustomCommandType(Type) && !IsCargoDropType(Type);
+    public string AssetFieldLabel => IsCustomCommandType(Type)
+        ? "Command"
+        : IsCargoDropType(Type)
+            ? "Command automatisch"
+            : IsZombieType(Type) || IsRandomZombieType(Type) || IsLootPuppetType(Type)
+                ? "Zombie"
+                : "Asset";
+    public string AssetFieldHint
+    {
+        get
+        {
+            if (IsCustomCommandType(Type))
+            {
+                return "Custom: kompletter RCON-Befehl. #Spawn... kann mit oder ohne # eingegeben werden; {location} nutzt die gewaehlte Location, {worldLocation} erzeugt X=... Y=... Z=...";
+            }
+
+            if (IsCargoDropType(Type))
+            {
+                return "CargoDrop: keinen #Schedule-Command eingeben. Das Tool baut #ScheduleWorldEvent BP_CargoDropEvent automatisch aus der Location.";
+            }
+
+            if (IsRandomZombieType(Type))
+            {
+                return "Random Zombie nutzt #SpawnRandomZombie und benoetigt keine Variante.";
+            }
+
+            if (IsLootPuppetType(Type))
+            {
+                return "Lootpuppet nutzt fest #SpawnZombie " + LootPuppetAsset + ".";
+            }
+
+            if (IsZombieType(Type))
+            {
+                return "Zombie nutzt #SpawnZombie mit einer Variante aus dem Katalog.";
+            }
+
+            return "Keinen #Spawn-Command eingeben: Typ, Asset, Menge und Location bauen den Spawn-Befehl automatisch.";
+        }
+    }
+    public string LocationFieldHint => IsCustomCommandType(Type)
+        ? "Optional fuer Custom: im Command mit {location} oder {worldLocation} verwenden."
+        : IsCargoDropType(Type)
+            ? "Wird als X=... Y=... Z=... an #ScheduleWorldEvent BP_CargoDropEvent angehaengt."
+            : "Wird automatisch als Location \"...\" in den Spawn-Befehl eingesetzt.";
+    public string CommandModeHint => IsCargoDropType(Type)
+        ? "CargoDrop sendet automatisch: #ScheduleWorldEvent BP_CargoDropEvent X=... Y=... Z=..."
+        : AssetFieldHint;
     public int Quantity { get; set; } = 1;
-    public string Location { get; set; } = "";
+    public string Location
+    {
+        get => _location;
+        set => SetProperty(ref _location, value ?? string.Empty);
+    }
     public string Extra { get; set; } = "";
     public int DespawnLifetimeSeconds { get; set; }
     public int StartDelaySeconds { get; set; }
+    public int StartDelayMs { get; set; }
     public int Repeat { get; set; } = 1;
     public int RepeatEverySeconds { get; set; }
+    public int RepeatEveryMs { get; set; }
     public int DelayMs { get; set; } = 250;
     public bool UseTriggerPlayer { get; set; } = true;
 
@@ -3131,43 +4725,248 @@ public sealed class SpawnBlockEditorViewModel : ObservableObject
     {
         Name = string.IsNullOrWhiteSpace(block.Name) ? "Spawn" : block.Name,
         Enabled = block.Enabled,
-        Type = string.IsNullOrWhiteSpace(block.Type) ? "ArmedNPC" : block.Type,
+        Type = NormalizeEditorSpawnType(block.Type, block.Asset),
         Asset = block.Asset ?? "",
         Quantity = Math.Max(1, block.Quantity),
         Location = block.Location ?? "",
         Extra = block.Extra ?? "",
         DespawnLifetimeSeconds = Math.Max(0, block.DespawnLifetimeSeconds),
         StartDelaySeconds = Math.Max(0, block.StartDelaySeconds),
+        StartDelayMs = Math.Max(0, block.StartDelayMs),
         Repeat = Math.Max(1, block.Repeat),
         RepeatEverySeconds = Math.Max(0, block.RepeatEverySeconds),
+        RepeatEveryMs = Math.Max(0, block.RepeatEveryMs),
         DelayMs = Math.Max(0, block.DelayMs),
         UseTriggerPlayer = block.UseTriggerPlayer
     };
 
-    public SpawnBlock ToBlock() => new()
+    public SpawnBlock ToBlock()
     {
-        Name = string.IsNullOrWhiteSpace(Name) ? "Spawn" : Name.Trim(),
-        Enabled = Enabled,
-        Type = string.IsNullOrWhiteSpace(Type) ? "ArmedNPC" : Type.Trim(),
-        Asset = Asset?.Trim() ?? "",
-        Quantity = Math.Max(1, Quantity),
-        Location = Location?.Trim() ?? "",
-        Extra = Extra?.Trim() ?? "",
-        DespawnLifetimeSeconds = Math.Max(0, DespawnLifetimeSeconds),
-        StartDelaySeconds = Math.Max(0, StartDelaySeconds),
-        Repeat = Math.Max(1, Repeat),
-        RepeatEverySeconds = Math.Max(0, RepeatEverySeconds),
-        DelayMs = Math.Max(0, DelayMs),
-        UseTriggerPlayer = UseTriggerPlayer
-    };
+        var type = string.IsNullOrWhiteSpace(Type) ? "ArmedNPC" : Type.Trim();
+        return new SpawnBlock
+        {
+            Name = string.IsNullOrWhiteSpace(Name) ? "Spawn" : Name.Trim(),
+            Enabled = Enabled,
+            Type = type,
+            Asset = NormalizeStoredAsset(type, Asset),
+            Quantity = Math.Max(1, Quantity),
+            Location = Location?.Trim() ?? "",
+            Extra = Extra?.Trim() ?? "",
+            DespawnLifetimeSeconds = Math.Max(0, DespawnLifetimeSeconds),
+            StartDelaySeconds = Math.Max(0, StartDelaySeconds),
+            StartDelayMs = Math.Max(0, StartDelayMs),
+            Repeat = Math.Max(1, Repeat),
+            RepeatEverySeconds = Math.Max(0, RepeatEverySeconds),
+            RepeatEveryMs = Math.Max(0, RepeatEveryMs),
+            DelayMs = Math.Max(0, DelayMs),
+            UseTriggerPlayer = UseTriggerPlayer
+        };
+    }
+
+    public void RefreshAssetSuggestions()
+    {
+        OnPropertyChanged(nameof(AssetSuggestions));
+        OnPropertyChanged(nameof(IsAssetInputEnabled));
+        OnPropertyChanged(nameof(AssetFieldLabel));
+        OnPropertyChanged(nameof(AssetFieldHint));
+
+        if (IsZombieType(Type) && string.IsNullOrWhiteSpace(Asset) && ZombieSuggestions.Count > 0)
+        {
+            Asset = ZombieSuggestions[0];
+        }
+    }
+
+    private static IReadOnlyList<string> GetAssetSuggestions(string? type)
+    {
+        var value = (type ?? string.Empty).Trim();
+        if (value.Equals("ArmedNPC", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("Armed NPC", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("NPC", StringComparison.OrdinalIgnoreCase))
+        {
+            return ArmedNpcSuggestions;
+        }
+
+        if (IsZombieType(value))
+        {
+            return ZombieSuggestions;
+        }
+
+        if (IsRandomZombieType(value))
+        {
+            return Array.Empty<string>();
+        }
+
+        if (IsLootPuppetType(value))
+        {
+            return Array.Empty<string>();
+        }
+
+        if (value.Equals("Vehicle", StringComparison.OrdinalIgnoreCase))
+        {
+            return VehicleSuggestions;
+        }
+
+        if (value.Equals("Item", StringComparison.OrdinalIgnoreCase))
+        {
+            return ItemSuggestions;
+        }
+
+        if (IsCustomCommandType(value))
+        {
+            return CustomCommandSuggestions;
+        }
+
+        if (IsCargoDropType(value))
+        {
+            return Array.Empty<string>();
+        }
+
+        return ArmedNpcSuggestions;
+    }
+
+    private static bool RequiresAssetInput(string? type)
+    {
+        var value = (type ?? string.Empty).Trim();
+        return value.Equals("ArmedNPC", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("Armed NPC", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("NPC", StringComparison.OrdinalIgnoreCase) ||
+               IsZombieType(value) ||
+               value.Equals("Vehicle", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("Item", StringComparison.OrdinalIgnoreCase) ||
+               IsCustomCommandType(value);
+    }
+
+    private static string NormalizeEditorAsset(string? type, string? asset)
+    {
+        var value = asset?.Trim() ?? string.Empty;
+        return IsRandomZombieType(type) || IsLootPuppetType(type)
+            ? string.Empty
+            : value;
+    }
+
+    private static string NormalizeStoredAsset(string? type, string? asset)
+    {
+        var value = asset?.Trim() ?? string.Empty;
+        return IsRandomZombieType(type) || IsLootPuppetType(type)
+            ? string.Empty
+            : value;
+    }
+
+    private static bool IsRandomZombieType(string? type)
+    {
+        var value = (type ?? string.Empty).Trim();
+        return value.Equals(RandomZombieType, StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("RandomZombie", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsLootPuppetType(string? type)
+    {
+        var value = (type ?? string.Empty).Trim();
+        return value.Equals(LootPuppetType, StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("Loot Puppet", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("LootPuppet", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals(LootPuppetAsset, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsZombieType(string? type)
+    {
+        var value = (type ?? string.Empty).Trim();
+        return value.Equals("Puppet", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("Puppets", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("Zombie", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeEditorSpawnType(string? type, string? asset = null)
+    {
+        var value = (type ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "ArmedNPC";
+        }
+
+        if (IsRandomZombieType(value))
+        {
+            return RandomZombieType;
+        }
+
+        if (IsLootPuppetType(value) ||
+            (IsZombieType(value) && string.Equals(asset?.Trim(), LootPuppetAsset, StringComparison.OrdinalIgnoreCase)))
+        {
+            return LootPuppetType;
+        }
+
+        if (IsZombieType(value) && string.IsNullOrWhiteSpace(asset))
+        {
+            return RandomZombieType;
+        }
+
+        if (IsZombieType(value))
+        {
+            return "Zombie";
+        }
+
+        if (IsCustomCommandType(value))
+        {
+            return "Custom";
+        }
+
+        if (IsCargoDropType(value))
+        {
+            return "CargoDrop";
+        }
+
+        return value;
+    }
+
+    private static bool IsCustomCommandType(string? type)
+    {
+        var value = (type ?? string.Empty).Trim();
+        return value.Equals("Custom", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("Command", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("RawCommand", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("Raw Command", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsCargoDropType(string? type)
+    {
+        var value = (type ?? string.Empty).Trim();
+        return value.Equals("CargoDrop", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("Cargo Drop", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("ScheduleCargoDrop", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("BP_CargoDropEvent", StringComparison.OrdinalIgnoreCase);
+    }
 }
 
 public sealed class LootPackEditorViewModel : ObservableObject
 {
-    public string Name { get; set; } = "LootPack";
-    public bool Enabled { get; set; } = true;
-    public int Weight { get; set; } = 1;
-    public string Location { get; set; } = "";
+    private string _name = "LootPack";
+    private bool _enabled = true;
+    private int _weight = 1;
+    private string _location = "";
+
+    public string Name
+    {
+        get => _name;
+        set => SetProperty(ref _name, string.IsNullOrWhiteSpace(value) ? "LootPack" : value);
+    }
+
+    public bool Enabled
+    {
+        get => _enabled;
+        set => SetProperty(ref _enabled, value);
+    }
+
+    public int Weight
+    {
+        get => _weight;
+        set => SetProperty(ref _weight, Math.Max(1, value));
+    }
+
+    public string Location
+    {
+        get => _location;
+        set => SetProperty(ref _location, value ?? string.Empty);
+    }
     public ObservableCollection<LootItemEditorViewModel> Items { get; } = new();
 
     public static LootPackEditorViewModel FromPack(LootPack pack)
@@ -3182,16 +4981,34 @@ public sealed class LootPackEditorViewModel : ObservableObject
         Name = string.IsNullOrWhiteSpace(Name) ? "LootPack" : Name.Trim(),
         Enabled = Enabled,
         Weight = Math.Max(1, Weight),
-        Location = Location?.Trim() ?? "",
+        Location = null,
         Items = Items.Select(x => x.ToItem()).ToList()
     };
 }
 
 public sealed class LootItemEditorViewModel : ObservableObject
 {
-    public string Item { get; set; } = "";
-    public int Quantity { get; set; } = 1;
-    public int DelayMs { get; set; } = 50;
+    private string _item = "";
+    private int _quantity = 1;
+    private int _delayMs = 50;
+
+    public string Item
+    {
+        get => _item;
+        set => SetProperty(ref _item, value ?? string.Empty);
+    }
+
+    public int Quantity
+    {
+        get => _quantity;
+        set => SetProperty(ref _quantity, Math.Max(1, value));
+    }
+
+    public int DelayMs
+    {
+        get => _delayMs;
+        set => SetProperty(ref _delayMs, Math.Max(0, value));
+    }
 
     public static LootItemEditorViewModel FromItem(LootItem item) => new() { Item = item.Item ?? "", Quantity = Math.Max(1, item.Quantity), DelayMs = item.DelayMs <= 0 ? 50 : item.DelayMs };
     public LootItem ToItem() => new() { Item = Item?.Trim() ?? "", Quantity = Math.Max(1, Quantity), DelayMs = Math.Max(0, DelayMs) };
@@ -3259,6 +5076,150 @@ public sealed class ScriptZoneMapItemViewModel
     public double Z { get; }
     public double Radius { get; }
     public string Position => $"X {X:0} / Y {Y:0} / Z {Z:0}";
+}
+
+public sealed class RedeemCodeEditorViewModel : ObservableObject
+{
+    private bool _enabled = true;
+    private string _code = string.Empty;
+    private string _command = string.Empty;
+    private string _response = string.Empty;
+    private bool _executeAsChatPlayer = true;
+    private int _delaySeconds;
+    private int _maxUses = 1;
+    private int _uses;
+
+    public bool Enabled
+    {
+        get => _enabled;
+        set => SetProperty(ref _enabled, value);
+    }
+
+    public string Code
+    {
+        get => _code;
+        set
+        {
+            if (SetProperty(ref _code, value ?? string.Empty)) OnPropertyChanged(nameof(Summary));
+        }
+    }
+
+    public string Command
+    {
+        get => _command;
+        set
+        {
+            if (SetProperty(ref _command, value ?? string.Empty)) OnPropertyChanged(nameof(Summary));
+        }
+    }
+
+    public string Response
+    {
+        get => _response;
+        set => SetProperty(ref _response, value ?? string.Empty);
+    }
+
+    public bool ExecuteAsChatPlayer
+    {
+        get => _executeAsChatPlayer;
+        set
+        {
+            if (SetProperty(ref _executeAsChatPlayer, value)) OnPropertyChanged(nameof(Summary));
+        }
+    }
+
+    public int DelaySeconds
+    {
+        get => _delaySeconds;
+        set => SetProperty(ref _delaySeconds, Math.Max(0, value));
+    }
+
+    public int MaxUses
+    {
+        get => _maxUses;
+        set
+        {
+            if (SetProperty(ref _maxUses, Math.Max(0, value)))
+            {
+                OnPropertyChanged(nameof(UsageText));
+                OnPropertyChanged(nameof(Summary));
+            }
+        }
+    }
+
+    public int Uses
+    {
+        get => _uses;
+        set
+        {
+            if (SetProperty(ref _uses, Math.Max(0, value)))
+            {
+                OnPropertyChanged(nameof(UsageText));
+                OnPropertyChanged(nameof(Summary));
+            }
+        }
+    }
+
+    public string UsageText => MaxUses <= 0
+        ? $"{Uses} used / unlimited"
+        : $"{Uses}/{MaxUses} used, {Math.Max(0, MaxUses - Uses)} left";
+
+    public string Summary
+    {
+        get
+        {
+            var code = string.IsNullOrWhiteSpace(Code) ? "New code" : Code.Trim();
+            var action = !string.IsNullOrWhiteSpace(Command) ? Command.Trim() : (!string.IsNullOrWhiteSpace(Response) ? "Send response" : "No action");
+            var mode = ExecuteAsChatPlayer ? "ExecAs player" : "Direct";
+            return $"{code} -> {mode}: {action} ({UsageText})";
+        }
+    }
+
+    public static RedeemCodeEditorViewModel FromRule(RedeemCodeRule rule)
+    {
+        var command = rule.Command ?? string.Empty;
+        var execAs = rule.ExecuteAsChatPlayer || command.TrimStart().StartsWith("#execas", StringComparison.OrdinalIgnoreCase);
+        if (command.TrimStart().StartsWith("#execas", StringComparison.OrdinalIgnoreCase))
+        {
+            command = StripExecAsPrefix(command);
+        }
+
+        return new RedeemCodeEditorViewModel
+        {
+            Enabled = rule.Enabled,
+            Code = rule.Code ?? string.Empty,
+            Command = command,
+            Response = rule.Response ?? string.Empty,
+            ExecuteAsChatPlayer = execAs,
+            DelaySeconds = Math.Max(0, rule.DelaySeconds),
+            MaxUses = Math.Max(0, rule.MaxUses),
+            Uses = Math.Max(0, rule.Uses)
+        };
+    }
+
+    public RedeemCodeRule ToRule() => new()
+    {
+        Enabled = Enabled,
+        Code = Code?.Trim() ?? string.Empty,
+        Command = Command?.Trim() ?? string.Empty,
+        Response = Response?.Trim() ?? string.Empty,
+        ExecuteAsChatPlayer = ExecuteAsChatPlayer,
+        DelaySeconds = Math.Max(0, DelaySeconds),
+        MaxUses = Math.Max(0, MaxUses),
+        Uses = Math.Max(0, Uses)
+    };
+
+    private static string StripExecAsPrefix(string command)
+    {
+        var parts = command.Trim().Split(' ', 3, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 1) return string.Empty;
+        if (parts.Length >= 2 && parts[1].StartsWith("765611", StringComparison.OrdinalIgnoreCase))
+        {
+            return parts.Length == 3 ? parts[2] : string.Empty;
+        }
+
+        return command.Trim()[parts[0].Length..].Trim();
+    }
 }
 
 public sealed class ChatCommandRuleEditorViewModel : ObservableObject
@@ -3353,10 +5314,10 @@ public sealed class ChatCommandRuleEditorViewModel : ObservableObject
     {
         get
         {
-            var trigger = string.IsNullOrWhiteSpace(Trigger) ? "Neuer Trigger" : Trigger.Trim();
-            var action = !string.IsNullOrWhiteSpace(Command) ? Command.Trim() : (!string.IsNullOrWhiteSpace(Response) ? "Antwort senden" : "Keine Aktion");
-            var mode = ExecuteAsChatPlayer ? "ExecAs" : "Direkt";
-            return $"{trigger} ({MatchMode}) -> {mode} nach {DelaySeconds}s: {action}";
+            var trigger = string.IsNullOrWhiteSpace(Trigger) ? "New trigger" : Trigger.Trim();
+            var action = !string.IsNullOrWhiteSpace(Command) ? Command.Trim() : (!string.IsNullOrWhiteSpace(Response) ? "Send response" : "No action");
+            var mode = ExecuteAsChatPlayer ? "ExecAs" : "Direct";
+            return $"{trigger} ({MatchMode}) -> {mode} after {DelaySeconds}s: {action}";
         }
     }
 
@@ -3418,6 +5379,7 @@ public sealed class JoinCommandRuleEditorViewModel : ObservableObject
     private bool _enabled = true;
     private int _delaySeconds = 300;
     private string _command = string.Empty;
+    private string _targetSteamId = string.Empty;
     private bool _executeAsJoinedPlayer = true;
     private bool _onlyOncePerSession = true;
     private int _cooldownSeconds = 300;
@@ -3446,6 +5408,15 @@ public sealed class JoinCommandRuleEditorViewModel : ObservableObject
         }
     }
 
+    public string TargetSteamId
+    {
+        get => _targetSteamId;
+        set
+        {
+            if (SetProperty(ref _targetSteamId, value)) OnPropertyChanged(nameof(Summary));
+        }
+    }
+
     public bool ExecuteAsJoinedPlayer
     {
         get => _executeAsJoinedPlayer;
@@ -3471,9 +5442,10 @@ public sealed class JoinCommandRuleEditorViewModel : ObservableObject
     {
         get
         {
-            var command = string.IsNullOrWhiteSpace(Command) ? "Neuer Command" : Command.Trim();
-            var mode = ExecuteAsJoinedPlayer ? "ExecAs" : "Direkt";
-            return $"{mode} nach {DelaySeconds}s: {command}";
+            var command = string.IsNullOrWhiteSpace(Command) ? "New command" : Command.Trim();
+            var mode = ExecuteAsJoinedPlayer ? "ExecAs" : "Direct";
+            var target = string.IsNullOrWhiteSpace(TargetSteamId) ? string.Empty : $" | only {TargetSteamId.Trim()}";
+            return $"{mode} after {DelaySeconds}s{target}: {command}";
         }
     }
 
@@ -3491,6 +5463,7 @@ public sealed class JoinCommandRuleEditorViewModel : ObservableObject
             Enabled = rule.Enabled,
             DelaySeconds = rule.DelaySeconds,
             Command = command,
+            TargetSteamId = rule.TargetSteamId ?? string.Empty,
             ExecuteAsJoinedPlayer = execAs,
             OnlyOncePerSession = rule.OnlyOncePerSession,
             CooldownSeconds = rule.CooldownSeconds
@@ -3502,6 +5475,7 @@ public sealed class JoinCommandRuleEditorViewModel : ObservableObject
         Enabled = Enabled,
         DelaySeconds = DelaySeconds,
         Command = Command?.Trim() ?? string.Empty,
+        TargetSteamId = TargetSteamId?.Trim() ?? string.Empty,
         OnlyOncePerSession = OnlyOncePerSession,
         CooldownSeconds = CooldownSeconds,
         ExecuteAsJoinedPlayer = ExecuteAsJoinedPlayer,
@@ -3520,6 +5494,59 @@ public sealed class JoinCommandRuleEditorViewModel : ObservableObject
 
         return command.Trim()[parts[0].Length..].Trim();
     }
+}
+
+public sealed class WeeklySquadOverviewViewModel
+{
+    public WeeklySquadOverviewViewModel(GgconSquadResponse squad)
+    {
+        Id = squad.Id.ToString(CultureInfo.InvariantCulture);
+        Name = string.IsNullOrWhiteSpace(squad.Name) ? "Squad " + Id : squad.Name;
+        Score = squad.Score;
+        Members = squad.Members
+            .OrderByDescending(x => x.Rank)
+            .ThenBy(x => x.CharacterName, StringComparer.OrdinalIgnoreCase)
+            .Select(x => $"{x.CharacterName} ({x.RankName}, {x.SteamId})" + (x.Online ? " - online" : ""))
+            .ToList();
+    }
+
+    public string Id { get; }
+    public string Name { get; }
+    public double Score { get; }
+    public IReadOnlyList<string> Members { get; }
+    public string Header => $"{Name} | ID {Id} | Score {Score:N0} | {Members.Count} Spieler";
+}
+
+public sealed class WeeklyRewardClaimViewModel
+{
+    public WeeklyRewardClaimViewModel(WeeklyRewardClaim claim)
+    {
+        Id = claim.Id;
+        TaskTitle = claim.TaskTitle;
+        SquadName = claim.SquadName;
+        PlayerName = claim.PlayerName;
+        SteamId = claim.SteamId;
+        Code = claim.Code;
+        Reward = claim.RewardSummary;
+        Error = claim.LastError;
+        Status = claim.IsComplete
+            ? "Eingeloest " + claim.ClaimedUtc?.ToLocalTime().ToString("dd.MM.yyyy HH:mm")
+            : claim.ItemDeliveredUtc.HasValue || claim.MoneyDeliveredUtc.HasValue || claim.TextClaimedUtc.HasValue
+                ? "Teilweise ausgezahlt"
+                : claim.NotifiedUtc.HasValue ? "Code gesendet" : "Offen";
+    }
+
+    public string Id { get; }
+    public string TaskTitle { get; }
+    public string SquadName { get; }
+    public string PlayerName { get; }
+    public string SteamId { get; }
+    public string Code { get; }
+    public string Reward { get; }
+    public string Status { get; }
+    public string Error { get; }
+    public string Recipient => string.IsNullOrWhiteSpace(SquadName) ? $"{PlayerName} ({SteamId})" : $"{PlayerName} ({SteamId}) | Squad: {SquadName}";
+    public bool CanAcknowledge => !Status.StartsWith("Eingeloest", StringComparison.OrdinalIgnoreCase);
 }
 
 public sealed class ScriptRuntimeStatusViewModel
@@ -3552,12 +5579,24 @@ public sealed class ScriptRuntimeStatusViewModel
     public string LastUpdated { get; }
     public string StateLabel => State switch
     {
-        nameof(EventRuntimeState.Initiated) => "Initialisiert",
-        nameof(EventRuntimeState.Live) => "Gestartet",
+        nameof(EventRuntimeState.Initiated) => "Initiated",
+        nameof(EventRuntimeState.Live) => "Started",
         nameof(EventRuntimeState.CleanupPending) => "Cleanup",
         nameof(EventRuntimeState.Cooldown) => "Cooldown",
-        _ => "Gestoppt"
+        _ => "Stopped"
     };
+}
+
+public sealed class WeeklyRewardItemEditorViewModel : ObservableObject
+{
+    private string _item = string.Empty;
+    public string Item { get => _item; set => SetProperty(ref _item, value); }
+
+    private int _quantity = 1;
+    public int Quantity { get => _quantity; set => SetProperty(ref _quantity, value); }
+
+    private int _stackCount;
+    public int StackCount { get => _stackCount; set => SetProperty(ref _stackCount, value); }
 }
 
 public sealed class WeeklyTaskEditorViewModel : ObservableObject
@@ -3578,6 +5617,9 @@ public sealed class WeeklyTaskEditorViewModel : ObservableObject
 
     private string _description = string.Empty;
     public string Description { get => _description; set => SetProperty(ref _description, value); }
+
+    private string _goalScope = "Community";
+    public string GoalScope { get => _goalScope; set => SetProperty(ref _goalScope, value); }
 
     private WeeklyCommunityTaskStatTarget? _selectedTarget;
     public WeeklyCommunityTaskStatTarget? SelectedTarget
@@ -3633,6 +5675,26 @@ public sealed class WeeklyTaskEditorViewModel : ObservableObject
     private string _rewardText = string.Empty;
     public string RewardText { get => _rewardText; set => SetProperty(ref _rewardText, value); }
 
+    private string _rewardMode = "FreeText";
+    public string RewardMode { get => _rewardMode; set => SetProperty(ref _rewardMode, value); }
+
+    private string _rewardDistribution = "PerParticipant";
+    public string RewardDistribution { get => _rewardDistribution; set => SetProperty(ref _rewardDistribution, value); }
+
+    private string _rewardItem = string.Empty;
+    public string RewardItem { get => _rewardItem; set => SetProperty(ref _rewardItem, value); }
+
+    private int _rewardItemQuantity = 1;
+    public int RewardItemQuantity { get => _rewardItemQuantity; set => SetProperty(ref _rewardItemQuantity, value); }
+
+    private int _rewardItemStackCount;
+    public int RewardItemStackCount { get => _rewardItemStackCount; set => SetProperty(ref _rewardItemStackCount, value); }
+
+    public ObservableCollection<WeeklyRewardItemEditorViewModel> RewardItems { get; } = new();
+
+    private int _rewardMoney;
+    public int RewardMoney { get => _rewardMoney; set => SetProperty(ref _rewardMoney, value); }
+
     private string _completedText = string.Empty;
     public string CompletedText { get => _completedText; set => SetProperty(ref _completedText, value); }
 
@@ -3660,6 +5722,7 @@ public sealed class WeeklyTaskEditorViewModel : ObservableObject
             Type = string.IsNullOrWhiteSpace(definition.Type) ? "Weekly" : definition.Type,
             Title = definition.Title,
             Description = definition.Description,
+            GoalScope = string.IsNullOrWhiteSpace(definition.GoalScope) ? "Community" : definition.GoalScope,
             StatTable = string.IsNullOrWhiteSpace(definition.StatTable) ? "survival_stats" : definition.StatTable,
             StatColumn = definition.StatColumn,
             Target = definition.Target,
@@ -3667,8 +5730,25 @@ public sealed class WeeklyTaskEditorViewModel : ObservableObject
             MinimumParticipationPercent = definition.MinimumParticipationPercent <= 0 ? 2.0 : definition.MinimumParticipationPercent,
             EndUtc = definition.EndUtc,
             RewardText = definition.RewardText,
+            RewardMode = string.IsNullOrWhiteSpace(definition.RewardMode) ? "FreeText" : definition.RewardMode,
+            RewardDistribution = string.IsNullOrWhiteSpace(definition.RewardDistribution) ? "PerParticipant" : definition.RewardDistribution,
+            RewardItem = definition.RewardItem,
+            RewardItemQuantity = Math.Max(1, definition.RewardItemQuantity),
+            RewardItemStackCount = Math.Max(0, definition.RewardItemStackCount),
+            RewardMoney = Math.Max(0, definition.RewardMoney),
             CompletedText = definition.CompletedText
         };
+
+        foreach (var item in WeeklyRewardItems.GetConfigured(definition))
+        {
+            editor.RewardItems.Add(new WeeklyRewardItemEditorViewModel
+            {
+                Item = item.Item,
+                Quantity = item.Quantity,
+                StackCount = item.StackCount
+            });
+        }
+        if (editor.RewardItems.Count == 0) editor.RewardItems.Add(new WeeklyRewardItemEditorViewModel());
 
         var startUtc = WeeklyCommunityTaskService.GetTaskStartUtc(definition);
         editor.StartLocalText = startUtc.HasValue ? startUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : string.Empty;
@@ -3684,6 +5764,17 @@ public sealed class WeeklyTaskEditorViewModel : ObservableObject
             startUtc = startLocal.ToUniversalTime().ToString("O");
         }
 
+        var rewardItems = RewardItems
+            .Where(x => !string.IsNullOrWhiteSpace(x.Item))
+            .Select(x => new WeeklyRewardItemDefinition
+            {
+                Item = x.Item.Trim(),
+                Quantity = Math.Max(1, x.Quantity),
+                StackCount = Math.Max(0, x.StackCount)
+            })
+            .ToList();
+        var firstRewardItem = rewardItems.FirstOrDefault();
+
         return new WeeklyCommunityTaskDefinition
         {
             Enabled = Enabled,
@@ -3691,6 +5782,7 @@ public sealed class WeeklyTaskEditorViewModel : ObservableObject
             Type = string.IsNullOrWhiteSpace(Type) ? "Weekly" : Type.Trim(),
             Title = Title?.Trim() ?? string.Empty,
             Description = Description?.Trim() ?? string.Empty,
+            GoalScope = string.IsNullOrWhiteSpace(GoalScope) ? "Community" : GoalScope.Trim(),
             StatTable = SelectedTarget?.TableName ?? StatTable,
             StatColumn = SelectedTarget?.ColumnName ?? StatColumn,
             Target = Math.Max(1, Target),
@@ -3699,6 +5791,13 @@ public sealed class WeeklyTaskEditorViewModel : ObservableObject
             MinimumParticipationPercent = MinimumParticipationPercent,
             EndUtc = EndUtc?.Trim() ?? string.Empty,
             RewardText = RewardText?.Trim() ?? string.Empty,
+            RewardMode = string.IsNullOrWhiteSpace(RewardMode) ? "FreeText" : RewardMode.Trim(),
+            RewardDistribution = string.IsNullOrWhiteSpace(RewardDistribution) ? "PerParticipant" : RewardDistribution.Trim(),
+            RewardItem = firstRewardItem?.Item ?? string.Empty,
+            RewardItemQuantity = firstRewardItem?.Quantity ?? 1,
+            RewardItemStackCount = firstRewardItem?.StackCount ?? 0,
+            RewardItems = rewardItems,
+            RewardMoney = Math.Max(0, RewardMoney),
             CompletedText = CompletedText?.Trim() ?? string.Empty
         };
     }

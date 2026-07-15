@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using ScumRconTool.Services;
 namespace ScumRconTool;
 
@@ -38,6 +39,13 @@ public sealed class BotSettings
     public string GgconHttpPassword { get; set; } = string.Empty;
     public bool AutoCheckForUpdates { get; set; } = true;
     public string UpdateLatestJsonUrl { get; set; } = "https://lmnt-gaming.net/rrrt/latest.json";
+    public bool UsageDirectoryEnabled { get; set; }
+    public string UsageDirectoryConsentVersion { get; set; } = string.Empty;
+    public string UsageDirectoryConsentUtc { get; set; } = string.Empty;
+    public string UsageDirectoryEndpointUrl { get; set; } = UsageDirectoryService.DefaultEndpointUrl;
+    public string UsageDirectoryInstallId { get; set; } = string.Empty;
+    public string UsageDirectoryInstallToken { get; set; } = string.Empty;
+    public bool UsageDirectoryRemovalPending { get; set; }
     public bool DiscordChatLogEmbedsEnabled { get; set; } = true;
     public bool DiscordVehicleLogEmbedsEnabled { get; set; } = true;
     public bool DiscordGameBridgeEnabled { get; set; }
@@ -58,9 +66,34 @@ public sealed class BotSettings
     public int AutomationPollSeconds { get; set; } = 30;
     public bool AutoStartAutomation { get; set; }
     public bool AutoStartChatCommands { get; set; }
-    public bool UseGgconLogsForChatCommands { get; set; } = true;
-    public int GgconChatCommandPollSeconds { get; set; } = 3;
-    public int GgconChatCommandInitialBackfillSeconds { get; set; } = 10;
+    public bool GgconHttpLogsEnabled { get; set; } = true;
+    public int GgconHttpLogPollSeconds { get; set; } = 3;
+    public int GgconHttpLogInitialBackfillSeconds { get; set; } = 10;
+
+    [JsonIgnore]
+    public bool UseGgconLogsForChatCommands
+    {
+        get => GgconHttpLogsEnabled;
+        set => GgconHttpLogsEnabled = value;
+    }
+
+    [JsonIgnore]
+    public int GgconChatCommandPollSeconds
+    {
+        get => GgconHttpLogPollSeconds;
+        set => GgconHttpLogPollSeconds = value;
+    }
+
+    [JsonIgnore]
+    public int GgconChatCommandInitialBackfillSeconds
+    {
+        get => GgconHttpLogInitialBackfillSeconds;
+        set => GgconHttpLogInitialBackfillSeconds = value;
+    }
+
+    public bool NewPlayerWelcomeEnabled { get; set; }
+    public string NewPlayerWelcomeMessageType { get; set; } = "Cyan";
+    public string NewPlayerWelcomeResponse { get; set; } = "[Server] Willkommen {name}! Viel Spass auf dem Server. Bei Fragen nutze den Chat oder komm auf unseren Discord.";
     public bool PaidVotesEnabled { get; set; } = true;
     public int VotePrice { get; set; } = 5000;
     public int VoteConfirmationTimeoutSeconds { get; set; } = 60;
@@ -73,6 +106,7 @@ public sealed class BotSettings
     public string VoteCooldownBlockedResponse { get; set; } = "[Server] {name}, du kannst nur alle {cooldownHours}h eine Abstimmung starten. Verbleibend: {remaining}.";
     public bool AutoStartJoinCommands { get; set; }
     public string ChatAutomationRulesJson { get; set; } = "";
+    public string RedeemCodeRulesJson { get; set; } = "";
     public string JoinAutomationRulesJson { get; set; } = "";
 
     public bool AutoStartWeeklyTasks { get; set; }
@@ -80,7 +114,7 @@ public sealed class BotSettings
     public int WeeklyTaskPollMinutes { get; set; } = 30;
     public string WeeklyTaskDbRemoteFilePath { get; set; } = "/88.198.43.88_7182/SaveFiles/SCUM.db";
     public ulong WeeklyTaskDiscordChannelId { get; set; }
-    public string WeeklyTaskJson { get; set; } = WeeklyCommunityTaskService.BuildDefaultTaskJson();
+    public string WeeklyTaskJson { get; set; } = "";
 
     public bool AutoStartAutoMessages { get; set; }
     public bool AutoMessagesOnlyWhenPlayersOnline { get; set; } = true;
@@ -94,25 +128,7 @@ public sealed class BotSettings
     {
         try
         {
-            if (string.IsNullOrWhiteSpace(WeeklyTaskJson)) return new List<WeeklyCommunityTaskDefinition> { new() };
-
-            var options = new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true,
-                ReadCommentHandling = JsonCommentHandling.Skip,
-                AllowTrailingCommas = true
-            };
-
-            var trimmed = WeeklyTaskJson.Trim();
-            if (trimmed.StartsWith("[", StringComparison.Ordinal))
-            {
-                return JsonSerializer.Deserialize<List<WeeklyCommunityTaskDefinition>>(trimmed, options)?
-                    .Where(x => x is not null)
-                    .ToList() ?? new List<WeeklyCommunityTaskDefinition>();
-            }
-
-            var single = JsonSerializer.Deserialize<WeeklyCommunityTaskDefinition>(trimmed, options);
-            return single is null ? new List<WeeklyCommunityTaskDefinition>() : new List<WeeklyCommunityTaskDefinition> { single };
+            return WeeklyTaskDefinitionStore.Load(WeeklyTaskJson);
         }
         catch
         {

@@ -111,6 +111,29 @@ public sealed class GgconHttpApiService
         return match;
     }
 
+    public async Task<GgconSquadsResponse> GetSquadsAsync(CancellationToken cancellationToken = default)
+    {
+        var baseUrl = RequireBaseUrl();
+        using var client = CreateClient();
+        var url = Combine(baseUrl, "/squads.json");
+        using var response = await client.GetAsync(url, cancellationToken);
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var shortBody = string.IsNullOrWhiteSpace(json) ? string.Empty : " Antwort: " + Truncate(json, 300);
+            throw new InvalidOperationException($"ggCON HTTP Squads Fehler {(int)response.StatusCode} {response.ReasonPhrase}.{shortBody}");
+        }
+
+        var squads = JsonSerializer.Deserialize<GgconSquadsResponse>(json, JsonOptions);
+        if (squads is null || !squads.Ok)
+        {
+            throw new InvalidOperationException("ggCON HTTP Squads Antwort war leer oder ok=false.");
+        }
+
+        return squads;
+    }
+
     public async Task RemovePlayerCurrencyAsync(string steamId, int amount, CancellationToken cancellationToken = default)
     {
         try
@@ -383,6 +406,51 @@ public sealed class GgconPlayersResponse
 
     [JsonPropertyName("players")]
     public List<GgconPlayerAccountResponse> Players { get; set; } = new();
+}
+
+public sealed class GgconSquadsResponse
+{
+    [JsonPropertyName("ok")]
+    public bool Ok { get; set; }
+
+    [JsonPropertyName("squads")]
+    public List<GgconSquadResponse> Squads { get; set; } = new();
+}
+
+public sealed class GgconSquadResponse
+{
+    [JsonPropertyName("id")]
+    [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]
+    public long Id { get; set; }
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("score")]
+    [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]
+    public double Score { get; set; }
+
+    [JsonPropertyName("members")]
+    public List<GgconSquadMemberResponse> Members { get; set; } = new();
+}
+
+public sealed class GgconSquadMemberResponse
+{
+    [JsonPropertyName("characterName")]
+    public string CharacterName { get; set; } = string.Empty;
+
+    [JsonPropertyName("steamId")]
+    public string SteamId { get; set; } = string.Empty;
+
+    [JsonPropertyName("rank")]
+    [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]
+    public int Rank { get; set; }
+
+    [JsonPropertyName("rankName")]
+    public string RankName { get; set; } = string.Empty;
+
+    [JsonPropertyName("online")]
+    public bool Online { get; set; }
 }
 
 public sealed class GgconLogsResponse

@@ -118,6 +118,10 @@ public sealed class WeeklyCommunityTaskService
     }
 
     public bool IsRunning { get; private set; }
+    public bool IsScanning { get; private set; }
+    public DateTime? NextScanUtc { get; private set; }
+    public event Action<bool, DateTime?>? ScanStateChanged;
+    private readonly SemaphoreSlim _scanLock = new(1, 1);
     private CancellationTokenSource? _cts;
 
     public void Start(BotSettings settings, Func<CancellationToken, Task<int>> getOnlinePlayersAsync, Func<IReadOnlyList<WeeklyCommunityTaskProgress>, Task> publishProgressAsync)
@@ -137,7 +141,9 @@ public sealed class WeeklyCommunityTaskService
                 try
                 {
                     var minutes = Math.Max(5, settings.WeeklyTaskPollMinutes <= 0 ? 30 : settings.WeeklyTaskPollMinutes);
+                    SetNextScan(DateTime.UtcNow.AddMinutes(minutes));
                     await Task.Delay(TimeSpan.FromMinutes(minutes), token);
+                    SetNextScan(null);
                     await SafeTickAsync(settings, getOnlinePlayersAsync, publishProgressAsync, token, force: false);
                 }
                 catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -154,9 +160,44 @@ public sealed class WeeklyCommunityTaskService
         try { _cts?.Cancel(); } catch { }
         _cts?.Dispose();
         _cts = null;
+        SetNextScan(null);
+        SetScanState(false);
     }
 
-    public async Task<List<WeeklyCommunityTaskProgress>> ScanAllOnceAsync(BotSettings settings, CancellationToken cancellationToken = default, bool resetBaseline = false)
+    private void SetNextScan(DateTime? nextScanUtc)
+    {
+        NextScanUtc = nextScanUtc;
+        ScanStateChanged?.Invoke(IsScanning, NextScanUtc);
+    }
+
+    private void SetScanState(bool isScanning)
+    {
+        IsScanning = isScanning;
+        ScanStateChanged?.Invoke(IsScanning, NextScanUtc);
+    }
+
+    public async Task<List<WeeklyCommunityTaskProgress>> ScanAllOnceAsync(
+        BotSettings settings,
+        CancellationToken cancellationToken = default,
+        bool resetBaseline = false)
+    {
+        await _scanLock.WaitAsync(cancellationToken);
+        SetScanState(true);
+        try
+        {
+            return await ScanAllOnceCoreAsync(settings, cancellationToken, resetBaseline);
+        }
+        finally
+        {
+            SetScanState(false);
+            _scanLock.Release();
+        }
+    }
+
+    private async Task<List<WeeklyCommunityTaskProgress>> ScanAllOnceCoreAsync(
+        BotSettings settings,
+        CancellationToken cancellationToken = default,
+        bool resetBaseline = false)
     {
         var allDefinitions = settings.GetWeeklyTaskDefinitions()
             .Where(x => x.Enabled)
@@ -181,7 +222,17 @@ public sealed class WeeklyCommunityTaskService
             ValidateDefinition(definition);
         }
 
-        var localDb = await _sftp.DownloadFileAsync(settings.WeeklyTaskDbRemoteFilePath, Path.Combine("WeeklyTasks", "Db"), cancellationToken);
+        string? localDb;
+        try
+        {
+            localDb = await _sftp.DownloadFileAsync(settings.WeeklyTaskDbRemoteFilePath, Path.Combine("WeeklyTasks", "Db"), cancellationToken);
+        }
+        catch (Exception ex) when (IsTransientSftpSessionError(ex) && !cancellationToken.IsCancellationRequested)
+        {
+            _log("Weekly/Daily Tasks: SFTP-Session ist abgelaufen; verbinde einmal neu.");
+            await Task.Delay(TimeSpan.FromMilliseconds(750), cancellationToken);
+            localDb = await _sftp.DownloadFileAsync(settings.WeeklyTaskDbRemoteFilePath, Path.Combine("WeeklyTasks", "Db"), cancellationToken);
+        }
         if (string.IsNullOrWhiteSpace(localDb) || !File.Exists(localDb))
         {
             _log($"Weekly/Daily Tasks: SCUM.db konnte nicht von {settings.WeeklyTaskDbRemoteFilePath} heruntergeladen werden.");
@@ -210,7 +261,7 @@ public sealed class WeeklyCommunityTaskService
         {
             // Die SCUM.db wird nur zum aktuellen Auslesen gebraucht. Nicht lokal archivieren,
             // sonst entsteht bei jedem Poll eine weitere grosse DB-Kopie.
-            var weeklyDbDirectory = SftpLogService.GetAppDataLocalDirectory(Path.Combine("WeeklyTasks", "Db"));
+            var weeklyDbDirectory = Path.Combine(EventDefinitionStore.DataDirectory, "WeeklyTasks", "Db");
             LocalRetentionService.TryDeleteFile(localDb);
             LocalRetentionService.TryDeleteFiles(weeklyDbDirectory, "*.db");
             LocalRetentionService.CleanupDirectory(weeklyDbDirectory);
@@ -229,12 +280,20 @@ public sealed class WeeklyCommunityTaskService
         definition.StatTable = statTarget.TableName;
         definition.StatColumn = statTarget.ColumnName;
 
+        var perPlayer = string.Equals(definition.GoalScope, "PerPlayer", StringComparison.OrdinalIgnoreCase);
         var currentTotal = ReadStatTotal(localDb, statTarget);
-        var currentSquadTotals = ReadSquadStatTotals(localDb, statTarget);
+        var currentSquadTotals = perPlayer ? new List<WeeklyCommunityTaskSquadProgress>() : ReadSquadStatTotals(localDb, statTarget);
+        var currentPlayerTotals = perPlayer ? ReadPlayerStatTotals(localDb, statTarget) : new List<WeeklyCommunityTaskPlayerProgress>();
         var baseline = LoadBaseline(definition);
+        baseline.SquadBaselineValues ??= new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        baseline.PlayerBaselineValues ??= new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        baseline.CompletedSquadProgressValues ??= new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        var baselineGoalScope = string.IsNullOrWhiteSpace(baseline.GoalScope) ? "Community" : baseline.GoalScope;
+        var definitionGoalScope = perPlayer ? "PerPlayer" : "Community";
         var baselineMismatch = !string.Equals(baseline.TaskId, definition.Id, StringComparison.OrdinalIgnoreCase) ||
                                !string.Equals(baseline.StatTable, statTarget.TableName, StringComparison.OrdinalIgnoreCase) ||
-                               !string.Equals(baseline.StatColumn, statTarget.ColumnName, StringComparison.OrdinalIgnoreCase);
+                               !string.Equals(baseline.StatColumn, statTarget.ColumnName, StringComparison.OrdinalIgnoreCase) ||
+                               !string.Equals(baselineGoalScope, definitionGoalScope, StringComparison.OrdinalIgnoreCase);
 
         if (resetBaseline || baselineMismatch)
         {
@@ -243,12 +302,28 @@ public sealed class WeeklyCommunityTaskService
                 TaskId = definition.Id,
                 StatTable = statTarget.TableName,
                 StatColumn = statTarget.ColumnName,
+                GoalScope = definitionGoalScope,
                 CreatedUtc = DateTime.UtcNow,
                 BaselineValue = currentTotal,
-                SquadBaselineValues = currentSquadTotals.ToDictionary(x => x.SquadId, x => x.CurrentTotal, StringComparer.OrdinalIgnoreCase)
+                SquadBaselineValues = currentSquadTotals.ToDictionary(x => x.SquadId, x => x.CurrentTotal, StringComparer.OrdinalIgnoreCase),
+                PlayerBaselineValues = currentPlayerTotals.ToDictionary(x => x.SteamId, x => x.CurrentTotal, StringComparer.OrdinalIgnoreCase)
             };
             SaveBaseline(baseline);
-            _log($"{GetTaskKind(definition)} Task '{definition.Title}': Startwert gespeichert ({statTarget.Key}={currentTotal}, Squads={baseline.SquadBaselineValues.Count}).");
+            _log($"{GetTaskKind(definition)} Task '{definition.Title}': Startwert gespeichert ({statTarget.Key}={currentTotal}, Spieler={baseline.PlayerBaselineValues.Count}, Squads={baseline.SquadBaselineValues.Count}).");
+        }
+        else if (perPlayer)
+        {
+            var addedPlayers = 0;
+            foreach (var player in currentPlayerTotals.Where(x => !baseline.PlayerBaselineValues.ContainsKey(x.SteamId)))
+            {
+                baseline.PlayerBaselineValues[player.SteamId] = player.CurrentTotal;
+                addedPlayers++;
+            }
+            if (addedPlayers > 0)
+            {
+                SaveBaseline(baseline);
+                _log($"{GetTaskKind(definition)} Task '{definition.Title}': Startwerte fuer {addedPlayers} neue Spieler gespeichert.");
+            }
         }
         else if (baseline.SquadBaselineValues.Count == 0 && currentSquadTotals.Count > 0)
         {
@@ -257,13 +332,32 @@ public sealed class WeeklyCommunityTaskService
             _log($"{GetTaskKind(definition)} Task '{definition.Title}': Squad-Startwerte nachgetragen ({baseline.SquadBaselineValues.Count} Squads).");
         }
 
-        var progressValue = Math.Max(0, currentTotal - baseline.BaselineValue);
         var target = Math.Max(1, definition.Target);
         var minimumParticipationPercent = GetMinimumParticipationPercent(definition);
         var minimumParticipationValue = GetMinimumParticipationValue(target, minimumParticipationPercent);
-        var squadProgress = BuildSquadProgress(currentSquadTotals, baseline, target, minimumParticipationValue);
-        var successfulSquads = squadProgress.Count(x => x.IsSuccessfulParticipant);
-        _log($"{GetTaskKind(definition)} Task '{definition.Title}': DB gelesen. Gesamt={currentTotal}, Fortschritt={progressValue}/{target}, Squads={squadProgress.Count}, ErfolgreicheSquads={successfulSquads}, Mindestbeitrag={minimumParticipationValue}, SquadFortschritt={squadProgress.Sum(x => x.Progress)}.");
+        var squadProgress = perPlayer ? new List<WeeklyCommunityTaskSquadProgress>() : BuildSquadProgress(currentSquadTotals, baseline, target, minimumParticipationValue);
+        var playerProgress = perPlayer ? BuildPlayerProgress(currentPlayerTotals, baseline, target) : new List<WeeklyCommunityTaskPlayerProgress>();
+        var progressValue = perPlayer ? (playerProgress.Count == 0 ? 0 : playerProgress.Max(x => x.Progress)) : Math.Max(0, currentTotal - baseline.BaselineValue);
+        if (!perPlayer && baseline.CompletedUtc.HasValue)
+        {
+            progressValue = target;
+            if (baseline.CompletedSquadProgressValues.Count > 0)
+            {
+                foreach (var squad in squadProgress)
+                {
+                    if (!baseline.CompletedSquadProgressValues.TryGetValue(squad.SquadId, out var frozenValue)) frozenValue = 0;
+                    squad.Progress = frozenValue;
+                    squad.Percent = Math.Min(100.0, frozenValue * 100.0 / target);
+                    squad.IsSuccessfulParticipant = frozenValue >= minimumParticipationValue;
+                }
+                squadProgress = squadProgress.OrderByDescending(x => x.Progress).ThenBy(x => x.SquadName, StringComparer.OrdinalIgnoreCase).ToList();
+            }
+        }
+        var isCompleted = !perPlayer && progressValue >= target;
+
+        _log(perPlayer
+            ? $"{GetTaskKind(definition)} Task '{definition.Title}': DB gelesen. Spieler={playerProgress.Count}, Ziel erreicht={playerProgress.Count(x => x.IsCompleted)}, bester Fortschritt={progressValue}/{target}."
+            : $"{GetTaskKind(definition)} Task '{definition.Title}': DB gelesen. Gesamt={currentTotal}, Fortschritt={progressValue}/{target}, Squads={squadProgress.Count}, ErfolgreicheSquads={squadProgress.Count(x => x.IsSuccessfulParticipant)}, Mindestbeitrag={minimumParticipationValue}, SquadFortschritt={squadProgress.Sum(x => x.Progress)}.");
 
         var progress = new WeeklyCommunityTaskProgress
         {
@@ -273,24 +367,25 @@ public sealed class WeeklyCommunityTaskService
             Progress = progressValue,
             Remaining = Math.Max(0, target - progressValue),
             Percent = Math.Min(100.0, progressValue * 100.0 / target),
-            IsCompleted = progressValue >= target,
+            IsCompleted = isCompleted,
             MinimumParticipationValue = minimumParticipationValue,
             MinimumParticipationPercent = minimumParticipationPercent,
             SquadProgress = squadProgress,
+            PlayerProgress = playerProgress,
             UpdatedUtc = DateTime.UtcNow
         };
 
         if (progress.IsCompleted && baseline.CompletedUtc is null)
         {
             baseline.CompletedUtc = DateTime.UtcNow;
+            baseline.CompletedSquadProgressValues = squadProgress.ToDictionary(x => x.SquadId, x => x.Progress, StringComparer.OrdinalIgnoreCase);
             progress.Baseline = baseline;
             SaveBaseline(baseline);
-            _log($"{GetTaskKind(definition)} Task '{definition.Title}': Ziel erreicht.");
+            _log($"{GetTaskKind(definition)} Task '{definition.Title}': Community-Ziel erreicht; Empfaenger werden einmalig aus diesem Abschluss erzeugt.");
         }
 
         return progress;
     }
-
     public async Task<List<WeeklyCommunityTaskProgress>> ResetAllBaselinesAsync(BotSettings settings, CancellationToken cancellationToken = default)
     {
         return await ScanAllOnceAsync(settings, cancellationToken, resetBaseline: true);
@@ -404,6 +499,14 @@ public sealed class WeeklyCommunityTaskService
         return hours > 0 ? startUtc.AddHours(hours) : null;
     }
 
+    private static bool IsTransientSftpSessionError(Exception exception)
+    {
+        var text = exception.ToString();
+        return text.Contains("session id", StringComparison.OrdinalIgnoreCase) ||
+               text.Contains("session timeout", StringComparison.OrdinalIgnoreCase) ||
+               text.Contains("operation has timed out", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static void ValidateDefinition(WeeklyCommunityTaskDefinition definition)
     {
         if (string.IsNullOrWhiteSpace(definition.Id)) throw new InvalidOperationException("Weekly Task ID fehlt.");
@@ -455,6 +558,52 @@ public sealed class WeeklyCommunityTaskService
         return Convert.ToInt64(value ?? 0);
     }
 
+    private static List<WeeklyCommunityTaskPlayerProgress> ReadPlayerStatTotals(string dbPath, WeeklyCommunityTaskStatTarget target)
+    {
+        var builder = new SqliteConnectionStringBuilder
+        {
+            DataSource = dbPath,
+            Mode = SqliteOpenMode.ReadOnly,
+            Cache = SqliteCacheMode.Private,
+            Pooling = false
+        };
+
+        using var connection = new SqliteConnection(builder.ToString());
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = $@"
+SELECT
+    TRIM(CAST(up.user_id AS TEXT)) AS steam_id,
+    COALESCE(NULLIF(TRIM(up.name), ''), TRIM(CAST(up.user_id AS TEXT))) AS player_name,
+    COALESCE(SUM(CAST(st.{target.ColumnName} AS INTEGER)), 0) AS total
+FROM {target.TableName} st
+INNER JOIN user_profile up ON up.id = st.user_profile_id
+WHERE up.user_id IS NOT NULL AND TRIM(CAST(up.user_id AS TEXT)) <> ''
+GROUP BY up.id, up.user_id, up.name
+ORDER BY total DESC";
+
+        var result = new List<WeeklyCommunityTaskPlayerProgress>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            result.Add(new WeeklyCommunityTaskPlayerProgress
+            {
+                SteamId = reader.GetString(0),
+                PlayerName = reader.GetString(1),
+                CurrentTotal = Convert.ToInt64(reader.GetValue(2))
+            });
+        }
+
+        return result
+            .GroupBy(x => x.SteamId, StringComparer.OrdinalIgnoreCase)
+            .Select(x => new WeeklyCommunityTaskPlayerProgress
+            {
+                SteamId = x.Key,
+                PlayerName = x.Select(y => y.PlayerName).FirstOrDefault(y => !string.IsNullOrWhiteSpace(y)) ?? x.Key,
+                CurrentTotal = x.Sum(y => y.CurrentTotal)
+            })
+            .ToList();
+    }
     private static List<WeeklyCommunityTaskSquadProgress> ReadSquadStatTotals(string dbPath, WeeklyCommunityTaskStatTarget target)
     {
         var builder = new SqliteConnectionStringBuilder
@@ -530,6 +679,33 @@ ORDER BY total DESC";
             .ToList();
     }
 
+    private static List<WeeklyCommunityTaskPlayerProgress> BuildPlayerProgress(
+        List<WeeklyCommunityTaskPlayerProgress> currentPlayerTotals,
+        WeeklyCommunityTaskBaseline baseline,
+        long target)
+    {
+        return currentPlayerTotals
+            .Select(current =>
+            {
+                baseline.PlayerBaselineValues.TryGetValue(current.SteamId, out var playerBaseline);
+                var value = Math.Max(0, current.CurrentTotal - playerBaseline);
+                return new WeeklyCommunityTaskPlayerProgress
+                {
+                    SteamId = current.SteamId,
+                    PlayerName = current.PlayerName,
+                    CurrentTotal = current.CurrentTotal,
+                    BaselineValue = playerBaseline,
+                    Progress = value,
+                    Remaining = Math.Max(0, target - value),
+                    Percent = Math.Min(100.0, value * 100.0 / Math.Max(1, target)),
+                    IsCompleted = value >= target
+                };
+            })
+            .OrderByDescending(x => x.IsCompleted)
+            .ThenByDescending(x => x.Progress)
+            .ThenBy(x => x.PlayerName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
     private static double GetMinimumParticipationPercent(WeeklyCommunityTaskDefinition definition)
     {
         return definition.MinimumParticipationPercent > 0 ? definition.MinimumParticipationPercent : 2.0;
@@ -543,18 +719,25 @@ ORDER BY total DESC";
 
     private static WeeklyCommunityTaskBaseline LoadBaseline(WeeklyCommunityTaskDefinition definition)
     {
-        var path = GetBaselinePath(definition);
-        if (!File.Exists(path)) return new WeeklyCommunityTaskBaseline();
+        foreach (var path in GetBaselineDirectories().Select(directory => GetBaselinePath(definition, directory)))
+        {
+            if (!File.Exists(path))
+            {
+                continue;
+            }
 
-        try
-        {
-            var json = File.ReadAllText(path);
-            return JsonSerializer.Deserialize<WeeklyCommunityTaskBaseline>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new WeeklyCommunityTaskBaseline();
+            try
+            {
+                var json = File.ReadAllText(path);
+                return JsonSerializer.Deserialize<WeeklyCommunityTaskBaseline>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new WeeklyCommunityTaskBaseline();
+            }
+            catch
+            {
+                return new WeeklyCommunityTaskBaseline();
+            }
         }
-        catch
-        {
-            return new WeeklyCommunityTaskBaseline();
-        }
+
+        return new WeeklyCommunityTaskBaseline();
     }
 
     public static List<WeeklyCommunityTaskBaseline> LoadSavedBaselines()
@@ -646,6 +829,7 @@ ORDER BY total DESC";
     {
         return new[]
         {
+            Path.Combine(EventDefinitionStore.DataDirectory, "WeeklyTasks"),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RedRavenRconTool", "WeeklyTasks"),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ScumRconTool", "WeeklyTasks"),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RedRavenRconTool", "WeeklyTasks")
@@ -654,9 +838,14 @@ ORDER BY total DESC";
 
     private static string GetBaselinePath(WeeklyCommunityTaskDefinition definition)
     {
+        return GetBaselinePath(definition, GetBaselineDirectory());
+    }
+
+    private static string GetBaselinePath(WeeklyCommunityTaskDefinition definition, string directory)
+    {
         var safeId = string.Join("_", (definition.Id ?? "weekly").Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries)).Trim();
         if (string.IsNullOrWhiteSpace(safeId)) safeId = "weekly";
-        return Path.Combine(GetBaselineDirectory(), safeId + ".baseline.json");
+        return Path.Combine(directory, safeId + ".baseline.json");
     }
 
     public static string BuildDefaultTaskJson()

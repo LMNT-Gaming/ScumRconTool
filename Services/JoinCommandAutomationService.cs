@@ -79,6 +79,8 @@ public sealed class JoinCommandAutomationService
 
             foreach (var rule in rules.Where(x => x.Enabled))
             {
+                if (!AutomationLogParser.IsJoinTargetMatch(rule, join)) continue;
+
                 if (!AutomationLogParser.TryBuildJoinCommand(rule, join, out var command, out var error))
                 {
                     _log("Join Commands: " + error);
@@ -183,6 +185,8 @@ public sealed class JoinCommandAutomationService
 
             foreach (var rule in rules)
             {
+                if (!AutomationLogParser.IsJoinTargetMatch(rule, join)) continue;
+
                 if (!AutomationLogParser.TryBuildJoinCommand(rule, join, out var command, out var error))
                 {
                     _log("Join Commands: " + error);
@@ -262,7 +266,7 @@ public sealed class JoinCommandAutomationService
 
     private static string BuildJobKey(JoinAutomationRule rule, PlayerJoinEvent join)
     {
-        var source = $"{rule.Command}|{join.SteamId}|{join.RawLine}";
+        var source = $"{rule.Command}|{rule.TargetSteamId}|{join.SteamId}|{join.RawLine}";
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(source));
         return Convert.ToHexString(bytes);
     }
