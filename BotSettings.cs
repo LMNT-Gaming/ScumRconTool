@@ -124,6 +124,14 @@ public sealed class BotSettings
     public string AutoMessagesNoChallengeText { get; set; } = "Aktuell sind keine aktiven Community Challenges konfiguriert.";
     public string AutoMessagesFlowJson { get; set; } = AutoMessageFlow.BuildDefaultJson();
 
+    public bool AutoStartSettingRandomizer { get; set; }
+    public string SettingRandomizerRemoteFilePath { get; set; } = "/Serveradresse_Port/Config/WindowsServer/ServerSettings.ini";
+    public string SettingRandomizerScheduleTimes { get; set; } = "04:00,10:00,16:00,22:00";
+    public bool SettingRandomizerDiscordAnnouncementEnabled { get; set; }
+    public ulong SettingRandomizerDiscordChannelId { get; set; }
+    public string SettingRandomizerRulesJson { get; set; } = SettingRandomizerConfiguration.BuildDefaultJson();
+    public string SettingRandomizerLastScheduleKey { get; set; } = string.Empty;
+
     public List<WeeklyCommunityTaskDefinition> GetWeeklyTaskDefinitions()
     {
         try

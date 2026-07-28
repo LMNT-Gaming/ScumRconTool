@@ -136,6 +136,21 @@ public sealed class DiscordBridgeService : IAsyncDisposable
         await _client.SetStatusAsync(UserStatus.Online);
     }
 
+    public async Task SendTextMessageAsync(ulong channelId, string text)
+    {
+        if (_client is null || !IsReady) throw new InvalidOperationException("Discord Bot ist nicht verbunden.");
+        if (channelId == 0) throw new InvalidOperationException("Discord Channel-ID f?r den SettingRandomizer fehlt.");
+        if (_client.GetChannel(channelId) is not IMessageChannel channel)
+        {
+            throw new InvalidOperationException("Discord Channel wurde nicht gefunden. Ist der Bot auf dem Server und hat Zugriff auf den Channel?");
+        }
+
+        text = (text ?? string.Empty).Trim();
+        if (text.Length == 0) return;
+        if (text.Length > 2000) text = text[..1997] + "...";
+        await channel.SendMessageAsync(text);
+    }
+
 
 
     public async Task SendChatEmbedAsync(ulong channelId, ChatLogMessage message)

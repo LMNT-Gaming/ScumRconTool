@@ -91,6 +91,10 @@
                                 <TextBlock Text="{Binding Texts[AutoMessages]}" Foreground="{StaticResource MutedTextBrush}" />
                                 <TextBlock Text="{Binding AutoMessagesRunning}" HorizontalAlignment="Right" FontWeight="Bold" />
                             </DockPanel>
+                            <DockPanel Margin="0,0,0,8">
+                                <TextBlock Text="SettingRandomizer" Foreground="{StaticResource MutedTextBrush}" />
+                                <TextBlock Text="{Binding SettingRandomizerRunning}" HorizontalAlignment="Right" FontWeight="Bold" />
+                            </DockPanel>
                             <DockPanel>
                                 <TextBlock Text="{Binding Texts[ScriptZone]}" Foreground="{StaticResource MutedTextBrush}" />
                                 <TextBlock Text="{Binding ScriptEngineRunning}" HorizontalAlignment="Right" FontWeight="Bold" />
@@ -1074,6 +1078,181 @@
                     </ScrollViewer>
                 </TabItem>
 
+                <TabItem Header="SettingRandomizer">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <TextBlock Text="SettingRandomizer" FontSize="34" FontWeight="Bold" Margin="0,0,0,6" />
+                            <TextBlock Text="ServerSettings.ini zeitgesteuert und mit gewichteten Zufallswerten für den nächsten Serverneustart vorbereiten."
+                                       Foreground="{StaticResource MutedTextBrush}" FontSize="16" TextWrapping="Wrap" Margin="0,0,0,18" />
+
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <TextBlock Text="Steuerung" FontSize="20" FontWeight="SemiBold" />
+                                    <WrapPanel Margin="0,10,0,2">
+                                        <Button Content="Zeitplan starten" Command="{Binding StartSettingRandomizerCommand}" />
+                                        <Button Content="Zeitplan stoppen" Command="{Binding StopSettingRandomizerCommand}" />
+                                        <Button Content="Jetzt randomisieren &amp; hochladen" Command="{Binding ApplySettingRandomizerNowCommand}" />
+                                        <Button Content="Testauswahl (kein Upload)" Command="{Binding PreviewSettingRandomizerCommand}" />
+                                        <Button Content="Speichern" Command="{Binding SaveSettingsCommand}" />
+                                    </WrapPanel>
+                                    <Grid Margin="0,8,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="2*" />
+                                            <ColumnDefinition Width="1.1*" />
+                                            <ColumnDefinition Width="1.4*" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                            <TextBlock Text="SFTP-Pfad zur ServerSettings.ini" Foreground="{StaticResource MutedTextBrush}" />
+                                            <TextBox Text="{Binding Settings.SettingRandomizerRemoteFilePath, UpdateSourceTrigger=PropertyChanged}" />
+                                            <TextBlock Text="Beispiel: /88.198.43.88_7182/Config/WindowsServer/ServerSettings.ini"
+                                                       Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Margin="0,0,12,0">
+                                            <TextBlock Text="Upload-Uhrzeiten (lokal)" Foreground="{StaticResource MutedTextBrush}" />
+                                            <TextBox Text="{Binding Settings.SettingRandomizerScheduleTimes, UpdateSourceTrigger=PropertyChanged}" />
+                                            <TextBlock Text="Kommagetrennt, z. B. 04:00,10:00,16:00,22:00" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2">
+                                            <CheckBox Content="Beim Toolstart automatisch starten" IsChecked="{Binding Settings.AutoStartSettingRandomizer}" />
+                                            <DockPanel>
+                                                <TextBlock Text="Zeitplan aktiv" Foreground="{StaticResource MutedTextBrush}" />
+                                                <TextBlock Text="{Binding SettingRandomizerRunning}" HorizontalAlignment="Right" FontWeight="Bold" />
+                                            </DockPanel>
+                                            <TextBlock Text="{Binding SettingRandomizerStatus}" Foreground="{StaticResource AccentBrush}" TextWrapping="Wrap" Margin="0,8,0,0" />
+                                        </StackPanel>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Style="{StaticResource Card}">
+                                    <StackPanel>
+                                        <TextBlock Text="Discord-Ankündigung" FontSize="20" FontWeight="SemiBold" />
+                                        <CheckBox Content="Nach erfolgreichem Upload ankündigen"
+                                                  IsChecked="{Binding Settings.SettingRandomizerDiscordAnnouncementEnabled}" Margin="0,10,0,4" />
+                                        <TextBlock Text="Discord Channel-ID" Foreground="{StaticResource MutedTextBrush}" />
+                                        <TextBox Text="{Binding Settings.SettingRandomizerDiscordChannelId, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBlock Text="Die Texte werden unten direkt je möglichem Wert gepflegt. Leere Texte werden nicht gesendet."
+                                                   Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="1" Style="{StaticResource Card}">
+                                    <StackPanel>
+                                        <TextBlock Text="Einstellung hinzufügen" FontSize="20" FontWeight="SemiBold" />
+                                        <ComboBox ItemsSource="{Binding SettingRandomizerCatalog}"
+                                                  SelectedItem="{Binding SelectedSettingRandomizerCatalogEntry}"
+                                                  DisplayMemberPath="Label" Margin="0,10,0,10" />
+                                        <WrapPanel>
+                                            <Button Content="Zum Plan hinzufügen" Command="{Binding AddSettingRandomizerRuleCommand}" />
+                                            <Button Content="Beispielplan zurücksetzen" Command="{Binding ResetSettingRandomizerCommand}" />
+                                        </WrapPanel>
+                                        <TextBlock Text="Alle aktiven Werte einer Einstellung müssen zusammen genau 100 % ergeben."
+                                                   Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <TextBlock Text="Letzte Auswahl" FontSize="20" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding SettingRandomizerPreview}" TextWrapping="Wrap" Margin="0,8,0,0" />
+                                    <TextBlock Text="Beim Test wird die aktuelle Datei vom Server geladen, aber nicht verändert."
+                                               Foreground="{StaticResource MutedTextBrush}" Margin="0,6,0,0" />
+                                </StackPanel>
+                            </Border>
+
+                            <ItemsControl ItemsSource="{Binding SettingRandomizerRules}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource Card}">
+                                            <StackPanel>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="1.3*" />
+                                                        <ColumnDefinition Width="0.7*" />
+                                                        <ColumnDefinition Width="1.5*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <CheckBox Grid.Column="0" Content="Aktiv" IsChecked="{Binding Enabled}" VerticalAlignment="Center" Margin="0,0,14,0" />
+                                                    <StackPanel Grid.Column="1" Margin="0,0,12,0">
+                                                        <TextBlock Text="Name" Foreground="{StaticResource MutedTextBrush}" />
+                                                        <TextBox Text="{Binding DisplayName, UpdateSourceTrigger=PropertyChanged}" />
+                                                    </StackPanel>
+                                                    <StackPanel Grid.Column="2" Margin="0,0,12,0">
+                                                        <TextBlock Text="INI-Sektion" Foreground="{StaticResource MutedTextBrush}" />
+                                                        <TextBox Text="{Binding Section, UpdateSourceTrigger=PropertyChanged}" />
+                                                    </StackPanel>
+                                                    <StackPanel Grid.Column="3" Margin="0,0,12,0">
+                                                        <TextBlock Text="INI-Schlüssel" Foreground="{StaticResource MutedTextBrush}" />
+                                                        <TextBox Text="{Binding Key, UpdateSourceTrigger=PropertyChanged}" />
+                                                    </StackPanel>
+                                                    <Button Grid.Column="4" Content="Einstellung entfernen"
+                                                            Command="{Binding DataContext.RemoveSettingRandomizerRuleCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                            CommandParameter="{Binding}" VerticalAlignment="Center" />
+                                                </Grid>
+
+                                                <DockPanel Margin="0,0,0,8">
+                                                    <Button Content="Wert hinzufügen"
+                                                            Command="{Binding DataContext.AddSettingRandomizerOptionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                            CommandParameter="{Binding}" DockPanel.Dock="Left" />
+                                                    <TextBlock Text="{Binding ChanceSummary}" HorizontalAlignment="Right" FontWeight="Bold" VerticalAlignment="Center">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Foreground" Value="#52B86B" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding ChanceIsValid}" Value="False">
+                                                                        <Setter Property="Foreground" Value="#F35C69" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                </DockPanel>
+
+                                                <Grid Margin="0,0,0,4">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="180" />
+                                                        <ColumnDefinition Width="120" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="80" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="0" Text="Wert" Foreground="{StaticResource MutedTextBrush}" />
+                                                    <TextBlock Grid.Column="1" Text="Chance (%)" Foreground="{StaticResource MutedTextBrush}" />
+                                                    <TextBlock Grid.Column="2" Text="Freier Discord-Text für dieses Ergebnis" Foreground="{StaticResource MutedTextBrush}" />
+                                                </Grid>
+                                                <ItemsControl ItemsSource="{Binding Options}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Grid>
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="180" />
+                                                                    <ColumnDefinition Width="120" />
+                                                                    <ColumnDefinition Width="*" />
+                                                                    <ColumnDefinition Width="80" />
+                                                                </Grid.ColumnDefinitions>
+                                                                <TextBox Grid.Column="0" Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,10,10" />
+                                                                <TextBox Grid.Column="1" Text="{Binding ChancePercent, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,10,10" />
+                                                                <TextBox Grid.Column="2" Text="{Binding DiscordAnnouncement, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,10,10" />
+                                                                <Button Grid.Column="3" Content="X"
+                                                                        Command="{Binding DataContext.RemoveSettingRandomizerOptionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                        CommandParameter="{Binding}" Margin="0,4,0,10" />
+                                                            </Grid>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
                 <TabItem Header="{Binding Texts[ScriptZone]}">
                     <Grid>
                         <Grid.ColumnDefinitions>

@@ -19,9 +19,10 @@ namespace ScumRconTool;
 public partial class MainWindow : Window
 {
     private const int RedeemCodesTabIndex = 4;
-    private const int ScriptsTabIndex = 9;
-    private const int LogsTabIndex = 10;
-    private const int SettingsTabIndex = 11;
+    private const int SettingRandomizerTabIndex = 9;
+    private const int ScriptsTabIndex = 10;
+    private const int LogsTabIndex = 11;
+    private const int SettingsTabIndex = 12;
     private const double MapWorldLeftX = 618000;
     private const double MapWorldRightX = -898000;
     private const double MapWorldTopY = 618000;
@@ -188,6 +189,7 @@ public partial class MainWindow : Window
     private void NavKillFeed_Click(object sender, RoutedEventArgs e) => SetMainTab(6);
     private void NavWeeklyTasks_Click(object sender, RoutedEventArgs e) => SetMainTab(7);
     private void NavAutoMessages_Click(object sender, RoutedEventArgs e) => SetMainTab(8);
+    private void NavSettingRandomizer_Click(object sender, RoutedEventArgs e) => SetMainTab(SettingRandomizerTabIndex);
     private void NavScripts_Click(object sender, RoutedEventArgs e) => SetMainTab(ScriptsTabIndex);
     private void NavLogs_Click(object sender, RoutedEventArgs e) => SetMainTab(LogsTabIndex);
     private void NavSettings_Click(object sender, RoutedEventArgs e) => SetMainTab(SettingsTabIndex);

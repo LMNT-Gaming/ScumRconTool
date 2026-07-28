@@ -14,7 +14,7 @@ using ScumRconTool.Views;
 
 namespace ScumRconTool.ViewModels;
 
-public sealed class MainViewModel : ObservableObject, IAsyncDisposable
+public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 {
     private SourceRconClient? _rcon;
     private DiscordBridgeService? _discord;
@@ -556,6 +556,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         OpenGgconDocsCommand = new RelayCommand(_ => OpenGgconDocs());
         OpenUsageDirectorySourceCommand = new RelayCommand(_ => OpenUsageDirectorySource());
         SwitchLanguageCommand = new RelayCommand(_ => SwitchLanguage());
+        InitializeSettingRandomizer();
 
         EnsureLogDirectory();
         EnsureLocalLogDirectories();
@@ -800,6 +801,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         SyncJoinCommandRulesToSettings();
         SyncWeeklyTaskEditorsToSettings();
         SyncAutoMessageEditorsToSettings();
+        SyncSettingRandomizerRulesToSettings();
         SettingsStore.Save(Settings);
 
         if (Settings.UsageDirectoryEnabled)
@@ -1067,11 +1069,24 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             }
         }
 
+        if (Settings.AutoStartSettingRandomizer)
+        {
+            try
+            {
+                StartSettingRandomizer(persistAutoStart: false);
+            }
+            catch (Exception ex)
+            {
+                Log("AutoStart SettingRandomizer Fehler: " + ex.Message);
+                AppLogService.WriteException("AutoStartSettingRandomizer", ex);
+            }
+        }
 
         var needsDiscord = Settings.AutoStartDiscordServerStatusMessage ||
                            Settings.AutoStartDiscordBotStatus ||
                            Settings.AutoStartDiscordChatLogs ||
-                           Settings.DiscordGameBridgeEnabled;
+                           Settings.DiscordGameBridgeEnabled ||
+                           (Settings.AutoStartSettingRandomizer && Settings.SettingRandomizerDiscordAnnouncementEnabled);
 
         if (needsDiscord)
         {
@@ -1103,6 +1118,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
             $"KillFeed={Settings.AutoStartKillFeed}, " +
             $"WeeklyTasks={Settings.AutoStartWeeklyTasks}, " +
             $"AutoMessages={Settings.AutoStartAutoMessages}, " +
+            $"SettingRandomizer={Settings.AutoStartSettingRandomizer}, " +
             $"Scripts={Settings.AutoStartScripts}");
     }
 
@@ -3646,6 +3662,7 @@ public sealed class MainViewModel : ObservableObject, IAsyncDisposable
         _weeklyTasks?.Stop();
         _autoMessages?.Stop();
         _eventEngine?.Dispose();
+        StopSettingRandomizer(persistAutoStart: false);
         _usageDirectory.Dispose();
         if (_discord is not null) await _discord.DisposeAsync();
         if (_rcon is not null) await _rcon.DisposeAsync();
