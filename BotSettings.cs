@@ -7,6 +7,7 @@ namespace ScumRconTool;
 public sealed class BotSettings
 {
     public string UiLanguage { get; set; } = "de";
+    public VehicleInsuranceOptions VehicleInsurance { get; set; } = new();
     public string Host { get; set; } = "88.198.43.88";
     public int Port { get; set; } = 5377;
     public string Password { get; set; } = string.Empty;
@@ -17,14 +18,11 @@ public sealed class BotSettings
     public string FtpPassword { get; set; } = string.Empty;
     public bool FtpUseSsl { get; set; } // legacy setting, ignored for SFTP
     public string FtpRemoteDirectory { get; set; } = "/";
-    public string FtpKillLogPattern { get; set; } = "kill*.log";
     public string FtpLocalDirectory { get; set; } = string.Empty;
-    public int KillPollSeconds { get; set; } = 30;
-    public string KillAnnounceTemplate { get; set; } = "{killer} killed {victim} {weapon} {distance}";
-    public string KillAnnounceColor { get; set; } = "Red";
-    public bool AutoStartKillFeed { get; set; }
 
     public string DiscordBotToken { get; set; } = string.Empty;
+    public bool UseSeparateDiscordStatusBot { get; set; }
+    public string DiscordStatusBotToken { get; set; } = string.Empty;
     public ulong DiscordChatLogChannelId { get; set; }
     public ulong DiscordGameBridgeChannelId { get; set; }
     public ulong DiscordServerStatusChannelId { get; set; }
@@ -114,7 +112,14 @@ public sealed class BotSettings
     public int WeeklyTaskPollMinutes { get; set; } = 30;
     public string WeeklyTaskDbRemoteFilePath { get; set; } = "/88.198.43.88_7182/SaveFiles/SCUM.db";
     public ulong WeeklyTaskDiscordChannelId { get; set; }
+    public bool VehicleInactivityWarningEnabled { get; set; }
+    public ulong VehicleInactivityWarningDiscordChannelId { get; set; }
+    public int VehicleInactivityWarningHours { get; set; } = 12;
+    public int VehicleInactivityScanMinutes { get; set; } = 60;
     public string WeeklyTaskJson { get; set; } = "";
+    public bool WeeklyTaskWebApiEnabled { get; set; }
+    public string WeeklyTaskWebApiEndpointUrl { get; set; } = string.Empty;
+    public string WeeklyTaskWebApiToken { get; set; } = string.Empty;
 
     public bool AutoStartAutoMessages { get; set; }
     public bool AutoMessagesOnlyWhenPlayersOnline { get; set; } = true;
@@ -122,15 +127,39 @@ public sealed class BotSettings
     public string AutoMessagesBroadcastType { get; set; } = "Yellow";
     public int AutoMessagesMaxLength { get; set; } = 180;
     public string AutoMessagesNoChallengeText { get; set; } = "Aktuell sind keine aktiven Community Challenges konfiguriert.";
+    public string ChallengeMessageLanguage { get; set; } = "de";
     public string AutoMessagesFlowJson { get; set; } = AutoMessageFlow.BuildDefaultJson();
 
     public bool AutoStartSettingRandomizer { get; set; }
     public string SettingRandomizerRemoteFilePath { get; set; } = "/Serveradresse_Port/Config/WindowsServer/ServerSettings.ini";
     public string SettingRandomizerScheduleTimes { get; set; } = "04:00,10:00,16:00,22:00";
     public bool SettingRandomizerDiscordAnnouncementEnabled { get; set; }
-    public ulong SettingRandomizerDiscordChannelId { get; set; }
-    public string SettingRandomizerRulesJson { get; set; } = SettingRandomizerConfiguration.BuildDefaultJson();
+    public string SettingRandomizerRulesJson { get; set; } = "[]";
+    public string SettingRandomizerPacksJson { get; set; } = SettingRandomizerConfiguration.BuildDefaultPacksJson();
     public string SettingRandomizerLastScheduleKey { get; set; } = string.Empty;
+
+
+
+
+    public bool AutoStartEconomy { get; set; }
+    public bool EconomyAutoUpload { get; set; }
+    public string EconomyOverrideRemoteFilePath { get; set; } = "/88.198.43.88_7182/Config/WindowsServer/EconomyOverride.json";
+    public string EconomyLogsRemoteDirectory { get; set; } = "/88.198.43.88_7182/SaveFiles/Logs";
+    public string EconomyLogPattern { get; set; } = "economy_*.log";
+    public int EconomyPollMinutes { get; set; } = 15;
+    public string EconomyUploadTimes { get; set; } = "03:55,09:55,15:55,21:55";
+    public string EconomyLastUploadScheduleKey { get; set; } = string.Empty;
+    public double EconomyRecoveryHalfLifeHours { get; set; } = 336d;
+    public double EconomyPurchaseImpactPercent { get; set; } = 8d;
+    public double EconomySaleImpactPercent { get; set; } = 4d;
+    public double EconomyMaximumPurchaseMultiplier { get; set; } = 12d;
+    public int EconomyMinimumSellPrice { get; set; } = 10;
+    public bool EconomyWebApiEnabled { get; set; }
+    public string EconomyWebApiEndpointUrl { get; set; } = string.Empty;
+    public string EconomyWebApiToken { get; set; } = string.Empty;
+    public bool ShopOrdersEnabled { get; set; }
+    public string ShopWorkerApiEndpointUrl { get; set; } = string.Empty;
+    public string ShopWorkerApiToken { get; set; } = string.Empty;
 
     public List<WeeklyCommunityTaskDefinition> GetWeeklyTaskDefinitions()
     {

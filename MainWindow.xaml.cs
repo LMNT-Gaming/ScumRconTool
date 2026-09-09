@@ -19,10 +19,12 @@ namespace ScumRconTool;
 public partial class MainWindow : Window
 {
     private const int RedeemCodesTabIndex = 4;
-    private const int SettingRandomizerTabIndex = 9;
-    private const int ScriptsTabIndex = 10;
-    private const int LogsTabIndex = 11;
-    private const int SettingsTabIndex = 12;
+    private const int SettingRandomizerTabIndex = 8;
+    private const int EconomyTabIndex = 9;
+    private const int LootPacksTabIndex = 10;
+    private const int ScriptsTabIndex = 11;
+    private const int LogsTabIndex = 12;
+    private const int SettingsTabIndex = 13;
     private const double MapWorldLeftX = 618000;
     private const double MapWorldRightX = -898000;
     private const double MapWorldTopY = 618000;
@@ -72,6 +74,10 @@ public partial class MainWindow : Window
         RconPasswordBox.Password = _viewModel.Settings.Password ?? string.Empty;
         SftpPasswordBox.Password = _viewModel.Settings.FtpPassword ?? string.Empty;
         DiscordTokenBox.Password = _viewModel.Settings.DiscordBotToken ?? string.Empty;
+        DiscordStatusTokenBox.Password = _viewModel.Settings.DiscordStatusBotToken ?? string.Empty;
+        WeeklyTaskWebApiTokenBox.Password = _viewModel.Settings.WeeklyTaskWebApiToken ?? string.Empty;
+        EconomyWebApiTokenBox.Password = _viewModel.Settings.EconomyWebApiToken ?? string.Empty;
+        ShopWorkerApiTokenBox.Password = _viewModel.Settings.ShopWorkerApiToken ?? string.Empty;
         _loadingPasswords = false;
 
         await _viewModel.InitializeUsageDirectoryAsync();
@@ -161,8 +167,7 @@ public partial class MainWindow : Window
     private static bool IsNonDirtyScriptEditorTab(TabItem tab)
     {
         var tag = tab.Tag?.ToString();
-        return string.Equals(tag, "GlobalLootPacks", StringComparison.Ordinal) ||
-               string.Equals(tag, "ScriptMap", StringComparison.Ordinal);
+        return string.Equals(tag, "ScriptMap", StringComparison.Ordinal);
     }
 
     private void RconPasswordBox_PasswordChanged(object sender, RoutedEventArgs e)
@@ -180,16 +185,35 @@ public partial class MainWindow : Window
         if (!_loadingPasswords) _viewModel.Settings.DiscordBotToken = DiscordTokenBox.Password;
     }
 
+    private void DiscordStatusTokenBox_PasswordChanged(object sender, RoutedEventArgs e)
+    {
+        if (!_loadingPasswords) _viewModel.Settings.DiscordStatusBotToken = DiscordStatusTokenBox.Password;
+    }
+    private void WeeklyTaskWebApiTokenBox_PasswordChanged(object sender, RoutedEventArgs e)
+    {
+        if (!_loadingPasswords) _viewModel.Settings.WeeklyTaskWebApiToken = WeeklyTaskWebApiTokenBox.Password;
+    }
+
+    private void EconomyWebApiTokenBox_PasswordChanged(object sender, RoutedEventArgs e)
+    {
+        if (!_loadingPasswords) _viewModel.Settings.EconomyWebApiToken = EconomyWebApiTokenBox.Password;
+    }
+
+    private void ShopWorkerApiTokenBox_PasswordChanged(object sender, RoutedEventArgs e)
+    {
+        if (!_loadingPasswords) _viewModel.Settings.ShopWorkerApiToken = ShopWorkerApiTokenBox.Password;
+    }
+
     private void NavDashboard_Click(object sender, RoutedEventArgs e) => SetMainTab(0);
     private void NavRcon_Click(object sender, RoutedEventArgs e) => SetMainTab(1);
     private void NavDiscord_Click(object sender, RoutedEventArgs e) => SetMainTab(2);
     private void NavChatCommands_Click(object sender, RoutedEventArgs e) => SetMainTab(3);
     private void NavRedeemCodes_Click(object sender, RoutedEventArgs e) => SetMainTab(RedeemCodesTabIndex);
     private void NavJoinCommands_Click(object sender, RoutedEventArgs e) => SetMainTab(5);
-    private void NavKillFeed_Click(object sender, RoutedEventArgs e) => SetMainTab(6);
-    private void NavWeeklyTasks_Click(object sender, RoutedEventArgs e) => SetMainTab(7);
-    private void NavAutoMessages_Click(object sender, RoutedEventArgs e) => SetMainTab(8);
+    private void NavWeeklyTasks_Click(object sender, RoutedEventArgs e) => SetMainTab(6);
+    private void NavAutoMessages_Click(object sender, RoutedEventArgs e) => SetMainTab(7);
     private void NavSettingRandomizer_Click(object sender, RoutedEventArgs e) => SetMainTab(SettingRandomizerTabIndex);
+    private void NavEconomy_Click(object sender, RoutedEventArgs e) => SetMainTab(EconomyTabIndex);
     private void NavScripts_Click(object sender, RoutedEventArgs e) => SetMainTab(ScriptsTabIndex);
     private void NavLogs_Click(object sender, RoutedEventArgs e) => SetMainTab(LogsTabIndex);
     private void NavSettings_Click(object sender, RoutedEventArgs e) => SetMainTab(SettingsTabIndex);
@@ -224,8 +248,31 @@ public partial class MainWindow : Window
         }
 
         _lastMainTabIndex = nextIndex;
+        if (nextIndex != 0)
+        {
+            _viewModel.StopDashboardPlayerMonitor();
+        }
+        else if (DashboardTabs.SelectedItem is TabItem dashboardTab &&
+                 string.Equals(dashboardTab.Tag?.ToString(), "Players", StringComparison.Ordinal))
+        {
+            _viewModel.StartDashboardPlayerMonitor();
+        }
     }
 
+    private void DashboardTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!ReferenceEquals(e.OriginalSource, DashboardTabs)) return;
+        e.Handled = true;
+        if (DashboardTabs.SelectedItem is TabItem tab &&
+            string.Equals(tab.Tag?.ToString(), "Players", StringComparison.Ordinal))
+        {
+            _viewModel.StartDashboardPlayerMonitor();
+        }
+        else
+        {
+            _viewModel.StopDashboardPlayerMonitor();
+        }
+    }
     private bool CanLeaveMainTab(int currentIndex, int nextIndex)
     {
         return currentIndex != ScriptsTabIndex || nextIndex == ScriptsTabIndex || _viewModel.ConfirmScriptChangeAllowed();
