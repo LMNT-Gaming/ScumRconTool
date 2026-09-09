@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
 using System.Text.Json;
 using System.Windows.Input;
+using System.ComponentModel;
+using System.Windows.Data;
 using ScumRconTool.Services;
 using ScumRconTool.Models;
 using System.IO;
@@ -9,6 +11,7 @@ using System.Globalization;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using System.Runtime.CompilerServices;
 using ScumRconTool.Views;
 
@@ -18,11 +21,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 {
     private SourceRconClient? _rcon;
     private DiscordBridgeService? _discord;
+    private DiscordStatusBotService? _discordStatusBot;
+    private string _discordStatusBotTokenInUse = string.Empty;
     private ChatLogDiscordForwarder? _chatForwarder;
     private ChatCommandAutomationService? _chatCommands;
     private JoinCommandAutomationService? _joinCommands;
-    private KillFeedAutomationService? _killFeed;
     private WeeklyCommunityTaskService? _weeklyTasks;
+    private VehicleInactivityWarningService? _vehicleInactivityWarnings;
     private AutoMessageService? _autoMessages;
     private readonly UsageDirectoryService _usageDirectory = new();
     private bool _usageDirectoryEnabledAtLastSave;
@@ -30,15 +35,21 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private CancellationTokenSource? _discordServerStatusMessageCts;
     private CancellationTokenSource? _playerStatusCts;
     private readonly SemaphoreSlim _discordStartLock = new(1, 1);
+    private readonly SemaphoreSlim _discordStatusStartLock = new(1, 1);
     private bool _discordServerStatusMessageLoopStarted;
     private bool _chatForwarderRequested;
     private readonly SemaphoreSlim _playerScanLock = new(1, 1);
     private readonly SemaphoreSlim _weeklyRewardClaimLock = new(1, 1);
     private readonly SemaphoreSlim _weeklyRewardNotificationLock = new(1, 1);
     private readonly WeeklyRewardStore _weeklyRewardStore = new();
+    private readonly Dictionary<string, DateTime> _weeklyRewardOnlineSinceUtc = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, HashSet<string>> _weeklyRewardNotifiedThisSession = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly TimeSpan WeeklyRewardJoinNoticeDelay = TimeSpan.FromMinutes(5);
+    private readonly WeeklyChallengeWebApiService _weeklyChallengeWebApi = new();
     private List<ScumPlayer> _cachedPlayers = new();
     private DateTime _cachedPlayersUtc = DateTime.MinValue;
     private readonly TimeSpan _playerCacheDuration = TimeSpan.FromSeconds(25);
+    private readonly DispatcherTimer _weeklyRuntimeTimer;
 
     public BotSettings Settings { get; } = SettingsStore.Load();
     public UiTextProvider Texts { get; }
@@ -51,6 +62,15 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public ObservableCollection<JoinCommandRuleEditorViewModel> JoinCommandRules { get; } = new();
     public ObservableCollection<AutoMessageEditorViewModel> AutoMessageEditors { get; } = new();
     public ObservableCollection<LootPackEditorViewModel> GlobalLootPacks { get; } = new();
+    public ICollectionView GlobalLootPacksView { get; }
+    public IReadOnlyList<LootPackCategoryOption> LootPackCategoryOptions => new[]
+    {
+        new LootPackCategoryOption("Weapons", Texts["LootPackCategoryWeapons"]),
+        new LootPackCategoryOption("Ammunition", Texts["LootPackCategoryAmmunition"]),
+        new LootPackCategoryOption("Equipment", Texts["LootPackCategoryEquipment"]),
+        new LootPackCategoryOption("Consumables", Texts["LootPackCategoryConsumables"]),
+        new LootPackCategoryOption("Mixed", Texts["LootPackCategoryMixed"])
+    };
     public IReadOnlyList<string> ChatMatchModes { get; } = new[] { "equals", "startswith", "contains", "regex" };
     public IReadOnlyList<string> ChatCooldownScopes { get; } = new[] { "player", "global" };
     public IReadOnlyList<string> ScumCommandSuggestions { get; } = ScumCommandCatalog.Commands;
@@ -69,13 +89,15 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         "Advanced_Lockpick",
         "Fireplace",
         "Tent",
-        "Improved_Wooden_Chest"
+        "Improved_Wooden_Chest",
+        "BaseExpansionKit_Lvl1",
+        "BaseExpansionKit_Lvl2"
     };
     public IReadOnlyList<string> BroadcastMessageTypes { get; } = new[] { "Yellow", "White", "Cyan", "Green", "Red", "ServerMessage", "Error" };
     public IReadOnlyList<string> AutoMessageModes { get; } = new[] { "Queue", "Standalone" };
     public IReadOnlyList<string> AutoMessageTypes { get; } = new[] { "Text", "Challenges" };
     public IReadOnlyList<string> ScriptModes { get; } = new[] { "Random", "SilentZone", "Buyzone", "RandomActivated", "DirectLive", "RandomAnnouncedZone" };
-    public IReadOnlyList<string> SpawnBlockTypes { get; } = new[] { "Zombie", "Random Zombie", "Lootpuppet", "Item", "Custom", "CargoDrop", "ArmedNPC", "Vehicle" };
+    public IReadOnlyList<string> SpawnBlockTypes { get; } = new[] { "Zombie", "Random Zombie", "Lootpuppet", "Razor", "Item", "Custom", "CargoDrop", "ArmedNPC", "Vehicle" };
     public IReadOnlyList<LootSpawnModeOption> LootSpawnModeOptions { get; } = new[]
     {
         new LootSpawnModeOption("OneTotal", "Ein Lootpack insgesamt"),
@@ -84,12 +106,44 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public IReadOnlyList<WeeklyCommunityTaskStatTarget> WeeklyTaskStatTargets { get; } = WeeklyCommunityTaskService.AvailableStatTargets;
 
     public ObservableCollection<WeeklyTaskEditorViewModel> WeeklyTaskEditors { get; } = new();
+    public ListCollectionView WeeklyTaskEditorsView { get; }
+    public ObservableCollection<ChallengeCalendarEntryViewModel> ChallengeCalendarDayEntries { get; } = new();
+    public ObservableCollection<ChallengeCalendarEntryViewModel> ChallengeCalendarTimelineEntries { get; } = new();
+    public ObservableCollection<ChallengeCalendarDayViewModel> ChallengeCalendarMonthDays { get; } = new();
+    public ICommand PreviousChallengeCalendarMonthCommand { get; private set; } = null!;
+    public ICommand NextChallengeCalendarMonthCommand { get; private set; } = null!;
+    public ICommand TodayChallengeCalendarCommand { get; private set; } = null!;
+    public ICommand SelectChallengeCalendarDayCommand { get; private set; } = null!;
     public ObservableCollection<WeeklySquadOverviewViewModel> WeeklySquadOverview { get; } = new();
+
+    private DateTime _challengeCalendarDisplayMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private DateTime? _challengeCalendarSelectedDate = DateTime.Today;
+    public DateTime? ChallengeCalendarSelectedDate
+    {
+        get => _challengeCalendarSelectedDate;
+        set
+        {
+            if (SetProperty(ref _challengeCalendarSelectedDate, value)) RefreshChallengeCalendarEntries();
+        }
+    }
     public ObservableCollection<WeeklyRewardClaimViewModel> WeeklyRewardClaims { get; } = new();
     public IReadOnlyList<string> WeeklyRewardModes { get; } = new[] { "FreeText", "Item" };
     public IReadOnlyList<string> WeeklyRewardDistributions { get; } = new[] { "PerParticipant", "PerSquad" };
-    public IReadOnlyList<string> WeeklyGoalScopes { get; } = new[] { "Community", "PerPlayer" };
+    public IReadOnlyList<WeeklyGoalScopeOption> WeeklyGoalScopes => Texts.IsGerman
+        ? [new("Community", "Community – gemeinsames Ziel"), new("PerPlayer", "Personal – eigenes Ziel pro Spieler")]
+        : [new("Community", "Community – shared goal"), new("PerPlayer", "Personal – individual goal per player")];
+    public IReadOnlyList<WeeklyGoalLogicOption> WeeklyGoalLogics => Texts.IsGerman
+        ? [new("Any", "Ein Ziel reicht (ODER)"), new("All", "Alle Ziele erforderlich (UND)")]
+        : [new("Any", "Any goal is sufficient (OR)"), new("All", "All goals are required (AND)")];
+    public IReadOnlyList<WeeklyGoalScopeOption> ChallengeMessageLanguages =>
+        [new("de", "Deutsch"), new("en", "English")];
 
+    private string _weeklyTaskWebApiStatus = "Web-API: deaktiviert";
+    public string WeeklyTaskWebApiStatus
+    {
+        get => _weeklyTaskWebApiStatus;
+        private set => SetProperty(ref _weeklyTaskWebApiStatus, value);
+    }
     private string _weeklyRewardStatus = "Squads und Rewards wurden noch nicht geladen.";
     public string WeeklyRewardStatus
     {
@@ -110,7 +164,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         set => SetProperty(ref _selectedWeeklyTaskEditor, value);
     }
 
-    public IReadOnlyList<string> WeeklyTaskTypes { get; } = new[] { "Daily", "Weekly", "Event" };
+    public IReadOnlyList<string> WeeklyTaskTypes { get; } = new[] { "Daily", "Weekly", "Event", "Quiz" };
 
     private WeeklyCommunityTaskStatTarget? _selectedWeeklyTaskStatTarget = WeeklyCommunityTaskService.AvailableStatTargets.FirstOrDefault(x => x.ColumnName == "puppets_killed");
     public WeeklyCommunityTaskStatTarget? SelectedWeeklyTaskStatTarget
@@ -161,6 +215,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         set => SetProperty(ref _discordStatus, value);
     }
 
+
+    private string _discordStatusBotStatus = "Nicht getrennt";
+    public string DiscordStatusBotStatus
+    {
+        get => _discordStatusBotStatus;
+        set => SetProperty(ref _discordStatusBotStatus, value);
+    }
 
     private ScriptFileViewModel? _selectedScript;
     public ScriptFileViewModel? SelectedScript
@@ -215,6 +276,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             if (SetProperty(ref _scriptHasUnsavedChanges, value))
             {
                 OnPropertyChanged(nameof(ScriptDirtyStatus));
+        OnPropertyChanged(nameof(RconStatusText));
+        OnPropertyChanged(nameof(RconStatusDescription));
+
             }
         }
     }
@@ -241,8 +305,21 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public bool RconConnected
     {
         get => _rconConnected;
-        set => SetProperty(ref _rconConnected, value);
+        set
+        {
+            if (SetProperty(ref _rconConnected, value))
+            {
+                OnPropertyChanged(nameof(RconStatusText));
+                OnPropertyChanged(nameof(RconStatusDescription));
+            }
+        }
     }
+    public string RconStatusText => RconConnected
+        ? (Texts.IsGerman ? "Verbunden" : "Connected")
+        : (Texts.IsGerman ? "Bei Bedarf" : "On demand");
+    public string RconStatusDescription => RconConnected
+        ? Texts["SourceRconConnection"]
+        : Texts["RconOnDemandDescription"];
 
     private string _currentPlayersStatus = "-/-";
     public string CurrentPlayersStatus
@@ -279,14 +356,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         set => SetProperty(ref _chatLogForwarderRunning, value);
     }
 
-    private bool _killFeedRunning;
-    public bool KillFeedRunning
-    {
-        get => _killFeedRunning;
-        set => SetProperty(ref _killFeedRunning, value);
-    }
-
-    private bool _weeklyTasksRunning;
+private bool _weeklyTasksRunning;
     public bool WeeklyTasksRunning
     {
         get => _weeklyTasksRunning;
@@ -403,9 +473,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public ICommand InsertDefaultJoinCommandsCommand { get; }
     public ICommand AddJoinCommandRuleCommand { get; }
     public ICommand RemoveJoinCommandRuleCommand { get; }
-    public ICommand StartKillFeedCommand { get; }
-    public ICommand StopKillFeedCommand { get; }
-    public ICommand ScanKillFeedCommand { get; }
     public ICommand StartWeeklyTasksCommand { get; }
     public ICommand StopWeeklyTasksCommand { get; }
     public ICommand ScanWeeklyTasksCommand { get; }
@@ -415,8 +482,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public ICommand AddWeeklyTaskEditorCommand { get; }
     public ICommand DuplicateWeeklyTaskEditorCommand { get; }
     public ICommand DeleteWeeklyTaskEditorCommand { get; }
+    public ICommand ResetWeeklyTaskEditorCounterCommand { get; }
+    public ICommand ShowWeeklyTaskProgressCommand { get; }
+    public ICommand ShowWeeklyTaskParticipantsCommand { get; }
     public ICommand ApplyWeeklyTaskEditorCommand { get; }
     public ICommand ReloadWeeklyTaskEditorCommand { get; }
+    public ICommand AddWeeklyTaskGoalCommand { get; }
+    public ICommand RemoveWeeklyTaskGoalCommand { get; }
     public ICommand AddWeeklyRewardItemCommand { get; }
     public ICommand RemoveWeeklyRewardItemCommand { get; }
     public ICommand AcknowledgeWeeklyRewardCommand { get; }
@@ -431,6 +503,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public ICommand StartScriptsCommand { get; }
     public ICommand StopScriptsCommand { get; }
     public ICommand ScanScriptsCommand { get; }
+    public ICommand ManualStartEventCommand { get; }
     public ICommand RefreshScriptsCommand { get; }
     public ICommand ValidateScriptCommand { get; }
     public ICommand FormatScriptCommand { get; }
@@ -447,8 +520,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public ICommand RemoveLocationVariableCommand { get; }
     public ICommand AddLootPackCommand { get; }
     public ICommand RemoveLootPackCommand { get; }
+    public ICommand SelectChallengeLootPackCommand { get; }
+    public ICommand SelectScriptLootPacksCommand { get; }
+    public ICommand AddMatchingWeaponAccessoriesCommand { get; }
     public ICommand AddGlobalLootPackCommand { get; }
     public ICommand RemoveGlobalLootPackCommand { get; }
+    public ICommand MoveGlobalLootPackUpCommand { get; }
+    public ICommand MoveGlobalLootPackDownCommand { get; }
     public ICommand SaveGlobalLootPacksCommand { get; }
     public ICommand AddLootItemCommand { get; }
     public ICommand RemoveLootItemCommand { get; }
@@ -468,13 +546,49 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public MainViewModel()
     {
         Texts = new UiTextProvider(Settings.UiLanguage);
+        _weeklyRuntimeTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(1) };
+        _weeklyRuntimeTimer.Tick += (_, _) =>
+        {
+            foreach (var editor in WeeklyTaskEditors) editor.RefreshRuntimeDisplay();
+            RefreshChallengeCalendarEntries();
+        };
+        _weeklyRuntimeTimer.Start();
+        WeeklyTaskEditorsView = new ListCollectionView(WeeklyTaskEditors);
+        WeeklyTaskEditorsView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(WeeklyTaskEditorViewModel.TypeGroupDisplay)));
+        WeeklyTaskEditorsView.SortDescriptions.Add(new SortDescription(nameof(WeeklyTaskEditorViewModel.TypeSortOrder), ListSortDirection.Ascending));
+        WeeklyTaskEditorsView.SortDescriptions.Add(new SortDescription(nameof(WeeklyTaskEditorViewModel.StartSortValue), ListSortDirection.Ascending));
+        WeeklyTaskEditorsView.SortDescriptions.Add(new SortDescription(nameof(WeeklyTaskEditorViewModel.Title), ListSortDirection.Ascending));
+        WeeklyTaskEditors.CollectionChanged += WeeklyTaskEditors_CollectionChanged;
+        GlobalLootPacksView = new ListCollectionView(GlobalLootPacks);
+        GlobalLootPacksView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(LootPackEditorViewModel.Category)));
+        GlobalLootPacksView.SortDescriptions.Add(new SortDescription(nameof(LootPackEditorViewModel.CategorySortOrder), ListSortDirection.Ascending));
+        GlobalLootPacksView.SortDescriptions.Add(new SortDescription(nameof(LootPackEditorViewModel.Name), ListSortDirection.Ascending));
+        if (GlobalLootPacksView is ICollectionViewLiveShaping liveLootPacks)
+        {
+            if (liveLootPacks.CanChangeLiveGrouping)
+            {
+                liveLootPacks.LiveGroupingProperties.Add(nameof(LootPackEditorViewModel.Category));
+                liveLootPacks.IsLiveGrouping = true;
+            }
+
+            if (liveLootPacks.CanChangeLiveSorting)
+            {
+                liveLootPacks.LiveSortingProperties.Add(nameof(LootPackEditorViewModel.CategorySortOrder));
+                liveLootPacks.LiveSortingProperties.Add(nameof(LootPackEditorViewModel.Name));
+                liveLootPacks.IsLiveSorting = true;
+            }
+        }
         CurrentPlayersStatus = $"-/{GetConfiguredMaxPlayers()}";
         ApplyLocalizedInitialStatusTexts();
         UpdateButtonText = Texts["CheckUpdate"];
+        PreviousChallengeCalendarMonthCommand = new RelayCommand(_ => MoveChallengeCalendarMonth(-1));
+        NextChallengeCalendarMonthCommand = new RelayCommand(_ => MoveChallengeCalendarMonth(1));
+        TodayChallengeCalendarCommand = new RelayCommand(_ => GoToChallengeCalendarToday());
+        SelectChallengeCalendarDayCommand = new RelayCommand(day => SelectChallengeCalendarDay(day as ChallengeCalendarDayViewModel));
         SaveSettingsCommand = new RelayCommand(async _ => await SaveSettingsAsync());
         ConnectRconCommand = new RelayCommand(async _ => await ConnectRconAsync());
         SendRconCommand = new RelayCommand(async _ => await SendRconAsync());
-        StartDiscordCommand = new RelayCommand(async _ => await StartDiscordAsync());
+        StartDiscordCommand = new RelayCommand(async _ => await StartConfiguredDiscordBotsAsync());
         UpdateServerStatusCommand = new RelayCommand(async _ => await UpdateDiscordServerStatusMessageManualAsync());
         ScanChatLogCommand = new RelayCommand(async _ => await ScanChatLogAsync());
         StartChatLogForwarderCommand = new RelayCommand(async _ => await StartChatLogForwarderAsync());
@@ -495,9 +609,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         InsertDefaultJoinCommandsCommand = new RelayCommand(_ => InsertDefaultJoinCommands());
         AddJoinCommandRuleCommand = new RelayCommand(_ => AddJoinCommandRule());
         RemoveJoinCommandRuleCommand = new RelayCommand(rule => RemoveJoinCommandRule(rule as JoinCommandRuleEditorViewModel));
-        StartKillFeedCommand = new RelayCommand(async _ => await StartKillFeedAsync());
-        StopKillFeedCommand = new RelayCommand(_ => StopKillFeed());
-        ScanKillFeedCommand = new RelayCommand(async _ => await ScanKillFeedOnceAsync());
         StartWeeklyTasksCommand = new RelayCommand(async _ => await StartWeeklyTasksAsync());
         StopWeeklyTasksCommand = new RelayCommand(_ => StopWeeklyTasks());
         ScanWeeklyTasksCommand = new RelayCommand(async _ => await ScanWeeklyTasksOnceAsync());
@@ -507,11 +618,16 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         AddWeeklyTaskEditorCommand = new RelayCommand(_ => AddWeeklyTaskEditor());
         DuplicateWeeklyTaskEditorCommand = new RelayCommand(parameter => DuplicateWeeklyTaskEditor(parameter as WeeklyTaskEditorViewModel));
         DeleteWeeklyTaskEditorCommand = new RelayCommand(parameter => DeleteWeeklyTaskEditor(parameter as WeeklyTaskEditorViewModel));
+        ResetWeeklyTaskEditorCounterCommand = new RelayCommand(async parameter => await ResetWeeklyTaskEditorCounterAsync(parameter as WeeklyTaskEditorViewModel));
+        ShowWeeklyTaskProgressCommand = new RelayCommand(async parameter => await ShowWeeklyTaskProgressAsync(parameter as WeeklyTaskEditorViewModel));
+        ShowWeeklyTaskParticipantsCommand = new RelayCommand(async parameter => await ShowWeeklyTaskParticipantsAsync(parameter as WeeklyTaskEditorViewModel));
         ApplyWeeklyTaskEditorCommand = new RelayCommand(_ => ApplyWeeklyTaskEditorToJson());
         ReloadWeeklyTaskEditorCommand = new RelayCommand(_ => LoadWeeklyTaskEditorsFromSettings());
+        AddWeeklyTaskGoalCommand = new RelayCommand(task => AddWeeklyTaskGoal(task as WeeklyTaskEditorViewModel));
+        RemoveWeeklyTaskGoalCommand = new RelayCommand(goal => RemoveWeeklyTaskGoal(goal as WeeklyTaskGoalEditorViewModel));
         AddWeeklyRewardItemCommand = new RelayCommand(task => AddWeeklyRewardItem(task as WeeklyTaskEditorViewModel));
         RemoveWeeklyRewardItemCommand = new RelayCommand(item => RemoveWeeklyRewardItem(item as WeeklyRewardItemEditorViewModel));
-        AcknowledgeWeeklyRewardCommand = new RelayCommand(claim => AcknowledgeWeeklyReward(claim as WeeklyRewardClaimViewModel));
+        AcknowledgeWeeklyRewardCommand = new RelayCommand(claimId => AcknowledgeWeeklyReward(claimId as string));
         StartAutoMessagesCommand = new RelayCommand(async _ => await StartAutoMessagesAsync());
         StopAutoMessagesCommand = new RelayCommand(_ => StopAutoMessages());
         SendAutoMessageNowCommand = new RelayCommand(async _ => await SendAutoMessageNowAsync());
@@ -523,6 +639,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         StartScriptsCommand = new RelayCommand(async _ => await StartScriptsAsync());
         StopScriptsCommand = new RelayCommand(_ => StopScripts());
         ScanScriptsCommand = new RelayCommand(async _ => await ScanScriptsOnceAsync());
+        ManualStartEventCommand = new RelayCommand(
+            async parameter => await ManualStartEventAsync(parameter as ScriptRuntimeStatusViewModel),
+            parameter => parameter is ScriptRuntimeStatusViewModel { CanManualStart: true });
         RefreshScriptsCommand = new RelayCommand(_ => RefreshScripts());
         ValidateScriptCommand = new RelayCommand(_ => ValidateScript());
         FormatScriptCommand = new RelayCommand(_ => FormatScript());
@@ -539,8 +658,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         RemoveLocationVariableCommand = new RelayCommand(location => RemoveLocationVariable(location as ScriptLocationVariableEditorViewModel));
         AddLootPackCommand = new RelayCommand(_ => AddLootPackReference());
         RemoveLootPackCommand = new RelayCommand(pack => RemoveLootPackReference(pack as string));
+        SelectChallengeLootPackCommand = new RelayCommand(task => SelectChallengeLootPack(task as WeeklyTaskEditorViewModel));
+        SelectScriptLootPacksCommand = new RelayCommand(_ => SelectScriptLootPacks());
+        AddMatchingWeaponAccessoriesCommand = new RelayCommand(pack => AddMatchingWeaponAccessories(pack as LootPackEditorViewModel));
         AddGlobalLootPackCommand = new RelayCommand(_ => AddGlobalLootPack());
         RemoveGlobalLootPackCommand = new RelayCommand(pack => RemoveGlobalLootPack(pack as LootPackEditorViewModel));
+        MoveGlobalLootPackUpCommand = new RelayCommand(pack => MoveGlobalLootPack(pack as LootPackEditorViewModel, -1));
+        MoveGlobalLootPackDownCommand = new RelayCommand(pack => MoveGlobalLootPack(pack as LootPackEditorViewModel, 1));
         SaveGlobalLootPacksCommand = new RelayCommand(_ => SaveGlobalLootPacks());
         AddLootItemCommand = new RelayCommand(pack => AddLootItem(pack as LootPackEditorViewModel));
         RemoveLootItemCommand = new RelayCommand(item => RemoveLootItem(item as LootItemEditorViewModel));
@@ -557,16 +681,19 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         OpenUsageDirectorySourceCommand = new RelayCommand(_ => OpenUsageDirectorySource());
         SwitchLanguageCommand = new RelayCommand(_ => SwitchLanguage());
         InitializeSettingRandomizer();
+        InitializeEconomy();
+        InitializeVehicleInsurance();
 
+        InitializeDashboard();
         EnsureLogDirectory();
         EnsureLocalLogDirectories();
         LoadGlobalLootPacks();
+        InitializeQuizChallenge();
         RefreshScripts();
         LoadChatCommandRulesFromSettings();
         LoadRedeemCodesFromSettings();
         LoadJoinCommandRulesFromSettings();
         LoadWeeklyTaskEditorsFromSettings();
-        ClearInactiveWeeklyRewardCodes();
         RefreshWeeklyRewardClaims();
         LoadAutoMessageEditorsFromSettings();
         _usageDirectoryEnabledAtLastSave = Settings.UsageDirectoryEnabled;
@@ -579,9 +706,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         ScriptValidation = T("ScriptNotValidated");
         WeeklyTaskStatus = T("WeeklyTasksNotStarted");
         AutoMessageStatus = T("AutoMessagesNotStarted");
+        WeeklyRewardStatus = T("WeeklyRewardsNotLoaded");
         UpdateStatusText = T("UpdateNotChecked");
         UsageDirectoryStatus = Settings.UsageDirectoryEnabled ? T("UsageDirectoryStatusEnabled") : T("UsageDirectoryStatusDisabled");
         OnPropertyChanged(nameof(ScriptDirtyStatus));
+        OnPropertyChanged(nameof(RconStatusText));
+        OnPropertyChanged(nameof(RconStatusDescription));
+
     }
 
     private string T(string key) => Texts[key];
@@ -710,6 +841,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private void SwitchLanguage()
     {
         Texts.Toggle();
+        foreach (var rule in ChatCommandRules) rule.RefreshBuiltinText();
+        OnPropertyChanged(nameof(LootPackCategoryOptions));
         Settings.UiLanguage = Texts.Language;
         SettingsStore.SaveUiLanguage(Settings.UiLanguage);
         UpdateButtonText = UpdateAvailable ? Texts["DownloadUpdate"] : Texts["CheckUpdate"];
@@ -743,6 +876,18 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
 
         OnPropertyChanged(nameof(ScriptDirtyStatus));
+        OnPropertyChanged(nameof(RconStatusText));
+        OnPropertyChanged(nameof(RconStatusDescription));
+        OnPropertyChanged(nameof(WeeklyGoalScopes));
+        OnPropertyChanged(nameof(WeeklyGoalLogics));
+        RefreshWeeklyRewardClaims();
+        var weeklyRewardCount = _weeklyRewardStore.GetAll().Count;
+        WeeklyRewardStatus = weeklyRewardCount > 0 ? Tf("RewardRecipientsSaved", weeklyRewardCount) : T("WeeklyRewardsNotLoaded");
+        if (_lastWeeklyTaskProgresses.Count > 0) WeeklyTaskStatus = FormatWeeklyTaskStatus(_lastWeeklyTaskProgresses);
+        foreach (var editor in WeeklyTaskEditors) editor.SetLanguage(Texts.IsGerman);
+        RefreshChallengeCalendarEntries();
+        RefreshSettingRandomizerLanguage();
+        RefreshEconomyLanguage();
         UsageDirectoryStatus = Settings.UsageDirectoryEnabled ? T("UsageDirectoryStatusEnabled") : T("UsageDirectoryStatusDisabled");
         Log(Texts.IsGerman ? "Sprache auf Deutsch umgestellt." : "Language switched to English.");
     }
@@ -802,7 +947,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         SyncWeeklyTaskEditorsToSettings();
         SyncAutoMessageEditorsToSettings();
         SyncSettingRandomizerRulesToSettings();
+        SyncVehicleInsuranceSettings();
         SettingsStore.Save(Settings);
+        await ApplyVehicleInsuranceSettingsAsync();
+        StartVehicleInactivityWarnings();
 
         if (Settings.UsageDirectoryEnabled)
         {
@@ -830,8 +978,126 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
 
         _usageDirectoryEnabledAtLastSave = Settings.UsageDirectoryEnabled;
+
+        if (UsesSeparateDiscordStatusBot && Settings.AutoStartDiscordBotStatus)
+        {
+            await StartDiscordStatusBotAsync();
+        }
+        else if (_discordStatusBot is not null)
+        {
+            await _discordStatusBot.DisposeAsync();
+            _discordStatusBot = null;
+            _discordStatusBotTokenInUse = string.Empty;
+            DiscordStatusBotStatus = Texts.IsGerman ? "Deaktiviert" : "Disabled";
+        }
+
         Log("Einstellungen gespeichert.");
     }
+    private void WeeklyTaskEditors_CollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        if (e.OldItems is not null)
+            foreach (WeeklyTaskEditorViewModel editor in e.OldItems) editor.PropertyChanged -= WeeklyTaskEditor_PropertyChanged;
+        if (e.NewItems is not null)
+            foreach (WeeklyTaskEditorViewModel editor in e.NewItems) editor.PropertyChanged += WeeklyTaskEditor_PropertyChanged;
+        RefreshChallengeCalendarEntries();
+    }
+
+    private void WeeklyTaskEditor_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(WeeklyTaskEditorViewModel.Title)
+            or nameof(WeeklyTaskEditorViewModel.Type)
+            or nameof(WeeklyTaskEditorViewModel.Enabled)
+            or nameof(WeeklyTaskEditorViewModel.StartDate)
+            or nameof(WeeklyTaskEditorViewModel.StartTimeText)
+            or nameof(WeeklyTaskEditorViewModel.DurationHours)
+            or nameof(WeeklyTaskEditorViewModel.EndUtc))
+        {
+            RefreshChallengeCalendarEntries();
+        }
+    }
+
+    private void RefreshChallengeCalendarEntries()
+    {
+        var selectedDay = (ChallengeCalendarSelectedDate ?? DateTime.Today).Date;
+        var dayEnd = selectedDay.AddDays(1);
+        var entries = WeeklyTaskEditors
+            .Select(editor => ChallengeCalendarEntryViewModel.FromEditor(editor, Texts.IsGerman))
+            .OrderBy(entry => entry.StartLocal ?? DateTime.MaxValue)
+            .ThenBy(entry => entry.Title, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        ChallengeCalendarTimelineEntries.Clear();
+        foreach (var entry in entries) ChallengeCalendarTimelineEntries.Add(entry);
+        RefreshChallengeCalendarMonth(entries);
+
+        ChallengeCalendarDayEntries.Clear();
+        foreach (var entry in entries.Where(entry =>
+                     entry.StartLocal.HasValue && entry.EndLocal.HasValue &&
+                     entry.StartLocal.Value < dayEnd && entry.EndLocal.Value > selectedDay))
+        {
+            ChallengeCalendarDayEntries.Add(entry);
+        }
+        OnPropertyChanged(nameof(ChallengeCalendarSelectedDateText));
+        OnPropertyChanged(nameof(ChallengeCalendarDayEmpty));
+    }
+
+    private void MoveChallengeCalendarMonth(int offset)
+    {
+        _challengeCalendarDisplayMonth = _challengeCalendarDisplayMonth.AddMonths(offset);
+        RefreshChallengeCalendarEntries();
+    }
+
+    private void GoToChallengeCalendarToday()
+    {
+        var today = DateTime.Today;
+        _challengeCalendarDisplayMonth = new DateTime(today.Year, today.Month, 1);
+        _challengeCalendarSelectedDate = today;
+        OnPropertyChanged(nameof(ChallengeCalendarSelectedDate));
+        RefreshChallengeCalendarEntries();
+    }
+
+    private void SelectChallengeCalendarDay(ChallengeCalendarDayViewModel? day)
+    {
+        if (day is null) return;
+        _challengeCalendarSelectedDate = day.Date;
+        _challengeCalendarDisplayMonth = new DateTime(day.Date.Year, day.Date.Month, 1);
+        OnPropertyChanged(nameof(ChallengeCalendarSelectedDate));
+        RefreshChallengeCalendarEntries();
+    }
+
+    private void RefreshChallengeCalendarMonth(IReadOnlyCollection<ChallengeCalendarEntryViewModel> entries)
+    {
+        var firstOfMonth = new DateTime(_challengeCalendarDisplayMonth.Year, _challengeCalendarDisplayMonth.Month, 1);
+        var mondayOffset = ((int)firstOfMonth.DayOfWeek + 6) % 7;
+        var firstCell = firstOfMonth.AddDays(-mondayOffset);
+        var selected = (ChallengeCalendarSelectedDate ?? DateTime.Today).Date;
+
+        ChallengeCalendarMonthDays.Clear();
+        for (var index = 0; index < 42; index++)
+        {
+            var date = firstCell.AddDays(index);
+            var nextDate = date.AddDays(1);
+            var dayEntries = entries
+                .Where(entry => entry.StartLocal.HasValue && entry.EndLocal.HasValue &&
+                                entry.StartLocal.Value < nextDate && entry.EndLocal.Value > date)
+                .ToList();
+            ChallengeCalendarMonthDays.Add(new ChallengeCalendarDayViewModel(
+                date,
+                date.Month == firstOfMonth.Month,
+                date == DateTime.Today,
+                date == selected,
+                dayEntries,
+                Texts.IsGerman));
+        }
+        OnPropertyChanged(nameof(ChallengeCalendarMonthTitle));
+    }
+
+    public string ChallengeCalendarMonthTitle => _challengeCalendarDisplayMonth.ToString(
+        Texts.IsGerman ? "MMMM yyyy" : "MMMM yyyy",
+        Texts.IsGerman ? CultureInfo.GetCultureInfo("de-DE") : CultureInfo.GetCultureInfo("en-US"));
+    public string ChallengeCalendarSelectedDateText => (ChallengeCalendarSelectedDate ?? DateTime.Today)
+        .ToString(Texts.IsGerman ? "dddd, dd. MMMM yyyy" : "dddd, MMMM dd, yyyy", Texts.IsGerman ? CultureInfo.GetCultureInfo("de-DE") : CultureInfo.GetCultureInfo("en-US"));
+    public bool ChallengeCalendarDayEmpty => ChallengeCalendarDayEntries.Count == 0;
     private async Task ConnectRconAsync()
     {
         if (_rcon is not null && !_rcon.Matches(Settings.Host, Settings.Port, Settings.Password))
@@ -843,18 +1109,39 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             StopWeeklyTasks(persistAutoStart: false);
             await _rcon.DisposeAsync();
             _rcon = null;
-            RconConnected = false;
+            SetRconConnected(false);
             Log("RCON Zugangsdaten geaendert: alte Verbindung und RCON-Services wurden sauber beendet.");
         }
 
         _rcon ??= new SourceRconClient(Settings.Host, Settings.Port, Settings.Password);
-        await _rcon.ReconnectAsync();
-        RconConnected = true;
-        ClearPlayerCache();
-        StartPlayerStatusLoop();
-        Log("RCON verbunden.");
+        try
+        {
+            await _rcon.ReconnectAsync();
+            SetRconConnected(true);
+            ClearPlayerCache();
+            StartPlayerStatusLoop();
+            Log("RCON verbunden.");
+        }
+        catch
+        {
+            SetRconConnected(false);
+            throw;
+        }
     }
 
+    private void SetRconConnected(bool connected)
+    {
+        void Apply() => RconConnected = connected;
+        var dispatcher = App.Current?.Dispatcher;
+        if (dispatcher is not null && !dispatcher.CheckAccess())
+        {
+            dispatcher.Invoke(Apply);
+        }
+        else
+        {
+            Apply();
+        }
+    }
     private async Task SendRconAsync()
     {
         if (_rcon is null || !_rcon.IsConnected) await ConnectRconAsync();
@@ -866,6 +1153,49 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (!string.IsNullOrWhiteSpace(LastRconResponse)) Log("RCON Antwort: " + TrimForLog(LastRconResponse));
     }
 
+    private bool UsesSeparateDiscordStatusBot => Settings.UseSeparateDiscordStatusBot;
+
+    private async Task StartConfiguredDiscordBotsAsync()
+    {
+        await StartDiscordAsync();
+        if (UsesSeparateDiscordStatusBot) await StartDiscordStatusBotAsync();
+    }
+
+    private async Task StartDiscordStatusBotAsync(CancellationToken cancellationToken = default)
+    {
+        if (!UsesSeparateDiscordStatusBot) return;
+        await _discordStatusStartLock.WaitAsync(cancellationToken);
+        try
+        {
+            var configuredToken = Settings.DiscordStatusBotToken?.Trim() ?? string.Empty;
+            if (_discordStatusBot?.IsStarted == true &&
+                string.Equals(_discordStatusBotTokenInUse, configuredToken, StringComparison.Ordinal))
+            {
+                DiscordStatusBotStatus = _discordStatusBot.IsReady ? "Online" : T("DiscordStartedNotReady");
+                StartDiscordServerStatusMessageLoop();
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(configuredToken))
+                throw new InvalidOperationException(Texts.IsGerman ? "Der Token für den getrennten Discord Status-Bot fehlt." : "The separate Discord status-bot token is missing.");
+            if (_discordStatusBot is not null) await _discordStatusBot.DisposeAsync();
+            _discordStatusBot = null;
+            _discordStatusBotTokenInUse = string.Empty;
+            _discordStatusBot = new DiscordStatusBotService(Log, ready =>
+            {
+                App.Current?.Dispatcher.Invoke(() => DiscordStatusBotStatus = ready ? "Online" : T("DiscordNotReady"));
+            });
+            await _discordStatusBot.StartAsync(configuredToken, cancellationToken);
+            _discordStatusBotTokenInUse = configuredToken;
+            DiscordStatusBotStatus = _discordStatusBot.IsReady ? "Online" : T("DiscordStartedNotReady");
+            StartDiscordServerStatusMessageLoop();
+            Log(_discordStatusBot.IsReady ? "Getrennter Discord Status-Bot verbunden." : "Getrennter Discord Status-Bot gestartet und wartet auf Ready.");
+        }
+        finally
+        {
+            _discordStatusStartLock.Release();
+        }
+    }
     private async Task StartDiscordAsync()
     {
         await _discordStartLock.WaitAsync();
@@ -916,11 +1246,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             await _discord.StartAsync(
                 Settings.DiscordBotToken,
                 Settings.DiscordGameBridgeEnabled ? Settings.DiscordGameBridgeChannelId : 0,
-                async command =>
-                {
-                    if (_rcon is null || !_rcon.IsConnected) await ConnectRconAsync();
-                    if (_rcon is not null) await _rcon.SendCommandAsync(command);
-                },
+                async command => await SendGgconAutomationCommandAsync(command),
                 Settings.DiscordGameBridgeMessageType);
 
             DiscordConnected = _discord.IsReady;
@@ -988,6 +1314,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         EnsureLocalLogDirectories();
         LogAutoStartFlags();
+        if (_insuranceService is not null)
+        {
+            try { await ApplyVehicleInsuranceSettingsAsync(); }
+            catch (Exception ex) { InsuranceStatus = "Insurance: " + ex.Message; Log(InsuranceStatus); }
+        }
 
         // RCON-/SFTP-basierte Dienste zuerst starten. Discord darf diese Dienste nicht blockieren,
         // weil Discord-Ready oder Message-Updates serverseitig warten koennen.
@@ -1004,11 +1335,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             }
         }
 
-        if (Settings.AutoStartChatCommands)
+        if (_weeklyRewardStore.HasPendingClaims()) StartPlayerStatusLoop();
+
+        if (Settings.AutoStartChatCommands || Settings.AutoStartSettingRandomizer || _weeklyRewardStore.HasPendingClaims() || _quizChallengeService.HasActiveChallenge)
         {
             try
             {
-                await StartChatCommandsAsync(persistAutoStart: false);
+                await StartChatCommandsAsync(persistAutoStart: false, ensureDefaultRules: Settings.AutoStartChatCommands);
             }
             catch (Exception ex)
             {
@@ -1027,19 +1360,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             {
                 Log("AutoStart Join Commands Fehler: " + ex.Message);
                 AppLogService.WriteException("AutoStartJoinCommands", ex);
-            }
-        }
-
-        if (Settings.AutoStartKillFeed)
-        {
-            try
-            {
-                await StartKillFeedAsync(persistAutoStart: false);
-            }
-            catch (Exception ex)
-            {
-                Log("AutoStart Killfeed Fehler: " + ex.Message);
-                AppLogService.WriteException("AutoStartKillFeed", ex);
             }
         }
 
@@ -1082,11 +1402,34 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             }
         }
 
+        if (Settings.AutoStartEconomy)
+        {
+            try { StartEconomy(persistAutoStart: false); }
+            catch (Exception ex)
+            {
+                Log("AutoStart Economy error: " + ex.Message);
+                AppLogService.WriteException("AutoStartEconomy", ex);
+            }
+        }
+        var needsSeparateStatusBot = UsesSeparateDiscordStatusBot && Settings.AutoStartDiscordBotStatus;
         var needsDiscord = Settings.AutoStartDiscordServerStatusMessage ||
-                           Settings.AutoStartDiscordBotStatus ||
+                           (!UsesSeparateDiscordStatusBot && Settings.AutoStartDiscordBotStatus) ||
                            Settings.AutoStartDiscordChatLogs ||
                            Settings.DiscordGameBridgeEnabled ||
-                           (Settings.AutoStartSettingRandomizer && Settings.SettingRandomizerDiscordAnnouncementEnabled);
+                           Settings.VehicleInactivityWarningEnabled;
+
+        if (needsSeparateStatusBot)
+        {
+            _ = Task.Run(async () =>
+            {
+                try { await StartDiscordStatusBotAsync(); }
+                catch (Exception ex)
+                {
+                    Log("AutoStart Discord Status-Bot Fehler: " + ex.Message);
+                    AppLogService.WriteException("AutoStartDiscordStatusBot", ex);
+                }
+            });
+        }
 
         if (needsDiscord)
         {
@@ -1103,6 +1446,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 }
             });
         }
+        StartVehicleInactivityWarnings();
     }
 
 
@@ -1115,7 +1459,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             $"GameBridge={Settings.DiscordGameBridgeEnabled}, " +
             $"ChatCommands={Settings.AutoStartChatCommands}, " +
             $"JoinCommands={Settings.AutoStartJoinCommands}, " +
-            $"KillFeed={Settings.AutoStartKillFeed}, " +
             $"WeeklyTasks={Settings.AutoStartWeeklyTasks}, " +
             $"AutoMessages={Settings.AutoStartAutoMessages}, " +
             $"SettingRandomizer={Settings.AutoStartSettingRandomizer}, " +
@@ -1173,17 +1516,40 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private async Task UpdateDiscordServerStatusMessageManualAsync(CancellationToken cancellationToken = default)
     {
-        if (_discord is null || !_discord.IsReady)
-        {
-            await StartDiscordAsync();
-        }
-
-        await UpdateDiscordServerStatusMessageAsync(cancellationToken);
+        if (_discord is null || !_discord.IsReady) await StartDiscordAsync();
+        await UpdateDiscordServerStatusMessageAsync(cancellationToken, forceMessage: true);
     }
 
-    private async Task UpdateDiscordServerStatusMessageAsync(CancellationToken cancellationToken = default)
+    private async Task UpdateDiscordServerStatusMessageAsync(CancellationToken cancellationToken = default, bool forceMessage = false)
     {
-        if (_discord is null || !_discord.IsReady) return;
+        var wantsStatusMessage = Settings.AutoStartDiscordServerStatusMessage || forceMessage;
+        var wantsPresence = Settings.AutoStartDiscordBotStatus;
+        if (!wantsStatusMessage && !wantsPresence) return;
+
+        if (UsesSeparateDiscordStatusBot && wantsPresence && _discordStatusBot?.IsReady != true)
+        {
+            try { await StartDiscordStatusBotAsync(cancellationToken); }
+            catch (Exception ex)
+            {
+                Log("Discord Status-Bot konnte nicht gestartet werden: " + ex.Message);
+                AppLogService.WriteException("DiscordStatusBot.Start", ex);
+            }
+        }
+
+        if (wantsStatusMessage && (_discord is null || !_discord.IsReady))
+        {
+            try { await StartDiscordAsync(); }
+            catch (Exception ex)
+            {
+                Log("Discord Hauptbot konnte für den Serverstatus nicht gestartet werden: " + ex.Message);
+                AppLogService.WriteException("DiscordServerStatus.MainBotStart", ex);
+                return;
+            }
+        }
+        else if (!UsesSeparateDiscordStatusBot && wantsPresence && (_discord is null || !_discord.IsReady))
+        {
+            return;
+        }
 
         IReadOnlyCollection<ScumPlayer> players = Array.Empty<ScumPlayer>();
         try
@@ -1196,30 +1562,26 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             AppLogService.WriteException("DiscordServerStatusPlayers", ex);
         }
 
-        GgconWeatherResponse? weather = null;
-        try
-        {
-            var weatherService = new GgconHttpApiService(Settings);
-            weather = await weatherService.GetWeatherAsync(cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            Log("Discord Serverstatus: Wetter konnte nicht gelesen werden: " + ex.Message);
-            AppLogService.WriteException("DiscordServerStatusWeather", ex);
-        }
-
         var maxPlayers = Settings.DiscordMaxPlayers > 0 ? Settings.DiscordMaxPlayers : 64;
         var serverName = string.IsNullOrWhiteSpace(Settings.DiscordServerName) ? "SCUM Server" : Settings.DiscordServerName;
         var serverAddress = !string.IsNullOrWhiteSpace(Settings.DiscordServerAddress)
             ? Settings.DiscordServerAddress.Trim()
             : Settings.Host;
 
-        if (Settings.AutoStartDiscordBotStatus)
+        if (wantsPresence)
         {
+            var statusText = FormatDiscordBotStatus(Settings.DiscordBotStatusTemplate, players.Count, maxPlayers, serverName);
             try
             {
-                var statusText = FormatDiscordBotStatus(Settings.DiscordBotStatusTemplate, players.Count, maxPlayers, serverName);
-                await _discord.SetStatusAsync(statusText);
+                if (UsesSeparateDiscordStatusBot)
+                {
+                    if (_discordStatusBot?.IsReady == true)
+                        await _discordStatusBot.SetPlayerCountPresenceAsync(statusText);
+                }
+                else if (_discord?.IsReady == true)
+                {
+                    await _discord.SetStatusAsync(statusText);
+                }
                 Log($"Discord Botstatus aktualisiert: {statusText}");
             }
             catch (Exception ex)
@@ -1229,29 +1591,41 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             }
         }
 
-        if (Settings.AutoStartDiscordServerStatusMessage)
+        if (!wantsStatusMessage || _discord?.IsReady != true) return;
+
+        GgconWeatherResponse? weather = null;
+        try
         {
-            if (Settings.DiscordServerStatusChannelId == 0)
-            {
-                Log("Discord Serverstatus: Channel-ID fehlt.");
-            }
-            else
-            {
-                await _discord.SendOrUpdateServerStatusAsync(
-                    Settings.DiscordServerStatusChannelId,
-                    Settings.DiscordServerStatusTitle,
-                    serverName,
-                    serverAddress,
-                    players,
-                    maxPlayers,
-                    weather,
-                    _eventEngine?.Events ?? Array.Empty<EventRuntime>());
-
-                Log($"Discord Serverstatus-Nachricht aktualisiert: {players.Count}/{maxPlayers} Spieler, Wetter={(weather is null ? "n/a" : weather.GetWeatherScore().ToString("0.00", System.Globalization.CultureInfo.InvariantCulture))}.");
-            }
+            weather = await new GgconHttpApiService(Settings).GetWeatherAsync(cancellationToken);
         }
-    }
+        catch (Exception ex)
+        {
+            Log("Discord Serverstatus: Wetter konnte nicht gelesen werden: " + ex.Message);
+            AppLogService.WriteException("DiscordServerStatusWeather", ex);
+        }
 
+        if (Settings.DiscordServerStatusChannelId == 0)
+        {
+            Log("Discord Serverstatus: Channel-ID fehlt.");
+            return;
+        }
+
+        var variableSettings = Settings.SettingRandomizerDiscordAnnouncementEnabled
+            ? GetCurrentSettingRandomizerStatusTexts()
+            : Array.Empty<string>();
+        await _discord.SendOrUpdateServerStatusAsync(
+            Settings.DiscordServerStatusChannelId,
+            Settings.DiscordServerStatusTitle,
+            serverName,
+            serverAddress,
+            players,
+            maxPlayers,
+            weather,
+            _eventEngine?.Events ?? Array.Empty<EventRuntime>(),
+            variableSettings,
+            Texts.IsGerman);
+        Log($"Discord Serverstatus-Nachricht durch Hauptbot aktualisiert: {players.Count}/{maxPlayers} Spieler.");
+    }
     private static string FormatDiscordBotStatus(string template, int players, int maxPlayers, string serverName)
     {
         if (string.IsNullOrWhiteSpace(template))
@@ -1287,13 +1661,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 return _cachedPlayers.ToList();
             }
 
-            if (_rcon is null || !_rcon.IsConnected) await ConnectRconAsync();
-            if (_rcon is null) return new List<ScumPlayer>();
-
-            var response = await _rcon.SendCommandAsync(CommandRegistry.ListPlayersJson(), cancellationToken);
-            var players = PlayerParser.ParseListPlayersJson(response)
-                .Where(x => !string.IsNullOrWhiteSpace(x.DisplayName))
-                .ToList();
+            var players = await new GgconHttpApiService(Settings).GetOnlinePlayersAsync(cancellationToken);
 
             _cachedPlayers = players;
             _cachedPlayersUtc = DateTime.UtcNow;
@@ -1355,8 +1723,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 try
                 {
                     var players = await FetchPlayersAsync(token);
+                    SetRconConnected(_rcon?.IsConnected == true);
                     UpdateCurrentPlayersStatus(players.Count);
-                    ClearInactiveWeeklyRewardCodes();
                     await NotifyPendingWeeklyRewardsAsync(players, token);
                     await Task.Delay(TimeSpan.FromSeconds(30), token);
                 }
@@ -1375,44 +1743,42 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
 
-    private void ClearInactiveWeeklyRewardCodes()
+    private void AcknowledgeWeeklyReward(string? claimId)
     {
-        var removed = _weeklyRewardStore.ClearInactiveCodes(Settings.GetWeeklyTaskDefinitions(), DateTime.UtcNow);
-        if (removed <= 0) return;
-        void Apply()
+        if (string.IsNullOrWhiteSpace(claimId))
         {
-            WeeklyRewardStatus = $"{removed} offene Reward-Code(s) deaktivierter oder geloeschter Cards wurden entfernt.";
-            RefreshWeeklyRewardClaims();
+            WeeklyRewardStatus = T("RewardMissingClaimId");
+            return;
         }
-        var dispatcher = App.Current?.Dispatcher;
-        if (dispatcher is not null && !dispatcher.CheckAccess()) dispatcher.Invoke(Apply); else Apply();
-        Log($"Weekly Rewards: {removed} offene Codes deaktivierter oder geloeschter Cards entfernt.");
-    }
 
-    private void AcknowledgeWeeklyReward(WeeklyRewardClaimViewModel? claim)
-    {
-        if (claim is null || !_weeklyRewardStore.Acknowledge(claim.Id)) return;
+        var claim = _weeklyRewardStore.GetAll()
+            .FirstOrDefault(x => x.Id.Equals(claimId, StringComparison.OrdinalIgnoreCase));
+        if (claim is null || !_weeklyRewardStore.Remove(claimId))
+        {
+            RefreshWeeklyRewardClaims();
+            WeeklyRewardStatus = T("RewardEntryNotFound");
+            return;
+        }
+
         RefreshWeeklyRewardClaims();
-        WeeklyRewardStatus = $"Reward für {claim.PlayerName} wurde durch einen Admin quittiert.";
-        Log($"Weekly Reward durch Admin quittiert: {claim.TaskTitle} -> {claim.PlayerName}/{claim.SteamId}.");
+        WeeklyRewardStatus = Tf("RewardAcknowledged", claim.PlayerName);
+        Log($"Weekly Reward manuell aus der Liste gelöscht: {claim.TaskTitle} -> {claim.PlayerName}/{claim.SteamId}.");
     }
-
     private async Task ProcessWeeklyRewardsAsync(IReadOnlyList<WeeklyCommunityTaskProgress> progresses, CancellationToken cancellationToken = default)
     {
         try
         {
-            ClearInactiveWeeklyRewardCodes();
             static bool HasReward(WeeklyCommunityTaskProgress x) =>
                 x.Definition.RewardMoney > 0 ||
-                WeeklyRewardItems.GetConfigured(x.Definition).Count > 0 ||
-                !string.IsNullOrWhiteSpace(x.Definition.RewardText);
+                x.Definition.RewardFame > 0 ||
+                WeeklyRewardItems.GetConfigured(x.Definition).Count > 0;
 
             var playerRewards = progresses
-                .Where(x => string.Equals(x.Definition.GoalScope, "PerPlayer", StringComparison.OrdinalIgnoreCase))
+                .Where(x => WeeklyCommunityTaskService.IsPersonalGoal(x.Definition))
                 .Where(HasReward)
                 .ToList();
             var communityRewards = progresses
-                .Where(x => !string.Equals(x.Definition.GoalScope, "PerPlayer", StringComparison.OrdinalIgnoreCase) && x.IsCompleted)
+                .Where(x => !WeeklyCommunityTaskService.IsPersonalGoal(x.Definition) && x.IsCompleted)
                 .Where(HasReward)
                 .ToList();
 
@@ -1433,7 +1799,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             }
 
             RefreshWeeklyRewardClaims();
-            WeeklyRewardStatus = $"{_weeklyRewardStore.GetAll().Count} Reward-Empfaenger gespeichert.";
+            WeeklyRewardStatus = Tf("RewardRecipientsSaved", _weeklyRewardStore.GetAll().Count);
+
+            if (created || _weeklyRewardStore.HasPendingClaims()) StartPlayerStatusLoop();
 
             if ((created || _weeklyRewardStore.HasPendingClaims()) && _chatCommands?.IsRunning != true)
             {
@@ -1447,7 +1815,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
         catch (Exception ex)
         {
-            WeeklyRewardStatus = "Rewards konnten nicht geladen werden: " + ex.Message;
+            WeeklyRewardStatus = Tf("RewardsLoadFailed", ex.Message);
             Log("Weekly Rewards: Empfaenger konnten nicht geladen werden: " + ex.Message);
             AppLogService.WriteException("WeeklyRewards.Process", ex);
         }
@@ -1457,25 +1825,56 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (!await _weeklyRewardNotificationLock.WaitAsync(0, cancellationToken)) return;
         try
         {
-            var onlineIds = players.Select(x => x.UserId ?? string.Empty).Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
-            var claims = _weeklyRewardStore.GetUnnotifiedFor(onlineIds);
-            foreach (var claim in claims)
+            var nowUtc = DateTime.UtcNow;
+            var onlineIds = players
+                .Select(x => (x.UserId ?? string.Empty).Trim())
+                .Where(x => x.Length > 0)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var offlineId in _weeklyRewardOnlineSinceUtc.Keys.Where(x => !onlineIds.Contains(x)).ToList())
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                try
+                _weeklyRewardOnlineSinceUtc.Remove(offlineId);
+                _weeklyRewardNotifiedThisSession.Remove(offlineId);
+            }
+
+            foreach (var steamId in onlineIds)
+            {
+                _weeklyRewardOnlineSinceUtc.TryAdd(steamId, nowUtc);
+            }
+
+            var eligibleIds = onlineIds
+                .Where(x => nowUtc - _weeklyRewardOnlineSinceUtc[x] >= WeeklyRewardJoinNoticeDelay)
+                .ToList();
+            var claims = _weeklyRewardStore.GetPendingFor(eligibleIds)
+                .GroupBy(x => x.SteamId, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var playerClaims in claims)
+            {
+                if (!_weeklyRewardNotifiedThisSession.TryGetValue(playerClaims.Key, out var notifiedClaimIds))
                 {
-                    await SendWeeklyRewardNoticeAsync(claim.SteamId,
-                        $"[Reward] {claim.TaskTitle}: {claim.RewardSummary}. Zum Erhalten Code im Chat eingeben: {claim.Code}", cancellationToken);
-                    claim.NotifiedUtc = DateTime.UtcNow;
-                    claim.LastError = string.Empty;
-                    _weeklyRewardStore.Save();
-                    Log($"Weekly Reward: Claim-Code an {claim.PlayerName}/{claim.SteamId} gesendet.");
+                    notifiedClaimIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    _weeklyRewardNotifiedThisSession[playerClaims.Key] = notifiedClaimIds;
                 }
-                catch (Exception ex)
+
+                foreach (var claim in playerClaims.Where(x => !notifiedClaimIds.Contains(x.Id)))
                 {
-                    claim.LastError = "Code-DM fehlgeschlagen: " + ex.Message;
-                    _weeklyRewardStore.Save();
-                    AppLogService.WriteException("WeeklyRewards.Notify", ex);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    try
+                    {
+                        await SendWeeklyRewardNoticeAsync(claim.SteamId,
+                            Tf("RewardClaimPrompt", claim.TaskTitle, claim.RewardSummary, claim.Code), cancellationToken);
+                        notifiedClaimIds.Add(claim.Id);
+                        claim.NotifiedUtc = DateTime.UtcNow;
+                        claim.LastError = string.Empty;
+                        _weeklyRewardStore.Save();
+                        Log($"Weekly Reward: offener Claim-Code fünf Minuten nach Join an {claim.PlayerName}/{claim.SteamId} gesendet.");
+                    }
+                    catch (Exception ex)
+                    {
+                        claim.LastError = "Code-DM fehlgeschlagen: " + ex.Message;
+                        _weeklyRewardStore.Save();
+                        AppLogService.WriteException("WeeklyRewards.Notify", ex);
+                    }
                 }
             }
             RefreshWeeklyRewardClaims();
@@ -1485,80 +1884,67 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             _weeklyRewardNotificationLock.Release();
         }
     }
-
     private async Task<bool> HandleWeeklyRewardClaimAsync(ChatLogMessage message, CancellationToken cancellationToken)
     {
-        var code = (message.Message ?? string.Empty).Trim();
-        if (string.IsNullOrWhiteSpace(code) || !code.StartsWith("/reward-", StringComparison.OrdinalIgnoreCase)) return false;
+        var text = (message.Message ?? string.Empty).Trim();
+        var claimAll = BuiltinChatCommandCatalog.Is(BuiltinChatCommandId.ClaimAll, text);
+        if (!claimAll && !BuiltinChatCommandCatalog.Is(BuiltinChatCommandId.Reward, text)) return false;
 
         await _weeklyRewardClaimLock.WaitAsync(cancellationToken);
         try
         {
-            var claim = _weeklyRewardStore.FindByCode(code);
-            if (claim is null)
+            var steamId = (message.SteamId ?? string.Empty).Trim();
+            if (steamId.Length == 0)
             {
-                await SendWeeklyRewardNoticeAsync(message.SteamId, "[Reward] Dieser Code ist unbekannt oder bereits eingeloest.", cancellationToken);
                 return true;
             }
 
-            if (string.IsNullOrWhiteSpace(message.SteamId) || !claim.SteamId.Equals(message.SteamId.Trim(), StringComparison.OrdinalIgnoreCase))
+            IReadOnlyList<WeeklyRewardClaim> claims;
+            if (claimAll)
             {
-                await SendWeeklyRewardNoticeAsync(message.SteamId, "[Reward] Dieser Code gehoert einem anderen Spieler.", cancellationToken);
-                return true;
-            }
-
-            try
-            {
-                if (claim.NeedsItem)
+                claims = _weeklyRewardStore.GetPendingForSteamId(steamId);
+                if (claims.Count == 0)
                 {
-                    if (_rcon is null || !_rcon.IsConnected) await ConnectRconAsync();
-                    if (_rcon is null) throw new InvalidOperationException("RCON ist nicht verbunden.");
-
-                    foreach (var item in claim.GetOrCreateRewardItems().Where(x => !string.IsNullOrWhiteSpace(x.Item) && !x.DeliveredUtc.HasValue))
-                    {
-                        var command = $"#GiveItem {claim.SteamId} {item.Item} {Math.Max(1, item.Quantity)}";
-                        if (item.StackCount > 0) command += $" StackCount {item.StackCount}";
-                        var response = await _rcon.SendCommandAsync(command, cancellationToken);
-                        if (!IsSuccessfulGgconResponse(response)) throw new InvalidOperationException($"Item-Ausgabe für {item.Item} wurde von ggCON abgelehnt: " + TrimForLog(response));
-                        item.DeliveredUtc = DateTime.UtcNow;
-                        _weeklyRewardStore.Save();
-                    }
-
-                    if (claim.GetOrCreateRewardItems().Where(x => !string.IsNullOrWhiteSpace(x.Item)).All(x => x.DeliveredUtc.HasValue))
-                    {
-                        claim.ItemDeliveredUtc ??= DateTime.UtcNow;
-                        _weeklyRewardStore.Save();
-                    }
-                }
-
-                if (claim.NeedsMoney && !claim.MoneyDeliveredUtc.HasValue)
-                {
-                    await new GgconHttpApiService(Settings).AddPlayerCurrencyAsync(claim.SteamId, claim.RewardMoney, cancellationToken);
-                    claim.MoneyDeliveredUtc = DateTime.UtcNow;
-                    _weeklyRewardStore.Save();
-                }
-
-                if (claim.NeedsText && !claim.TextClaimedUtc.HasValue)
-                {
-                    claim.TextClaimedUtc = DateTime.UtcNow;
-                    _weeklyRewardStore.Save();
-                }
-
-                if (claim.IsComplete)
-                {
-                    claim.ClaimedUtc = DateTime.UtcNow;
-                    claim.LastError = string.Empty;
-                    _weeklyRewardStore.Save();
-                    await SendWeeklyRewardNoticeAsync(claim.SteamId, $"[Reward] Erfolgreich erhalten: {claim.RewardSummary}", cancellationToken);
-                    Log($"Weekly Reward eingeloest: {claim.TaskTitle} -> {claim.PlayerName}/{claim.SteamId}: {claim.RewardSummary}");
+                    await SendWeeklyRewardNoticeAsync(steamId, T("RewardClaimAllNone"), cancellationToken);
+                    return true;
                 }
             }
-            catch (Exception ex)
+            else
             {
-                claim.LastError = ex.Message;
-                _weeklyRewardStore.Save();
-                await SendWeeklyRewardNoticeAsync(claim.SteamId, "[Reward] Auszahlung noch nicht vollstaendig. Bitte Code spaeter erneut eingeben.", cancellationToken);
-                AppLogService.WriteException("WeeklyRewards.Claim", ex);
+                var claim = _weeklyRewardStore.FindByCode(text);
+                if (claim is null)
+                {
+                    await SendWeeklyRewardNoticeAsync(steamId, T("RewardCodeUnknown"), cancellationToken);
+                    return true;
+                }
+                if (!claim.SteamId.Equals(steamId, StringComparison.OrdinalIgnoreCase))
+                {
+                    await SendWeeklyRewardNoticeAsync(steamId, T("RewardWrongPlayer"), cancellationToken);
+                    return true;
+                }
+                claims = new[] { claim };
+            }
+
+            var succeeded = 0;
+            foreach (var claim in claims)
+            {
+                if (await DeliverWeeklyRewardClaimAsync(claim, cancellationToken)) succeeded++;
+            }
+
+            if (claimAll)
+            {
+                var failed = claims.Count - succeeded;
+                await SendWeeklyRewardNoticeAsync(steamId,
+                    failed == 0 ? Tf("RewardClaimAllSuccess", succeeded) : Tf("RewardClaimAllPartial", succeeded, failed),
+                    cancellationToken);
+            }
+            else if (succeeded == 1)
+            {
+                await SendWeeklyRewardNoticeAsync(steamId, Tf("RewardClaimSuccess", claims[0].RewardSummary), cancellationToken);
+            }
+            else
+            {
+                await SendWeeklyRewardNoticeAsync(steamId, T("RewardClaimIncomplete"), cancellationToken);
             }
 
             RefreshWeeklyRewardClaims();
@@ -1570,29 +1956,121 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    private async Task<bool> DeliverWeeklyRewardClaimAsync(WeeklyRewardClaim claim, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (claim.NeedsItem)
+            {
+                foreach (var item in claim.GetOrCreateRewardItems().Where(x => !string.IsNullOrWhiteSpace(x.Item) && !x.DeliveredUtc.HasValue))
+                {
+                    var command = $"#GiveItem {claim.SteamId} {item.Item} {Math.Max(1, item.Quantity)}";
+                    if (item.StackCount > 0) command += $" StackCount {item.StackCount}";
+                    await SendGgconAutomationCommandAsync(command, cancellationToken);
+                    item.DeliveredUtc = DateTime.UtcNow;
+                    _weeklyRewardStore.Save();
+                }
+
+                if (claim.GetOrCreateRewardItems().Where(x => !string.IsNullOrWhiteSpace(x.Item)).All(x => x.DeliveredUtc.HasValue))
+                {
+                    claim.ItemDeliveredUtc ??= DateTime.UtcNow;
+                    _weeklyRewardStore.Save();
+                }
+            }
+
+            if (claim.NeedsMoney && !claim.MoneyDeliveredUtc.HasValue)
+            {
+                await new GgconHttpApiService(Settings).AddPlayerCurrencyAsync(claim.SteamId, claim.RewardMoney, cancellationToken);
+                claim.MoneyDeliveredUtc = DateTime.UtcNow;
+                _weeklyRewardStore.Save();
+            }
+
+            if (claim.NeedsFame && !claim.FameDeliveredUtc.HasValue)
+            {
+                await new GgconHttpApiService(Settings).AddPlayerFameAsync(claim.SteamId, claim.RewardFame, cancellationToken);
+                claim.FameDeliveredUtc = DateTime.UtcNow;
+                _weeklyRewardStore.Save();
+            }
+
+            if (claim.NeedsText && !claim.TextClaimedUtc.HasValue)
+            {
+                claim.TextClaimedUtc = DateTime.UtcNow;
+                _weeklyRewardStore.Save();
+            }
+
+            if (!claim.IsComplete) return false;
+            claim.ClaimedUtc = DateTime.UtcNow;
+            claim.LastError = string.Empty;
+            _weeklyRewardStore.Save();
+            _weeklyRewardStore.Remove(claim.Id);
+            Log($"Weekly Reward eingelöst und aus der Liste entfernt: {claim.TaskTitle} -> {claim.PlayerName}/{claim.SteamId}: {claim.RewardSummary}");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            claim.LastError = ex.Message;
+            _weeklyRewardStore.Save();
+            AppLogService.WriteException("WeeklyRewards.Claim", ex);
+            return false;
+        }
+    }
     private async Task SendWeeklyRewardNoticeAsync(string steamId, string text, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(steamId)) return;
-        if (_rcon is null || !_rcon.IsConnected) await ConnectRconAsync();
-        if (_rcon is null) throw new InvalidOperationException("RCON ist nicht verbunden.");
-        await _rcon.SendCommandAsync(CommandRegistry.MessagePlayer(steamId.Trim(), "Cyan", text.Replace("\r", " ").Replace("\n", " ").Trim()), cancellationToken);
+        await new GgconHttpApiService(Settings).SendMessageAsync(text, "Cyan", steamId, cancellationToken);
     }
 
-    private static bool IsSuccessfulGgconResponse(string response)
+    private async Task<string> SendGgconAutomationCommandAsync(string command, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(response)) return false;
-        try
+        var api = new GgconHttpApiService(Settings);
+        if (TryParseGgconMessageCommand(command, out var text, out var type, out var steamId))
         {
-            var start = response.IndexOf('{');
-            var end = response.LastIndexOf('}');
-            if (start < 0 || end <= start) return false;
-            using var document = JsonDocument.Parse(response.Substring(start, end - start + 1));
-            return document.RootElement.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.True;
+            await api.SendMessageAsync(text, type, steamId, cancellationToken);
+            return string.Empty;
         }
-        catch
+        var response = await api.ExecuteCommandAsync(command, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(response))
         {
-            return false;
+            Log("ggCON HTTP Command Antwort: " + TrimForLog(response));
         }
+
+        return response;
+    }
+
+    private static bool TryParseGgconMessageCommand(
+        string command,
+        out string text,
+        out string type,
+        out string? steamId)
+    {
+        text = string.Empty;
+        type = "ServerMessage";
+        steamId = null;
+
+        var value = (command ?? string.Empty).Trim();
+        const string broadcastPrefix = "#Broadcast ";
+        const string playerPrefix = "#MessagePlayer ";
+
+        if (value.StartsWith(broadcastPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            var parts = value[broadcastPrefix.Length..].Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length != 2) return false;
+            type = parts[0];
+            text = parts[1];
+            return true;
+        }
+
+        if (value.StartsWith(playerPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            var parts = value[playerPrefix.Length..].Split(' ', 3, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length != 3) return false;
+            steamId = parts[0];
+            type = parts[1];
+            text = parts[2];
+            return true;
+        }
+
+        return false;
     }
 
     private void RefreshWeeklySquadOverview(IEnumerable<GgconSquadResponse> squads)
@@ -1614,13 +2092,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         void Apply()
         {
             WeeklyRewardClaims.Clear();
-            foreach (var claim in _weeklyRewardStore.GetAll()) WeeklyRewardClaims.Add(new WeeklyRewardClaimViewModel(claim));
+            foreach (var claim in _weeklyRewardStore.GetAll()) WeeklyRewardClaims.Add(new WeeklyRewardClaimViewModel(claim, Texts.IsGerman));
         }
         var dispatcher = App.Current?.Dispatcher;
         if (dispatcher is not null && !dispatcher.CheckAccess()) dispatcher.Invoke(Apply); else Apply();
     }
 
-    private async Task StartChatCommandsAsync(bool persistAutoStart = true, bool ensureDefaultRules = true)
+    private Task StartChatCommandsAsync(bool persistAutoStart = true, bool ensureDefaultRules = true)
     {
         EnsureLocalLogDirectories();
         SyncChatCommandRulesToSettings();
@@ -1639,32 +2117,27 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             Log("Chat Commands: Beispiel-Regeln wurden eingefuegt. Bitte pruefen und speichern.");
         }
 
-        // Wichtig: Beim AutoStart darf kein harter RCON-Connect erzwungen werden.
-        // Nach einem Gameserver-Neustart ist RCON beim App-Start oft noch nicht erreichbar.
-        // Der Service pollt trotzdem weiter und verbindet RCON erst dann, wenn eine passende Chat-Regel wirklich ausgefuehrt werden muss.
+        // Chat-Eingang und -Aktionen laufen ueber ggCON HTTP. Source-RCON bleibt
+        // ausschliesslich fuer die manuelle Konsole als On-Demand-Fallback erhalten.
         _chatCommands?.Stop();
         _chatCommands = new ChatCommandAutomationService(
             new SftpLogService(Settings),
-            async command =>
-            {
-                if (_rcon is null || !_rcon.IsConnected) await ConnectRconAsync();
-                if (_rcon is null) return string.Empty;
-                var response = await _rcon.SendCommandAsync(command);
-                if (!string.IsNullOrWhiteSpace(response)) Log("RCON Antwort: " + TrimForLog(response));
-                return response;
-            },
+            command => SendGgconAutomationCommandAsync(command),
             Log,
             BuildChatCommandDynamicPlaceholders,
-            BuildAutoMessageChallengeTextAsync,
+            BuildChatChallengeTextAsync,
             HandleBuyEventCommandAsync,
             BuildRedeemCodeRules,
             MarkRedeemCodeUsedAsync,
             () => _weeklyRewardStore.HasPendingClaims(),
-            HandleWeeklyRewardClaimAsync);
+            HandleWeeklyRewardClaimAsync,
+            HandleBuiltinChatCommandAsync,
+            steamId => _insuranceService?.CancelQuote(steamId));
 
         _chatCommands.Start(Settings);
         ChatCommandsRunning = true;
         Log("Chat Commands AutoStart: " + Settings.AutoStartChatCommands);
+        return Task.CompletedTask;
     }
 
     private void StopChatCommands(bool persistAutoStart = true)
@@ -1684,27 +2157,20 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         EnsureLocalLogDirectories();
         SyncChatCommandRulesToSettings();
         SyncRedeemCodesToSettings();
-        if (_rcon is null || !_rcon.IsConnected) await ConnectRconAsync();
-        if (_rcon is null) return;
 
         var service = _chatCommands ?? new ChatCommandAutomationService(
             new SftpLogService(Settings),
-            async command =>
-            {
-                if (_rcon is null || !_rcon.IsConnected) await ConnectRconAsync();
-                if (_rcon is null) return string.Empty;
-                var response = await _rcon.SendCommandAsync(command);
-                if (!string.IsNullOrWhiteSpace(response)) Log("RCON Antwort: " + TrimForLog(response));
-                return response;
-            },
+            command => SendGgconAutomationCommandAsync(command),
             Log,
             BuildChatCommandDynamicPlaceholders,
-            BuildAutoMessageChallengeTextAsync,
+            BuildChatChallengeTextAsync,
             HandleBuyEventCommandAsync,
             BuildRedeemCodeRules,
             MarkRedeemCodeUsedAsync,
             () => _weeklyRewardStore.HasPendingClaims(),
-            HandleWeeklyRewardClaimAsync);
+            HandleWeeklyRewardClaimAsync,
+            HandleBuiltinChatCommandAsync,
+            steamId => _insuranceService?.CancelQuote(steamId));
 
         await service.ScanOnceAsync(Settings);
     }
@@ -1971,13 +2437,14 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void RemoveChatCommandRule(ChatCommandRuleEditorViewModel? rule)
     {
-        if (rule is null) return;
+        if (rule is null || rule.IsBuiltin) return;
         ChatCommandRules.Remove(rule);
     }
 
     private void LoadChatCommandRulesFromSettings()
     {
         ChatCommandRules.Clear();
+        AddRequiredChatCommandEntries();
 
         var json = string.IsNullOrWhiteSpace(Settings.ChatAutomationRulesJson)
             ? ChatCommandAutomationService.BuildDefaultRulesJson()
@@ -2016,6 +2483,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private void SyncChatCommandRulesToSettings()
     {
         var rules = ChatCommandRules
+            .Where(x => !x.IsBuiltin)
             .Where(x => !string.IsNullOrWhiteSpace(x.Trigger) && (!string.IsNullOrWhiteSpace(x.Command) || !string.IsNullOrWhiteSpace(x.Response)))
             .Select(x => x.ToRule())
             .ToList();
@@ -2160,7 +2628,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
 
-    private async Task StartJoinCommandsAsync(bool persistAutoStart = true)
+    private Task StartJoinCommandsAsync(bool persistAutoStart = true)
     {
         EnsureLocalLogDirectories();
         SyncJoinCommandRulesToSettings();
@@ -2181,19 +2649,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _joinCommands?.Stop();
         _joinCommands = new JoinCommandAutomationService(
             new SftpLogService(Settings),
-            async command =>
-            {
-                if (_rcon is null || !_rcon.IsConnected) await ConnectRconAsync();
-                if (_rcon is null) return string.Empty;
-                var response = await _rcon.SendCommandAsync(command);
-                if (!string.IsNullOrWhiteSpace(response)) Log("RCON Antwort: " + TrimForLog(response));
-                return response;
-            },
+            command => SendGgconAutomationCommandAsync(command),
             Log);
 
         _joinCommands.Start(Settings);
         JoinCommandsRunning = true;
         Log("Join Commands AutoStart: " + Settings.AutoStartJoinCommands);
+        return Task.CompletedTask;
     }
 
     private void StopJoinCommands(bool persistAutoStart = true)
@@ -2215,14 +2677,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         var service = _joinCommands ?? new JoinCommandAutomationService(
             new SftpLogService(Settings),
-            async command =>
-            {
-                if (_rcon is null || !_rcon.IsConnected) await ConnectRconAsync();
-                if (_rcon is null) return string.Empty;
-                var response = await _rcon.SendCommandAsync(command);
-                if (!string.IsNullOrWhiteSpace(response)) Log("RCON Antwort: " + TrimForLog(response));
-                return response;
-            },
+            command => SendGgconAutomationCommandAsync(command),
             Log);
 
         await service.ScanOnceAsync(Settings);
@@ -2235,14 +2690,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         var service = _joinCommands ?? new JoinCommandAutomationService(
             new SftpLogService(Settings),
-            async command =>
-            {
-                if (_rcon is null || !_rcon.IsConnected) await ConnectRconAsync();
-                if (_rcon is null) return string.Empty;
-                var response = await _rcon.SendCommandAsync(command);
-                if (!string.IsNullOrWhiteSpace(response)) Log("RCON Antwort: " + TrimForLog(response));
-                return response;
-            },
+            command => SendGgconAutomationCommandAsync(command),
             Log);
 
         await service.ExecuteForOnlinePlayersAsync(Settings);
@@ -2325,66 +2773,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         Settings.JoinAutomationRulesJson = JsonSerializer.Serialize(rules, new JsonSerializerOptions { WriteIndented = true });
     }
 
-    private async Task StartKillFeedAsync(bool persistAutoStart = true)
-    {
-        EnsureLocalLogDirectories();
-
-        if (persistAutoStart)
-        {
-            Settings.AutoStartKillFeed = true;
-            SettingsStore.Save(Settings);
-        }
-
-        _killFeed?.Stop();
-        _killFeed = new KillFeedAutomationService(
-            new SftpLogService(Settings),
-            async command =>
-            {
-                if (_rcon is null || !_rcon.IsConnected) await ConnectRconAsync();
-                if (_rcon is null) return string.Empty;
-                var response = await _rcon.SendCommandAsync(command);
-                if (!string.IsNullOrWhiteSpace(response)) Log("RCON Antwort: " + TrimForLog(response));
-                return response;
-            },
-            Log);
-
-        _killFeed.Start(Settings);
-        KillFeedRunning = true;
-        Log("Killfeed AutoStart: " + Settings.AutoStartKillFeed);
-    }
-
-    private void StopKillFeed(bool persistAutoStart = true)
-    {
-        if (persistAutoStart)
-        {
-            Settings.AutoStartKillFeed = false;
-            SettingsStore.Save(Settings);
-        }
-        _killFeed?.Stop();
-        _killFeed = null;
-        KillFeedRunning = false;
-    }
-
-    private async Task ScanKillFeedOnceAsync()
-    {
-        EnsureLocalLogDirectories();
-
-        var service = _killFeed ?? new KillFeedAutomationService(
-            new SftpLogService(Settings),
-            async command =>
-            {
-                if (_rcon is null || !_rcon.IsConnected) await ConnectRconAsync();
-                if (_rcon is null) return string.Empty;
-                var response = await _rcon.SendCommandAsync(command);
-                if (!string.IsNullOrWhiteSpace(response)) Log("RCON Antwort: " + TrimForLog(response));
-                return response;
-            },
-            Log);
-
-        await service.ScanOnceAsync(Settings);
-    }
-
-
     private async Task StartWeeklyTasksAsync(bool persistAutoStart = true)
     {
         EnsureLocalLogDirectories();
@@ -2418,17 +2806,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 });
 
                 await ProcessWeeklyRewardsAsync(progressList);
+                await PublishWeeklyTaskWebApiAsync(progressList);
 
                 if (_discord is null || !_discord.IsReady) return;
-                var channelId = Settings.WeeklyTaskDiscordChannelId != 0
-                    ? Settings.WeeklyTaskDiscordChannelId
-                    : Settings.DiscordServerStatusChannelId;
-
-                foreach (var progress in progressList)
-                {
-                    await _discord.SendOrUpdateWeeklyTaskAsync(channelId, progress);
-                    Log("Weekly/Daily Task Discord aktualisiert: " + FormatWeeklyTaskStatus(progress));
-                }
+                await PublishWeeklyTaskDiscordAsync(progressList);
             });
 
         WeeklyTasksRunning = true;
@@ -2442,18 +2823,18 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             WeeklyTaskScanInProgress = isScanning;
             if (isScanning)
             {
-                WeeklyTaskNextScanText = "Scan laeuft gerade ...";
+                WeeklyTaskNextScanText = T("WeeklyScanRunning");
             }
             else if (nextScanUtc.HasValue)
             {
                 var local = nextScanUtc.Value.ToLocalTime();
                 var remaining = nextScanUtc.Value - DateTime.UtcNow;
                 var minutes = Math.Max(0, (int)Math.Ceiling(remaining.TotalMinutes));
-                WeeklyTaskNextScanText = $"Naechster Scan: {local:dd.MM.yyyy HH:mm:ss} (in ca. {minutes} Min.)";
+                WeeklyTaskNextScanText = Tf("WeeklyNextScan", local.ToString("dd.MM.yyyy HH:mm:ss"), minutes);
             }
             else
             {
-                WeeklyTaskNextScanText = WeeklyTasksRunning ? "Naechster Scan wird geplant ..." : "Naechster automatischer Scan: gestoppt";
+                WeeklyTaskNextScanText = WeeklyTasksRunning ? T("WeeklyNextScanPlanning") : T("WeeklyAutomaticScanStopped");
             }
         }
 
@@ -2473,6 +2854,63 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         Log("Weekly Tasks deaktiviert.");
     }
 
+    private async Task PublishWeeklyTaskWebApiAsync(IReadOnlyList<WeeklyCommunityTaskProgress> progresses, CancellationToken cancellationToken = default)
+    {
+        if (!Settings.WeeklyTaskWebApiEnabled)
+        {
+            SetWeeklyTaskWebApiStatus(Texts.IsGerman ? "Web-API: deaktiviert" : "Web API: disabled");
+            return;
+        }
+
+        try
+        {
+            await _weeklyChallengeWebApi.PublishAsync(Settings, progresses, cancellationToken);
+            SetWeeklyTaskWebApiStatus(Texts.IsGerman
+                ? $"Web-API: {progresses.Count} Challenge(s) übertragen · {DateTime.Now:HH:mm:ss}"
+                : $"Web API: {progresses.Count} challenge(s) published · {DateTime.Now:HH:mm:ss}");
+        }
+        catch (Exception ex)
+        {
+            SetWeeklyTaskWebApiStatus((Texts.IsGerman ? "Web-API Fehler: " : "Web API error: ") + ex.Message);
+            Log("Challenge Web-API: " + ex.Message);
+            AppLogService.WriteException("WeeklyChallengeWebApi", ex);
+        }
+    }
+
+    private void SetWeeklyTaskWebApiStatus(string value)
+    {
+        var dispatcher = App.Current?.Dispatcher;
+        if (dispatcher is not null && !dispatcher.CheckAccess()) dispatcher.Invoke(() => WeeklyTaskWebApiStatus = value);
+        else WeeklyTaskWebApiStatus = value;
+    }
+    private async Task PublishWeeklyTaskDiscordAsync(IReadOnlyList<WeeklyCommunityTaskProgress> progresses)
+    {
+        if (_discord is null || !_discord.IsReady) return;
+        var channelId = Settings.WeeklyTaskDiscordChannelId != 0
+            ? Settings.WeeklyTaskDiscordChannelId
+            : Settings.DiscordServerStatusChannelId;
+        var nowUtc = DateTime.UtcNow;
+        var planned = Settings.GetWeeklyTaskDefinitions()
+            .Where(x => x.Enabled)
+            .Where(x => WeeklyCommunityTaskService.GetTaskStartUtc(x) is DateTime startUtc && startUtc > nowUtc)
+            .OrderBy(x => WeeklyCommunityTaskService.GetTaskStartUtc(x))
+            .ToList();
+
+        var plannerCreated = await _discord.SendOrUpdatePlannedWeeklyTasksAsync(channelId, planned, Texts.IsGerman);
+        if (plannerCreated)
+        {
+            // Nur eindeutig markierte Bot-Embeds werden einmal neu unter dem Planer angeordnet.
+            await _discord.DeleteMarkedWeeklyTaskEmbedsForReorderAsync(channelId);
+        }
+
+        await _discord.DeleteInactiveWeeklyTasksAsync(channelId, progresses.Select(x => x.Definition.Id).ToList());
+        foreach (var progress in progresses)
+        {
+            await _discord.SendOrUpdateWeeklyTaskAsync(channelId, progress, Texts.IsGerman);
+            Log("Herausforderung in Discord aktualisiert: " + FormatWeeklyTaskStatus(progress));
+        }
+    }
+
     private async Task ScanWeeklyTasksOnceAsync()
     {
         EnsureLocalLogDirectories();
@@ -2480,25 +2918,14 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (_weeklyTasks is null) service.ScanStateChanged += ApplyWeeklyTaskScanState;
         var progresses = await service.ScanAllOnceAsync(Settings);
         await ProcessWeeklyRewardsAsync(progresses);
-        if (progresses.Count == 0) return;
-
         SetWeeklyTaskProgresses(progresses);
+        await PublishWeeklyTaskWebApiAsync(progresses);
 
         if (_discord is null || !_discord.IsReady) await StartDiscordAsync();
-        if (_discord is not null && _discord.IsReady)
-        {
-            var channelId = Settings.WeeklyTaskDiscordChannelId != 0
-                ? Settings.WeeklyTaskDiscordChannelId
-                : Settings.DiscordServerStatusChannelId;
-            foreach (var progress in progresses)
-            {
-                await _discord.SendOrUpdateWeeklyTaskAsync(channelId, progress);
-            }
-        }
+        await PublishWeeklyTaskDiscordAsync(progresses);
 
-        Log("Weekly/Daily Tasks manuell aktualisiert: " + WeeklyTaskStatus);
+        Log("Herausforderungen manuell aktualisiert: " + WeeklyTaskStatus);
     }
-
     private async Task ResetWeeklyTaskBaselineAsync()
     {
         EnsureLocalLogDirectories();
@@ -2508,25 +2935,17 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         SetWeeklyTaskProgresses(progresses);
         await ProcessWeeklyRewardsAsync(progresses);
+        await PublishWeeklyTaskWebApiAsync(progresses);
 
         if (_discord is null || !_discord.IsReady) await StartDiscordAsync();
-        if (_discord is not null && _discord.IsReady)
-        {
-            var channelId = Settings.WeeklyTaskDiscordChannelId != 0
-                ? Settings.WeeklyTaskDiscordChannelId
-                : Settings.DiscordServerStatusChannelId;
-            foreach (var progress in progresses)
-            {
-                await _discord.SendOrUpdateWeeklyTaskAsync(channelId, progress);
-            }
-        }
+        await PublishWeeklyTaskDiscordAsync(progresses);
 
         Log("Weekly/Daily Task Startwerte neu gesetzt und Discord aktualisiert: " + WeeklyTaskStatus);
     }
 
     private void InsertDefaultWeeklyTask()
     {
-        WeeklyTaskDefinitionStore.Save(JsonSerializer.Deserialize<List<WeeklyCommunityTaskDefinition>>(WeeklyCommunityTaskService.BuildDefaultTaskJson(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new List<WeeklyCommunityTaskDefinition>());
+        WeeklyTaskDefinitionStore.Save(JsonSerializer.Deserialize<List<WeeklyCommunityTaskDefinition>>(WeeklyCommunityTaskService.BuildDefaultTaskJson(Texts.IsGerman), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new List<WeeklyCommunityTaskDefinition>());
         Settings.WeeklyTaskJson = "";
         SettingsStore.Save(Settings);
         LoadWeeklyTaskEditorsFromSettings();
@@ -2542,34 +2961,44 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var idPrefix = taskType.Equals("Daily", StringComparison.OrdinalIgnoreCase) ? "daily" : "weekly";
         var task = new WeeklyCommunityTaskDefinition
         {
-            Id = $"{idPrefix}-{target.ColumnName.Replace('_', '-')}",
+            Id = CreateChallengeId(),
             Type = taskType,
             Title = target.DisplayName,
-            Description = $"Community-Ziel: {target.DisplayName}.",
+            Description = Texts.IsGerman ? $"Community-Ziel: {target.DisplayName}." : $"Community goal: {target.DisplayName}.",
             StatTable = target.TableName,
             StatColumn = target.ColumnName,
             Target = target.TableName.Equals("fishing_stats", StringComparison.OrdinalIgnoreCase) ? 100 : 1000,
             DurationHours = taskType.Equals("Daily", StringComparison.OrdinalIgnoreCase) ? 24 : 168,
-            MinimumParticipationPercent = 2.0,
-            RewardText = "Reward wird manuell freigeschaltet.",
-            CompletedText = "Krass! Ihr habt es geschafft!"
+            MinimumParticipationValue = 1,
+            CompletedText = Texts.IsGerman ? "Krass! Ihr habt es geschafft!" : "Amazing! You did it!"
         };
 
-        var editor = WeeklyTaskEditorViewModel.FromDefinition(task, WeeklyTaskStatTargets);
-        WeeklyTaskEditors.Add(editor);
+        var editor = WeeklyTaskEditorViewModel.FromDefinition(task, WeeklyTaskStatTargets, Texts.IsGerman);
+        AttachWeeklyTaskEditor(editor);
         SelectedWeeklyTaskEditor = editor;
         Log("Weekly/Daily Task Beispiel fuer Ziel in den Planer eingefuegt: " + target.Key + ". Zum Speichern 'Planer in JSON uebernehmen' klicken.");
+    }
+
+    private void AttachWeeklyTaskEditor(WeeklyTaskEditorViewModel editor)
+    {
+        WeeklyTaskEditors.Add(editor);
     }
 
     private void LoadWeeklyTaskEditorsFromSettings()
     {
         WeeklyTaskEditors.Clear();
         var loadedDefinitions = Settings.GetWeeklyTaskDefinitions();
+        var baselineStarts = WeeklyCommunityTaskService.LoadSavedBaselines()
+            .GroupBy(x => x.TaskId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => (DateTime?)x.Max(b => b.CreatedUtc), StringComparer.OrdinalIgnoreCase);
         foreach (var definition in loadedDefinitions)
         {
-            WeeklyTaskEditors.Add(WeeklyTaskEditorViewModel.FromDefinition(definition, WeeklyTaskStatTargets));
+            var editor = WeeklyTaskEditorViewModel.FromDefinition(definition, WeeklyTaskStatTargets, Texts.IsGerman);
+            editor.SetBaselineStart(baselineStarts.GetValueOrDefault(definition.Id));
+            AttachWeeklyTaskEditor(editor);
         }
 
+        WeeklyTaskEditorsView.Refresh();
         SelectedWeeklyTaskEditor = WeeklyTaskEditors.FirstOrDefault();
         Log("Challenge-Planer geladen: " + WeeklyTaskEditors.Count + " Eintraege.");
     }
@@ -2582,26 +3011,27 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         OnPropertyChanged(nameof(Settings));
     }
 
+    private static string CreateChallengeId() => "challenge-" + Guid.NewGuid().ToString("N")[..8];
+
     private void AddWeeklyTaskEditor()
     {
         var target = SelectedWeeklyTaskStatTarget ?? WeeklyTaskStatTargets.First(x => x.ColumnName == "puppets_killed");
         var definition = new WeeklyCommunityTaskDefinition
         {
             Enabled = true,
-            Id = "daily-" + target.ColumnName.Replace('_', '-'),
+            Id = CreateChallengeId(),
             Type = "Daily",
             Title = target.DisplayName,
-            Description = "Community-Ziel: " + target.DisplayName + ".",
+            Description = (Texts.IsGerman ? "Community-Ziel: " : "Community goal: ") + target.DisplayName + ".",
             StatTable = target.TableName,
             StatColumn = target.ColumnName,
             Target = target.TableName.Equals("fishing_stats", StringComparison.OrdinalIgnoreCase) ? 100 : 1000,
             DurationHours = 24,
-            MinimumParticipationPercent = 2.0,
-            RewardText = "Reward wird manuell freigeschaltet.",
-            CompletedText = "Krass! Ihr habt es geschafft!"
+            MinimumParticipationValue = 1,
+            CompletedText = Texts.IsGerman ? "Krass! Ihr habt es geschafft!" : "Amazing! You did it!"
         };
-        var editor = WeeklyTaskEditorViewModel.FromDefinition(definition, WeeklyTaskStatTargets);
-        WeeklyTaskEditors.Add(editor);
+        var editor = WeeklyTaskEditorViewModel.FromDefinition(definition, WeeklyTaskStatTargets, Texts.IsGerman);
+        AttachWeeklyTaskEditor(editor);
         SelectedWeeklyTaskEditor = editor;
         Log("Neue Challenge im Planer angelegt. Zum Uebernehmen 'Planer in JSON uebernehmen' klicken.");
     }
@@ -2611,14 +3041,202 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         source ??= SelectedWeeklyTaskEditor;
         if (source is null) return;
         var definition = source.ToDefinition();
-        definition.Id = definition.Id + "-copy";
-        definition.Title = definition.Title + " Kopie";
-        var editor = WeeklyTaskEditorViewModel.FromDefinition(definition, WeeklyTaskStatTargets);
-        WeeklyTaskEditors.Add(editor);
+        definition.Id = CreateChallengeId();
+        definition.Title = definition.Title + (Texts.IsGerman ? " Kopie" : " Copy");
+        var editor = WeeklyTaskEditorViewModel.FromDefinition(definition, WeeklyTaskStatTargets, Texts.IsGerman);
+        AttachWeeklyTaskEditor(editor);
         SelectedWeeklyTaskEditor = editor;
-        Log("Challenge dupliziert. Bitte ID/Startzeit pruefen.");
+        Log("Herausforderung dupliziert. Eine neue ID wurde automatisch vergeben.");
     }
 
+    private async Task ShowWeeklyTaskProgressAsync(WeeklyTaskEditorViewModel? source)
+    {
+        source ??= SelectedWeeklyTaskEditor;
+        if (source is null) return;
+
+        if (source.IsQuiz)
+        {
+            var quiz = _quizChallengeService.GetByDefinitionId(source.Id);
+            var isThisQuiz = quiz?.IsActive == true;
+            var details = isThisQuiz
+                ? (Texts.IsGerman
+                    ? $"Quiz {quiz!.QuizNumber} aktiv: {quiz.Title}\nAntworten abgegeben: {quiz.AttemptsBySteamId.Count}\nRichtig gelöst: {quiz.Winners.Count}\nVerbrauchte Versuche insgesamt: {quiz.AttemptsBySteamId.Values.Sum()}"
+                    : $"Quiz {quiz!.QuizNumber} active: {quiz.Title}\nPlayers who answered: {quiz.AttemptsBySteamId.Count}\nSolved correctly: {quiz.Winners.Count}\nTotal attempts used: {quiz.AttemptsBySteamId.Values.Sum()}")
+                : (Texts.IsGerman ? "Dieses Rätsel ist aktuell nicht aktiv." : "This quiz is not currently active.");
+            MessageBox.Show(App.Current?.MainWindow, details, Texts["CurrentProgress"], MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        try
+        {
+            EnsureLocalLogDirectories();
+            var service = _weeklyTasks ?? new WeeklyCommunityTaskService(new SftpLogService(Settings), Log);
+            if (_weeklyTasks is null) service.ScanStateChanged += ApplyWeeklyTaskScanState;
+            var progresses = await service.ScanAllOnceAsync(Settings);
+            SetWeeklyTaskProgresses(progresses);
+            await PublishWeeklyTaskWebApiAsync(progresses);
+            var progress = progresses.FirstOrDefault(x =>
+                string.Equals(x.Definition.Id, source.Id, StringComparison.OrdinalIgnoreCase));
+            if (progress is null)
+            {
+                MessageBox.Show(
+                    App.Current?.MainWindow,
+                    Texts.IsGerman
+                        ? "Für diese Challenge ist aktuell kein Fortschritt verfügbar. Sie ist möglicherweise noch nicht gestartet, abgelaufen oder noch nicht gespeichert."
+                        : "No progress is currently available for this challenge. It may not have started yet, may have expired, or may not have been saved.",
+                    Texts["CurrentProgress"],
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            WeeklyChallengeProgressDialog.Show(progress, Texts.IsGerman);
+        }
+        catch (Exception ex)
+        {
+            Log("Challenge-Fortschritt konnte nicht geladen werden: " + ex.Message);
+            MessageBox.Show(
+                App.Current?.MainWindow,
+                (Texts.IsGerman ? "Der aktuelle Stand konnte nicht geladen werden: " : "The current progress could not be loaded: ") + ex.Message,
+                Texts["CurrentProgress"],
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    private async Task ShowWeeklyTaskParticipantsAsync(WeeklyTaskEditorViewModel? source)
+    {
+        source ??= SelectedWeeklyTaskEditor;
+        if (source is null) return;
+
+        if (source.IsQuiz)
+        {
+            var quiz = _quizChallengeService.GetByDefinitionId(source.Id);
+            if (quiz is null)
+            {
+                MessageBox.Show(
+                    App.Current?.MainWindow,
+                    Texts.IsGerman ? "Für dieses Quiz gibt es noch keinen gestarteten Durchlauf." : "This quiz has not had a started run yet.",
+                    Texts["Participants"],
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            QuizChallengeParticipantsDialog.Show(quiz, Texts.IsGerman);
+            return;
+        }
+
+        try
+        {
+            EnsureLocalLogDirectories();
+            var service = _weeklyTasks ?? new WeeklyCommunityTaskService(new SftpLogService(Settings), Log);
+            if (_weeklyTasks is null) service.ScanStateChanged += ApplyWeeklyTaskScanState;
+            var progresses = await service.ScanAllOnceAsync(Settings);
+            SetWeeklyTaskProgresses(progresses);
+            var progress = progresses.FirstOrDefault(item =>
+                item.Definition.Id.Equals(source.Id, StringComparison.OrdinalIgnoreCase));
+            if (progress is null)
+            {
+                MessageBox.Show(
+                    App.Current?.MainWindow,
+                    Texts.IsGerman
+                        ? "Für diese Challenge sind aktuell keine Teilnehmerdaten verfügbar."
+                        : "No participant data is currently available for this challenge.",
+                    Texts["Participants"],
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            WeeklyChallengeProgressDialog.ShowParticipants(progress, Texts.IsGerman);
+        }
+        catch (Exception ex)
+        {
+            Log("Challenge-Teilnehmer konnten nicht geladen werden: " + ex.Message);
+            AppLogService.WriteException("WeeklyChallenges.Participants", ex);
+            MessageBox.Show(
+                App.Current?.MainWindow,
+                (Texts.IsGerman ? "Die Teilnehmer konnten nicht geladen werden: " : "Participants could not be loaded: ") + ex.Message,
+                Texts["Participants"],
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+    private async Task ResetWeeklyTaskEditorCounterAsync(WeeklyTaskEditorViewModel? source)
+    {
+        source ??= SelectedWeeklyTaskEditor;
+        if (source is null) return;
+
+        var title = string.IsNullOrWhiteSpace(source.Title) ? source.Id : source.Title;
+        var question = source.IsQuiz
+            ? (Texts.IsGerman
+                ? $"Quiz '{title}' wirklich neu starten?{Environment.NewLine}{Environment.NewLine}Alle Antwortversuche und Gewinner dieses Quiz-Durchlaufs werden gelöscht. Bereits erzeugte Redeem-Codes bleiben gültig."
+                : $"Really restart quiz '{title}'?{Environment.NewLine}{Environment.NewLine}All answer attempts and winners from this quiz run will be deleted. Existing redeem codes remain valid.")
+            : (Texts.IsGerman
+                ? $"Zähler für '{title}' wirklich zurücksetzen?{Environment.NewLine}{Environment.NewLine}Der aktuelle DB-Stand wird beim nächsten aktiven Scan zum neuen Nullpunkt. Bereits erzeugte Redeem-Codes bleiben gültig."
+                : $"Really reset the counter for '{title}'?{Environment.NewLine}{Environment.NewLine}The current database values become the new zero point during the next active scan. Existing redeem codes remain valid.");
+        var answer = MessageBox.Show(
+            question,
+            Texts.IsGerman ? "Herausforderung zurücksetzen" : "Reset challenge",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+        if (answer != MessageBoxResult.Yes) return;
+
+        SyncWeeklyTaskEditorsToSettings();
+        SettingsStore.Save(Settings);
+        var definition = source.ToDefinition();
+
+        if (source.IsQuiz)
+        {
+            var removedQuizStates = _quizChallengeService.Reset(definition.QuizNumber, definition.Id);
+            ClearCachedWeeklyTaskProgress(definition.Id);
+            source.SetBaselineStart(null);
+            Log($"Quiz '{title}': Durchlauf zurückgesetzt ({removedQuizStates} Zustand/Zustände entfernt; Versuche und Gewinner gelöscht).");
+
+            var quizStartUtc = WeeklyCommunityTaskService.GetTaskStartUtc(definition);
+            var quizEndUtc = quizStartUtc.HasValue
+                ? WeeklyCommunityTaskService.GetTaskEndUtc(definition, quizStartUtc.Value)
+                : null;
+            var quizCanRunNow = definition.Enabled &&
+                                (!quizStartUtc.HasValue || quizStartUtc.Value <= DateTime.UtcNow) &&
+                                (!quizEndUtc.HasValue || quizEndUtc.Value > DateTime.UtcNow);
+            if (quizCanRunNow)
+            {
+                await StartQuizChallengeAsync(source, forceRestart: true);
+            }
+            else
+            {
+                WeeklyTaskStatus = Texts.IsGerman
+                    ? $"Quiz '{title}' ist zurückgesetzt und startet zum geplanten Zeitpunkt mit 0 Versuchen und 0 Gewinnern."
+                    : $"Quiz '{title}' was reset and will start at its scheduled time with 0 attempts and 0 winners.";
+            }
+            return;
+        }
+
+        var removed = WeeklyCommunityTaskService.DeleteSavedBaseline(definition);
+        ClearCachedWeeklyTaskProgress(definition.Id);
+        source.SetBaselineStart(null);
+        Log($"Herausforderung '{title}': Zaehler-Startwert zurueckgesetzt ({removed} Baseline-Datei(en) entfernt).");
+
+        var startUtc = WeeklyCommunityTaskService.GetTaskStartUtc(definition);
+        if (definition.Enabled && (!startUtc.HasValue || startUtc.Value <= DateTime.UtcNow))
+        {
+            await ScanWeeklyTasksOnceAsync();
+        }
+        else
+        {
+            WeeklyTaskStatus = $"'{title}' wird beim geplanten Start mit einem neuen Nullpunkt begonnen.";
+        }
+    }
+
+    private void ClearCachedWeeklyTaskProgress(string definitionId)
+    {
+        var remaining = _lastWeeklyTaskProgresses
+            .Where(progress => !progress.Definition.Id.Equals(definitionId, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        SetWeeklyTaskProgresses(remaining);
+    }
     private void DeleteWeeklyTaskEditor(WeeklyTaskEditorViewModel? source = null)
     {
         source ??= SelectedWeeklyTaskEditor;
@@ -2629,10 +3247,34 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         Log("Challenge aus Planer entfernt: " + removed.Id);
     }
 
+    private void AddWeeklyTaskGoal(WeeklyTaskEditorViewModel? task)
+    {
+        task ??= SelectedWeeklyTaskEditor;
+        task?.AddGoal();
+    }
+
+    private void RemoveWeeklyTaskGoal(WeeklyTaskGoalEditorViewModel? goal)
+    {
+        if (goal is null) return;
+        foreach (var task in WeeklyTaskEditors)
+        {
+            if (task.RemoveGoal(goal)) return;
+        }
+    }
     private void AddWeeklyRewardItem(WeeklyTaskEditorViewModel? task)
     {
         task ??= SelectedWeeklyTaskEditor;
-        task?.RewardItems.Add(new WeeklyRewardItemEditorViewModel());
+        if (task is null) return;
+        var selected = ItemCatalogDialog.Pick("Weekly-Belohnung");
+        if (selected is null) return;
+        foreach (var item in selected)
+        {
+            task.RewardItems.Add(new WeeklyRewardItemEditorViewModel
+            {
+                Item = item.Code,
+                Quantity = item.Quantity
+            });
+        }
     }
 
     private void RemoveWeeklyRewardItem(WeeklyRewardItemEditorViewModel? item)
@@ -2648,6 +3290,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         SyncWeeklyTaskEditorsToSettings();
         SettingsStore.Save(Settings);
+        WeeklyTaskEditorsView.Refresh();
+        foreach (var editor in WeeklyTaskEditors) editor.RefreshRuntimeDisplay();
         Log("Challenge-Planer in Data/weekly_tasks.json gespeichert. Eintraege: " + WeeklyTaskEditors.Count);
     }
 
@@ -2656,21 +3300,47 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _lastWeeklyTaskProgresses = progresses.ToList();
         WeeklyTaskProgress = _lastWeeklyTaskProgresses.FirstOrDefault();
         WeeklyTaskStatus = FormatWeeklyTaskStatus(_lastWeeklyTaskProgresses);
+        var baselineStarts = _lastWeeklyTaskProgresses
+            .GroupBy(progress => progress.Definition.Id, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => (DateTime?)group.Max(progress => progress.Baseline.CreatedUtc), StringComparer.OrdinalIgnoreCase);
+        foreach (var editor in WeeklyTaskEditors)
+        {
+            if (!editor.IsQuiz && baselineStarts.TryGetValue(editor.Id, out var baselineStart))
+                editor.SetBaselineStart(baselineStart);
+            else
+                editor.RefreshRuntimeDisplay();
+        }
     }
 
-    private static string FormatWeeklyTaskStatus(IReadOnlyList<WeeklyCommunityTaskProgress> progresses)
+    private string FormatWeeklyTaskStatus(IReadOnlyList<WeeklyCommunityTaskProgress> progresses)
     {
-        if (progresses.Count == 0) return "No active Weekly/Daily Tasks.";
+        if (progresses.Count == 0) return Texts.IsGerman ? "Keine aktiven Weekly/Daily Tasks." : "No active weekly/daily tasks.";
         return string.Join(" | ", progresses.Select(FormatWeeklyTaskStatus));
     }
 
-    private static string FormatWeeklyTaskStatus(WeeklyCommunityTaskProgress progress)
+    private string FormatWeeklyTaskStatus(WeeklyCommunityTaskProgress progress)
     {
         var title = string.IsNullOrWhiteSpace(progress.Definition.Title) ? progress.Definition.Id : progress.Definition.Title;
         var kind = WeeklyCommunityTaskService.GetTaskKind(progress.Definition);
-        return string.Equals(progress.Definition.GoalScope, "PerPlayer", StringComparison.OrdinalIgnoreCase)
-            ? $"{kind} {title}: {progress.CompletedPlayerCount} Spieler erreicht, bester Stand {progress.Progress:N0}/{progress.Definition.Target:N0}"
-            : $"{kind} {title}: {progress.Progress:N0}/{progress.Definition.Target:N0} ({progress.Percent:0.0}%)" + (progress.IsCompleted ? " - erreicht" : "");
+        var multiple = progress.GoalProgresses.Count > 1;
+        var rule = WeeklyCommunityTaskService.RequiresAllGoals(progress.Definition)
+            ? (Texts.IsGerman ? "alle Ziele" : "all goals")
+            : (Texts.IsGerman ? "ein Ziel" : "any goal");
+        if (WeeklyCommunityTaskService.IsPersonalGoal(progress.Definition))
+        {
+            return multiple
+                ? (Texts.IsGerman
+                    ? $"{kind} Personal – {title}: {progress.CompletedPlayerCount} Spieler fertig ({rule}), bester Gesamtstand {progress.Percent:0.0}%"
+                    : $"{kind} Personal – {title}: {progress.CompletedPlayerCount} players completed ({rule}), best overall progress {progress.Percent:0.0}%")
+                : (Texts.IsGerman
+                    ? $"{kind} Personal – {title}: {progress.CompletedPlayerCount} Spieler fertig, bester persönlicher Stand {progress.Progress:N0}/{progress.Definition.Target:N0}"
+                    : $"{kind} Personal – {title}: {progress.CompletedPlayerCount} players completed, best personal progress {progress.Progress:N0}/{progress.Definition.Target:N0}");
+        }
+
+        var value = multiple
+            ? $"{progress.Percent:0.0}% ({rule})"
+            : $"{progress.Progress:N0}/{progress.Definition.Target:N0} ({progress.Percent:0.0}%)";
+        return $"{kind} Community – {title}: {value}" + (progress.IsCompleted ? (Texts.IsGerman ? " - erreicht" : " - completed") : "");
     }
 
 
@@ -2692,13 +3362,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 var players = await FetchPlayersAsync(token);
                 return players.Count;
             },
-            BuildAutoMessageChallengeTextAsync,
+            BuildAutoMessageChallengeTextsAsync,
             async (messageType, text, token) =>
             {
-                if (_rcon is null || !_rcon.IsConnected) await ConnectRconAsync();
-                if (_rcon is null) return;
-                var command = CommandRegistry.Broadcast(messageType, text);
-                await _rcon.SendCommandAsync(command, token);
+                await new GgconHttpApiService(Settings).SendMessageAsync(text, messageType, cancellationToken: token);
             });
 
         AutoMessagesRunning = true;
@@ -2731,13 +3398,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 var players = await FetchPlayersAsync(token);
                 return players.Count;
             },
-            BuildAutoMessageChallengeTextAsync,
+            BuildAutoMessageChallengeTextsAsync,
             async (messageType, text, token) =>
             {
-                if (_rcon is null || !_rcon.IsConnected) await ConnectRconAsync();
-                if (_rcon is null) return;
-                var command = CommandRegistry.Broadcast(messageType, text);
-                await _rcon.SendCommandAsync(command, token);
+                await new GgconHttpApiService(Settings).SendMessageAsync(text, messageType, cancellationToken: token);
             });
 
         AutoMessageStatus = T("AutoMessageManualSent");
@@ -2795,60 +3459,124 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         AutoMessageStatus = T("AutoMessagesFlowReset");
     }
 
-    private async Task<string> BuildAutoMessageChallengeTextAsync(CancellationToken cancellationToken = default)
+    private bool ChallengeMessagesAreGerman =>
+        !Settings.ChallengeMessageLanguage.Equals("en", StringComparison.OrdinalIgnoreCase);
+
+    private async Task<string> BuildChatChallengeTextAsync(ChatLogMessage? player, CancellationToken cancellationToken)
+    {
+        await BuildAutoMessageChallengeTextsAsync(cancellationToken);
+        return BuildChallengeText(_lastWeeklyTaskProgresses, player, ChallengeMessagesAreGerman)
+               ?? Settings.AutoMessagesNoChallengeText;
+    }
+
+    private async Task<IReadOnlyList<string>> BuildAutoMessageChallengeTextsAsync(CancellationToken cancellationToken = default)
     {
         try
         {
             var configuredTasks = Settings.GetWeeklyTaskDefinitions()
-                .Where(x => x.Enabled)
+                .Where(x => x.Enabled && !WeeklyCommunityTaskService.IsPersonalGoal(x))
                 .ToList();
 
             if (configuredTasks.Count == 0)
             {
-                Log("Auto Messages: Challenge-Schritt gefunden, aber keine aktive Weekly/Daily Aufgabe im JSON geladen.");
-                return BuildAutoMessageChallengeTextFromCache() ?? Settings.AutoMessagesNoChallengeText;
+                Log("Auto Messages: Keine aktive Community-Challenge konfiguriert; Personal-Challenges werden nicht öffentlich gepostet.");
+                return BuildAutoMessageChallengeTextsFromCache();
             }
 
             var service = _weeklyTasks ?? new WeeklyCommunityTaskService(new SftpLogService(Settings), Log);
             var progresses = await service.ScanAllOnceAsync(Settings, cancellationToken);
             if (progresses.Count == 0)
             {
-                Log($"Auto Messages: Challenge-Scan lieferte 0 Ergebnisse, konfigurierte Aufgaben={configuredTasks.Count}. Nutze letzten bekannten Stand, falls vorhanden.");
-                return BuildAutoMessageChallengeTextFromCache() ?? Settings.AutoMessagesNoChallengeText;
+                Log($"Auto Messages: Challenge-Scan lieferte 0 Ergebnisse, Community-Challenges={configuredTasks.Count}. Nutze letzten bekannten Stand, falls vorhanden.");
+                return BuildAutoMessageChallengeTextsFromCache();
             }
 
             SetWeeklyTaskProgresses(progresses);
-            return BuildAutoMessageChallengeText(progresses) ?? Settings.AutoMessagesNoChallengeText;
+            return BuildCommunityChallengeTexts(progresses, ChallengeMessagesAreGerman);
         }
         catch (Exception ex)
         {
-            Log("Auto Messages: Challenge-Text konnte nicht gebaut werden: " + ex.Message);
-            AppLogService.WriteException("AutoMessages.BuildChallengeText", ex);
-            return BuildAutoMessageChallengeTextFromCache() ?? Settings.AutoMessagesNoChallengeText;
+            Log("Auto Messages: Challenge-Texte konnten nicht gebaut werden: " + ex.Message);
+            AppLogService.WriteException("AutoMessages.BuildChallengeTexts", ex);
+            return BuildAutoMessageChallengeTextsFromCache();
         }
     }
 
-    private string? BuildAutoMessageChallengeTextFromCache()
+    private IReadOnlyList<string> BuildAutoMessageChallengeTextsFromCache() =>
+        BuildCommunityChallengeTexts(_lastWeeklyTaskProgresses, ChallengeMessagesAreGerman);
+
+    private static IReadOnlyList<string> BuildCommunityChallengeTexts(
+        IReadOnlyList<WeeklyCommunityTaskProgress> progresses,
+        bool isGerman) => progresses
+        .Where(x => x.Definition.Enabled && !WeeklyCommunityTaskService.IsPersonalGoal(x.Definition))
+        .Select(x => FormatCommunityChallengeText(x, isGerman))
+        .Where(x => !string.IsNullOrWhiteSpace(x))
+        .ToList();
+
+    private static string FormatCommunityChallengeText(WeeklyCommunityTaskProgress progress, bool isGerman)
     {
-        return _lastWeeklyTaskProgresses.Count == 0
-            ? null
-            : BuildAutoMessageChallengeText(_lastWeeklyTaskProgresses);
+        var title = string.IsNullOrWhiteSpace(progress.Definition.Title) ? progress.Definition.Id : progress.Definition.Title;
+        var kind = WeeklyCommunityTaskService.GetTaskKind(progress.Definition);
+        var multiple = progress.GoalProgresses.Count > 1;
+        var rule = WeeklyCommunityTaskService.RequiresAllGoals(progress.Definition)
+            ? (isGerman ? "alle Ziele" : "all goals")
+            : (isGerman ? "ein Ziel" : "any goal");
+        var target = Math.Max(1, progress.Definition.Target);
+        var value = multiple
+            ? $"{progress.Percent:0.0}% ({rule})"
+            : $"{progress.Progress:N0}/{target:N0} ({progress.Percent:0.0}%)";
+        var completed = progress.IsCompleted ? (isGerman ? " - erreicht" : " - completed") : string.Empty;
+        return $"{kind} Community: {title} – {value}{completed}";
     }
 
-    private static string? BuildAutoMessageChallengeText(IReadOnlyList<WeeklyCommunityTaskProgress> progresses)
+    private string? BuildChallengeText(
+        IReadOnlyList<WeeklyCommunityTaskProgress> progresses,
+        ChatLogMessage? player,
+        bool isGerman)
     {
         var lines = progresses
             .Where(x => x.Definition.Enabled)
             .Select(x =>
             {
+                if (!WeeklyCommunityTaskService.IsPersonalGoal(x.Definition))
+                    return FormatCommunityChallengeText(x, isGerman);
+
                 var title = string.IsNullOrWhiteSpace(x.Definition.Title) ? x.Definition.Id : x.Definition.Title;
                 var kind = WeeklyCommunityTaskService.GetTaskKind(x.Definition);
-                var done = x.IsCompleted ? " - geschafft" : string.Empty;
-                return $"{kind}: {title} - {x.Progress:N0}/{x.Definition.Target:N0}{done}";
+                var target = Math.Max(1, x.Definition.Target);
+                var multiple = x.GoalProgresses.Count > 1;
+                var rule = WeeklyCommunityTaskService.RequiresAllGoals(x.Definition)
+                    ? (isGerman ? "alle Ziele" : "all goals")
+                    : (isGerman ? "ein Ziel" : "any goal");
+
+                if (player is null) return null;
+
+                var own = x.PlayerProgress.FirstOrDefault(entry =>
+                    (!string.IsNullOrWhiteSpace(player.SteamId) && string.Equals(entry.SteamId, player.SteamId, StringComparison.OrdinalIgnoreCase)) ||
+                    string.Equals(entry.PlayerName, player.PlayerName, StringComparison.OrdinalIgnoreCase));
+                var name = string.IsNullOrWhiteSpace(player.PlayerName) ? player.SteamId : player.PlayerName;
+                if (multiple)
+                {
+                    var ownGoals = x.GoalProgresses.Select(goal => new
+                    {
+                        Goal = goal,
+                        Player = goal.PlayerProgress.FirstOrDefault(entry =>
+                            (!string.IsNullOrWhiteSpace(player.SteamId) && string.Equals(entry.SteamId, player.SteamId, StringComparison.OrdinalIgnoreCase)) ||
+                            string.Equals(entry.PlayerName, player.PlayerName, StringComparison.OrdinalIgnoreCase))
+                    }).ToList();
+                    var goalText = ownGoals.Count == 0
+                        ? $"0% ({rule})"
+                        : string.Join(", ", ownGoals.Select(entry => $"{entry.Goal.DisplayName}: {entry.Player?.Progress ?? 0:N0}/{entry.Goal.Target:N0}"));
+                    return $"{kind} Personal: {title} – {name}: {goalText}" + (own?.IsCompleted == true ? " ✅" : string.Empty);
+                }
+                var value = own?.Progress ?? 0;
+                var ownTarget = own?.Target > 0 ? own.Target : target;
+                return $"{kind} Personal: {title} – {name}: {value:N0}/{ownTarget:N0}" + (own?.IsCompleted == true ? " ✅" : string.Empty);
             })
+            .Where(x => !string.IsNullOrWhiteSpace(x))
             .ToList();
 
-        return lines.Count == 0 ? null : string.Join(" | ", lines);
+        return lines.Count == 0 ? null : string.Join(" | ", lines!);
     }
 
     private Task StartScriptsAsync()
@@ -2862,16 +3590,15 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             return Task.CompletedTask;
         }
 
-        _rcon ??= new SourceRconClient(Settings.Host, Settings.Port, Settings.Password);
         StartPlayerStatusLoop();
 
         var definitions = EventDefinitionStore.Load();
         _eventEngine?.Dispose();
-        _eventEngine = new EventEngine(_rcon, definitions, Log, OnScriptEngineStateChanged, Settings, GlobalLootPacks.Select(pack => pack.ToPack()));
+        _eventEngine = new EventEngine(SendGgconAutomationCommandAsync, definitions, Log, OnScriptEngineStateChanged, Settings, GlobalLootPacks.Select(pack => pack.ToPack()));
         _eventEngine.Start(Settings.ScriptPollSeconds);
         ScriptEngineRunning = true;
         RefreshScriptRuntimeStatuses();
-        Log($"Script Engine mit {definitions.Count} Scripts gestartet. RCON wird beim ersten Scan automatisch verbunden.");
+        Log($"Script Engine mit {definitions.Count} Scripts gestartet. Befehle werden ueber ggCON HTTP gesendet.");
         return Task.CompletedTask;
     }
 
@@ -2887,19 +3614,35 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private async Task ScanScriptsOnceAsync()
     {
-        if (_rcon is null || !_rcon.IsConnected) await ConnectRconAsync();
-        if (_rcon is null) return;
-
         if (_eventEngine is null)
         {
             var definitions = EventDefinitionStore.Load();
-            _eventEngine = new EventEngine(_rcon, definitions, Log, OnScriptEngineStateChanged, Settings, GlobalLootPacks.Select(pack => pack.ToPack()));
+            _eventEngine = new EventEngine(SendGgconAutomationCommandAsync, definitions, Log, OnScriptEngineStateChanged, Settings, GlobalLootPacks.Select(pack => pack.ToPack()));
             Log($"Script Engine geladen: {definitions.Count} Scripts.");
         }
 
         await _eventEngine.ManualScanAsync();
         RefreshScriptRuntimeStatuses();
         Log("Script Scan einmal ausgefuehrt.");
+    }
+
+    private async Task ManualStartEventAsync(ScriptRuntimeStatusViewModel? status)
+    {
+        if (status is null) return;
+
+        if (_eventEngine is null)
+        {
+            await StartScriptsAsync();
+        }
+
+        if (_eventEngine is null)
+        {
+            throw new InvalidOperationException(T("ScriptEngineNotStarted"));
+        }
+
+        await _eventEngine.ManualStartAsync(status.EventKey);
+        RefreshScriptRuntimeStatuses();
+        Log($"Event manuell gestartet: {status.Name}");
     }
 
 
@@ -3159,6 +3902,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             Asset = "BP_Guard_Lvl_1",
             Quantity = 1,
             Location = defaultLocation,
+            DespawnLifetimeSeconds = 600,
             DelayMs = 250
         };
         ScriptEditorModel.SpawnBlocks.Add(block);
@@ -3192,10 +3936,18 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var variable = new ScriptLocationVariableEditorViewModel("npc", "npc_" + (ScriptEditorModel.NpcSpawnLocations.Count + 1), "[{X=0 Y=0 Z=0}]");
         ScriptEditorModel.NpcSpawnLocations.Add(variable);
         ScriptEditorModel.RefreshLocalVariablePlaceholders();
-        foreach (var block in ScriptEditorModel.SpawnBlocks.Where(block => string.IsNullOrWhiteSpace(block.Location)))
+        ScriptEditorModel.SpawnBlocks.Add(new SpawnBlockEditorViewModel
         {
-            block.Location = variable.Placeholder;
-        }
+            Name = variable.Name,
+            Type = "ArmedNPC",
+            Asset = "BP_Guard_Lvl_1",
+            Quantity = 1,
+            Location = variable.Placeholder,
+            DespawnLifetimeSeconds = 600,
+            DelayMs = 250,
+            UseTriggerPlayer = true
+        });
+        ScriptEditorModel.RebuildFlow();
         MarkScriptDirty();
         SyncStructuredScriptToJson();
     }
@@ -3238,7 +3990,17 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (ScriptEditorModel is null || location is null) return;
         if (!ScriptEditorModel.LootSpawnLocations.Remove(location))
         {
-            ScriptEditorModel.NpcSpawnLocations.Remove(location);
+            var placeholder = location.Placeholder;
+            if (ScriptEditorModel.NpcSpawnLocations.Remove(location))
+            {
+                foreach (var spawn in ScriptEditorModel.SpawnBlocks
+                             .Where(spawn => string.Equals(spawn.Location, placeholder, StringComparison.OrdinalIgnoreCase))
+                             .ToList())
+                {
+                    ScriptEditorModel.SpawnBlocks.Remove(spawn);
+                }
+                ScriptEditorModel.RebuildFlow();
+            }
         }
 
         ScriptEditorModel.RefreshLocalVariablePlaceholders();
@@ -3281,6 +4043,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         LootPackStore.Save(current);
         LoadGlobalLootPacks();
+        RefreshQuizLootPacks();
         Log("Legacy-Lootpacks in globale Bibliothek uebernommen.");
     }
 
@@ -3331,6 +4094,15 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         SaveGlobalLootPacks();
     }
 
+    private void MoveGlobalLootPack(LootPackEditorViewModel? pack, int offset)
+    {
+        if (pack is null || offset == 0) return;
+        var currentIndex = GlobalLootPacks.IndexOf(pack);
+        var targetIndex = currentIndex + offset;
+        if (currentIndex < 0 || targetIndex < 0 || targetIndex >= GlobalLootPacks.Count) return;
+        GlobalLootPacks.Move(currentIndex, targetIndex);
+        SaveGlobalLootPacks();
+    }
     private void RemoveGlobalLootPack(LootPackEditorViewModel? pack)
     {
         if (pack is null) return;
@@ -3348,7 +4120,17 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private void AddGlobalLootItem(LootPackEditorViewModel? pack)
     {
         if (pack is null) return;
-        pack.Items.Add(new LootItemEditorViewModel { Quantity = 1, DelayMs = 50 });
+        var selected = ItemCatalogDialog.Pick("Lootpack " + pack.Name);
+        if (selected is null) return;
+        foreach (var item in selected)
+        {
+            pack.Items.Add(new LootItemEditorViewModel
+            {
+                Item = item.Code,
+                Quantity = item.Quantity,
+                DelayMs = 50
+            });
+        }
     }
 
     private void RemoveLootItem(LootItemEditorViewModel? item) => RemoveGlobalLootItem(item);
@@ -3545,11 +4327,28 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         SyncStructuredScriptToJson();
         ValidateScript();
         if (SelectedScript.HasErrors) return false;
-        File.WriteAllText(SelectedScript.Path, ScriptJson);
-        Log("Script gespeichert: " + SelectedScript.Name);
-        ScriptHasUnsavedChanges = false;
-        if (ScriptEngineRunning) Log("Hinweis: Script Engine neu starten, damit diese Aenderung aktiv wird.");
-        return true;
+        try
+        {
+            var definition = EventDefinitionStore.DeserializeSingle(ScriptJson);
+            definition.SourceFilePath = SelectedScript.Path;
+            var savedPath = EventDefinitionStore.Save(definition);
+            ScriptJson = EventDefinitionStore.GetRawJsonFor(definition);
+            ScriptHasUnsavedChanges = false;
+            RefreshScripts();
+            SelectedScript = Scripts.FirstOrDefault(x => string.Equals(x.Path, savedPath, StringComparison.OrdinalIgnoreCase));
+            Log("Script gespeichert: " + Path.GetFileName(savedPath));
+            if (ScriptEngineRunning)
+            {
+                ScriptValidation = T("ScriptSavedRestartRequired");
+                Log("ACHTUNG: Script gespeichert, aber noch nicht aktiv. Script Engine neu starten, um die Aenderung zu laden.");
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            ScriptValidation = "Speichern fehlgeschlagen: " + ex.Message;
+            return false;
+        }
     }
 
     private void DuplicateScript()
@@ -3588,11 +4387,34 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             // Logging darf die App niemals abbrechen. UI-Log laeuft trotzdem weiter.
         }
 
+        if (!ShouldShowInRecentActions(message)) return;
+
         App.Current?.Dispatcher.Invoke(() =>
         {
             LogLines.Insert(0, line);
-            while (LogLines.Count > 1000) LogLines.RemoveAt(LogLines.Count - 1);
+            while (LogLines.Count > 500) LogLines.RemoveAt(LogLines.Count - 1);
         });
+    }
+
+    private static bool ShouldShowInRecentActions(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message)) return false;
+
+        string[] hiddenFragments =
+        [
+            "keine neuen Zeilen",
+            "keine neuen Login-Zeilen",
+            "no new lines",
+            "Chat-Zeilen:",
+            "chat lines:",
+            "Chatlog geladen:",
+            "Loginlog geladen:",
+            "Vehicle-Destruction-Log geladen:",
+            "Discord->Game gesendet:"
+        ];
+
+        return !hiddenFragments.Any(fragment =>
+            message.Contains(fragment, StringComparison.OrdinalIgnoreCase));
     }
 
     private void ClearLog()
@@ -3651,6 +4473,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        _insuranceCts?.Cancel();
+        if (_insuranceLoop is not null) await _insuranceLoop;
+        _insuranceCts?.Dispose();
+        DisposeDashboard();
+
+        _quizScheduleCts?.Cancel();
+        _quizScheduleCts?.Dispose();
         _discordServerStatusMessageCts?.Cancel();
         _discordServerStatusMessageCts?.Dispose();
         _playerStatusCts?.Cancel();
@@ -3658,17 +4487,22 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _chatForwarder?.Stop();
         _chatCommands?.Stop();
         _joinCommands?.Stop();
-        _killFeed?.Stop();
         _weeklyTasks?.Stop();
+        _vehicleInactivityWarnings?.Dispose();
         _autoMessages?.Stop();
         _eventEngine?.Dispose();
         StopSettingRandomizer(persistAutoStart: false);
+        StopEconomy(persistAutoStart: false);
+        _weeklyRuntimeTimer.Stop();
         _usageDirectory.Dispose();
+        if (_discordStatusBot is not null) await _discordStatusBot.DisposeAsync();
         if (_discord is not null) await _discord.DisposeAsync();
         if (_rcon is not null) await _rcon.DisposeAsync();
         _playerScanLock.Dispose();
         _weeklyRewardClaimLock.Dispose();
         _weeklyRewardNotificationLock.Dispose();
+        _discordStatusStartLock.Dispose();
+
     }
 }
 
@@ -3678,6 +4512,7 @@ public sealed record LootSpawnModeOption(string Value, string Name);
 public sealed class ScriptStructuredEditorViewModel : ObservableObject
 {
     private string _mode = "RandomAnnouncedZone";
+    private string _name = "Script";
 
     public ScriptStructuredEditorViewModel()
     {
@@ -3685,7 +4520,19 @@ public sealed class ScriptStructuredEditorViewModel : ObservableObject
     }
 
     public string Id { get; set; } = "script";
-    public string Name { get; set; } = "Script";
+    public string Name
+    {
+        get => _name;
+        set
+        {
+            var next = string.IsNullOrWhiteSpace(value) ? "Script" : value;
+            if (SetProperty(ref _name, next))
+            {
+                Id = next;
+                OnPropertyChanged(nameof(Id));
+            }
+        }
+    }
     public bool Enabled { get; set; } = true;
     public string Mode
     {
@@ -3843,27 +4690,33 @@ public sealed class ScriptStructuredEditorViewModel : ObservableObject
 
         model.RefreshLocalVariablePlaceholders();
         model.EnsureSpawnBlockLocations();
+        model.SynchronizeSimplifiedEditorState();
         return model;
     }
 
-    public EventDefinition ToDefinition() => new()
+    public EventDefinition ToDefinition()
     {
-        Id = string.IsNullOrWhiteSpace(Id) ? "script" : Id.Trim(),
-        Name = string.IsNullOrWhiteSpace(Name) ? "Script" : Name.Trim(),
+        SynchronizeSimplifiedEditorState();
+        var scriptName = string.IsNullOrWhiteSpace(Name) ? "Script" : Name.Trim();
+
+        return new EventDefinition
+        {
+        Id = scriptName,
+        Name = scriptName,
         Enabled = Enabled,
         Mode = string.IsNullOrWhiteSpace(Mode) ? "RandomAnnouncedZone" : Mode.Trim(),
         IncludeInRandomizer = IncludeInRandomizer,
-        RandomizerEveryMinutes = Math.Max(0, RandomizerEveryMinutes),
-        InitiatorRepeatEveryMinutes = Math.Max(0, InitiatorRepeatEveryMinutes),
-        MaxConcurrentRandomEvents = Math.Max(0, MaxConcurrentRandomEvents),
+        RandomizerEveryMinutes = 0,
+        InitiatorRepeatEveryMinutes = 0,
+        MaxConcurrentRandomEvents = 1,
         RandomActivationChancePercent = Math.Clamp(RandomActivationChancePercent, 0, 100),
-        EventGroup = EventGroup?.Trim() ?? "",
-        MaxConcurrentInGroup = Math.Max(0, MaxConcurrentInGroup),
+        EventGroup = "",
+        MaxConcurrentInGroup = 0,
         BuyPrice = Math.Max(0, BuyPrice),
         BuyAlias = BuyAlias?.Trim() ?? "",
         ActivationDelayMs = Math.Max(0, ActivationDelayMs),
-        TriggerServerMessageType = string.IsNullOrWhiteSpace(TriggerServerMessageType) ? "Yellow" : TriggerServerMessageType.Trim(),
-        TriggerServerMessage = TriggerServerMessage?.Trim() ?? "",
+        TriggerServerMessageType = "Yellow",
+        TriggerServerMessage = "",
         LootPackSpawnMode = NormalizeLootPackSpawnMode(LootPackSpawnMode),
         LootPackNames = LootPackNames
             .Where(name => !string.IsNullOrWhiteSpace(name))
@@ -3871,7 +4724,7 @@ public sealed class ScriptStructuredEditorViewModel : ObservableObject
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList() is { Count: > 0 } names ? names : null,
         Announcement = InitiatorMessage?.Trim() ?? "",
-        Zone = new EventZone { Name = string.IsNullOrWhiteSpace(ZoneName) ? "Zone" : ZoneName.Trim(), CenterX = ZoneX, CenterY = ZoneY, CenterZ = ZoneZ, Radius = Math.Max(0, ZoneRadius) },
+        Zone = new EventZone { Name = scriptName + " Aktivierungszone", CenterX = ZoneX, CenterY = ZoneY, CenterZ = ZoneZ, Radius = Math.Max(0, ZoneRadius) },
         LocalVariables = new ScriptLocalVariables
         {
             InitiatorMessage = InitiatorMessage?.Trim() ?? "",
@@ -3879,16 +4732,60 @@ public sealed class ScriptStructuredEditorViewModel : ObservableObject
             NpcSpawnLocations = NpcSpawnLocations.Select(x => x.ToVariable()).ToList()
         },
         InitiatorBlock = InitiatorBlock.ToBlock(),
-        PreLiveCleanupBlock = PreLiveCleanupBlock.ToBlock(),
+        PreLiveCleanupBlock = new ScriptBlock { Name = "Cleanup vor Live", Enabled = false, Commands = new List<EventCommand>() },
         LiveBlock = LiveBlock.ToBlock(),
         SpawnBlocks = SpawnBlocks.Select(x => x.ToBlock()).ToList(),
-        EmptyBlock = EmptyBlock.ToBlock(),
-        CleanupBlock = CleanupBlock.ToBlock(),
+        EmptyBlock = new ScriptBlock { Name = "Zone leer", Enabled = false, Commands = new List<EventCommand>() },
+        CleanupBlock = new ScriptBlock { Name = "Cleanup", Enabled = false, Commands = new List<EventCommand>() },
         LootPacks = null,
         LootCommandPacks = null,
         CleanupWhenEmptySeconds = Math.Max(0, CleanupWhenEmptySeconds),
         CooldownMinutes = Math.Max(0, CooldownMinutes)
-    };
+        };
+    }
+
+    private void SynchronizeSimplifiedEditorState()
+    {
+        Id = string.IsNullOrWhiteSpace(Name) ? "Script" : Name.Trim();
+
+        var lootPoint = LootSpawnLocations.FirstOrDefault();
+        if (lootPoint is not null)
+        {
+            ZoneName = Id + " Aktivierungszone";
+            ZoneX = lootPoint.X;
+            ZoneY = lootPoint.Y;
+            ZoneZ = lootPoint.Z;
+        }
+
+        var automaticSpawns = SpawnBlocks
+            .Where(spawn => (spawn.Location ?? string.Empty).StartsWith("{npc_", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        for (var index = 0; index < NpcSpawnLocations.Count; index++)
+        {
+            var point = NpcSpawnLocations[index];
+            var spawn = SpawnBlocks.FirstOrDefault(item => string.Equals(item.Location, point.Placeholder, StringComparison.OrdinalIgnoreCase))
+                        ?? automaticSpawns.ElementAtOrDefault(index);
+            if (spawn is null)
+            {
+                spawn = new SpawnBlockEditorViewModel
+                {
+                    Type = "ArmedNPC",
+                    Asset = "BP_Guard_Lvl_1",
+                    Quantity = 1,
+                    DelayMs = 250,
+                    UseTriggerPlayer = true
+                };
+                SpawnBlocks.Add(spawn);
+            }
+
+            spawn.Name = string.IsNullOrWhiteSpace(point.Name) ? $"npc_{index + 1}" : point.Name.Trim();
+            spawn.Location = point.Placeholder;
+            spawn.DespawnLifetimeSeconds = 600;
+        }
+
+        RefreshLocalVariablePlaceholders();
+    }
 
     public void RefreshLocalVariablePlaceholders()
     {
@@ -4631,6 +5528,7 @@ public sealed class SpawnBlockEditorViewModel : ObservableObject
     private string _type = "ArmedNPC";
     private string _asset = "BP_Guard_Lvl_1";
     private string _location = "";
+    private bool _useTriggerPlayer = true;
 
     public string Name { get; set; } = "Spawn";
     public bool Enabled { get; set; } = true;
@@ -4651,7 +5549,9 @@ public sealed class SpawnBlockEditorViewModel : ObservableObject
                 OnPropertyChanged(nameof(AssetFieldHint));
                 OnPropertyChanged(nameof(LocationFieldHint));
                 OnPropertyChanged(nameof(CommandModeHint));
-                if (IsCustomCommandType(next) || IsCargoDropType(next) || IsRandomZombieType(next) || IsLootPuppetType(next))
+                OnPropertyChanged(nameof(IsUseTriggerPlayerInputEnabled));
+                if (IsRazorType(next)) UseTriggerPlayer = false;
+                if (IsCustomCommandType(next) || IsCargoDropType(next) || IsRandomZombieType(next) || IsLootPuppetType(next) || IsRazorType(next))
                 {
                     Asset = "";
                 }
@@ -4673,8 +5573,9 @@ public sealed class SpawnBlockEditorViewModel : ObservableObject
     public IReadOnlyList<string> AssetSuggestions => GetAssetSuggestions(Type);
     public bool IsAssetInputEnabled => RequiresAssetInput(Type);
     public bool IsQuantityInputEnabled => !IsCustomCommandType(Type) && !IsCargoDropType(Type);
-    public bool IsDespawnLifetimeInputEnabled => !IsCustomCommandType(Type) && !IsCargoDropType(Type);
-    public bool IsExtraInputEnabled => !IsCustomCommandType(Type) && !IsCargoDropType(Type);
+    public bool IsDespawnLifetimeInputEnabled => !IsCustomCommandType(Type) && !IsCargoDropType(Type) && !IsRazorType(Type);
+    public bool IsExtraInputEnabled => !IsCustomCommandType(Type) && !IsCargoDropType(Type) && !IsRazorType(Type);
+    public bool IsUseTriggerPlayerInputEnabled => !IsRazorType(Type);
     public string AssetFieldLabel => IsCustomCommandType(Type)
         ? "Command"
         : IsCargoDropType(Type)
@@ -4706,6 +5607,11 @@ public sealed class SpawnBlockEditorViewModel : ObservableObject
                 return "Lootpuppet nutzt fest #SpawnZombie " + LootPuppetAsset + ".";
             }
 
+            if (IsRazorType(Type))
+            {
+                return "Razor nutzt ggCON HTTP POST /spawn-at und benoetigt kein Asset. Menge fuehrt entsprechend viele einzelne Spawns aus. SCUM muss Razor an der gewaehlten Position zulassen.";
+            }
+
             if (IsZombieType(Type))
             {
                 return "Zombie nutzt #SpawnZombie mit einer Variante aus dem Katalog.";
@@ -4714,7 +5620,9 @@ public sealed class SpawnBlockEditorViewModel : ObservableObject
             return "Keinen #Spawn-Command eingeben: Typ, Asset, Menge und Location bauen den Spawn-Befehl automatisch.";
         }
     }
-    public string LocationFieldHint => IsCustomCommandType(Type)
+    public string LocationFieldHint => IsRazorType(Type)
+        ? "Razor wird per ggCON HTTP POST /spawn-at an diesen X/Y/Z-Koordinaten angefordert. Mindestens ein Spieler muss online sein und SCUM muss Razor an dieser Position zulassen."
+        : IsCustomCommandType(Type)
         ? "Optional fuer Custom: im Command mit {location} oder {worldLocation} verwenden."
         : IsCargoDropType(Type)
             ? "Wird als X=... Y=... Z=... an #ScheduleWorldEvent BP_CargoDropEvent angehaengt."
@@ -4736,7 +5644,11 @@ public sealed class SpawnBlockEditorViewModel : ObservableObject
     public int RepeatEverySeconds { get; set; }
     public int RepeatEveryMs { get; set; }
     public int DelayMs { get; set; } = 250;
-    public bool UseTriggerPlayer { get; set; } = true;
+    public bool UseTriggerPlayer
+    {
+        get => _useTriggerPlayer;
+        set => SetProperty(ref _useTriggerPlayer, IsRazorType(Type) ? false : value);
+    }
 
     public static SpawnBlockEditorViewModel FromBlock(SpawnBlock block) => new()
     {
@@ -4747,14 +5659,14 @@ public sealed class SpawnBlockEditorViewModel : ObservableObject
         Quantity = Math.Max(1, block.Quantity),
         Location = block.Location ?? "",
         Extra = block.Extra ?? "",
-        DespawnLifetimeSeconds = Math.Max(0, block.DespawnLifetimeSeconds),
+        DespawnLifetimeSeconds = block.DespawnLifetimeSeconds > 0 ? block.DespawnLifetimeSeconds : 600,
         StartDelaySeconds = Math.Max(0, block.StartDelaySeconds),
         StartDelayMs = Math.Max(0, block.StartDelayMs),
         Repeat = Math.Max(1, block.Repeat),
         RepeatEverySeconds = Math.Max(0, block.RepeatEverySeconds),
         RepeatEveryMs = Math.Max(0, block.RepeatEveryMs),
         DelayMs = Math.Max(0, block.DelayMs),
-        UseTriggerPlayer = block.UseTriggerPlayer
+        UseTriggerPlayer = !IsRazorType(block.Type) && block.UseTriggerPlayer
     };
 
     public SpawnBlock ToBlock()
@@ -4769,14 +5681,14 @@ public sealed class SpawnBlockEditorViewModel : ObservableObject
             Quantity = Math.Max(1, Quantity),
             Location = Location?.Trim() ?? "",
             Extra = Extra?.Trim() ?? "",
-            DespawnLifetimeSeconds = Math.Max(0, DespawnLifetimeSeconds),
+            DespawnLifetimeSeconds = IsDespawnLifetimeInputEnabled ? 600 : 0,
             StartDelaySeconds = Math.Max(0, StartDelaySeconds),
             StartDelayMs = Math.Max(0, StartDelayMs),
             Repeat = Math.Max(1, Repeat),
             RepeatEverySeconds = Math.Max(0, RepeatEverySeconds),
             RepeatEveryMs = Math.Max(0, RepeatEveryMs),
             DelayMs = Math.Max(0, DelayMs),
-            UseTriggerPlayer = UseTriggerPlayer
+            UseTriggerPlayer = !IsRazorType(type) && UseTriggerPlayer
         };
     }
 
@@ -4856,7 +5768,7 @@ public sealed class SpawnBlockEditorViewModel : ObservableObject
     private static string NormalizeEditorAsset(string? type, string? asset)
     {
         var value = asset?.Trim() ?? string.Empty;
-        return IsRandomZombieType(type) || IsLootPuppetType(type)
+        return IsRandomZombieType(type) || IsLootPuppetType(type) || IsRazorType(type)
             ? string.Empty
             : value;
     }
@@ -4864,7 +5776,7 @@ public sealed class SpawnBlockEditorViewModel : ObservableObject
     private static string NormalizeStoredAsset(string? type, string? asset)
     {
         var value = asset?.Trim() ?? string.Empty;
-        return IsRandomZombieType(type) || IsLootPuppetType(type)
+        return IsRandomZombieType(type) || IsLootPuppetType(type) || IsRazorType(type)
             ? string.Empty
             : value;
     }
@@ -4884,6 +5796,9 @@ public sealed class SpawnBlockEditorViewModel : ObservableObject
                value.Equals("LootPuppet", StringComparison.OrdinalIgnoreCase) ||
                value.Equals(LootPuppetAsset, StringComparison.OrdinalIgnoreCase);
     }
+
+    private static bool IsRazorType(string? type) =>
+        string.Equals(type?.Trim(), "Razor", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsZombieType(string? type)
     {
@@ -4954,12 +5869,20 @@ public sealed class SpawnBlockEditorViewModel : ObservableObject
     }
 }
 
+public sealed record LootPackCategoryOption(string Value, string Name);
+
 public sealed class LootPackEditorViewModel : ObservableObject
 {
     private string _name = "LootPack";
+    private string _category = "Mixed";
     private bool _enabled = true;
     private int _weight = 1;
     private string _location = "";
+
+    public LootPackEditorViewModel()
+    {
+        Items.CollectionChanged += Items_CollectionChanged;
+    }
 
     public string Name
     {
@@ -4985,10 +5908,79 @@ public sealed class LootPackEditorViewModel : ObservableObject
         set => SetProperty(ref _location, value ?? string.Empty);
     }
     public ObservableCollection<LootItemEditorViewModel> Items { get; } = new();
+    public string PreviewImageUrl
+    {
+        get
+        {
+            var item = Items.FirstOrDefault(entry => !string.IsNullOrWhiteSpace(entry.Item))?.Item?.Trim();
+            return string.IsNullOrWhiteSpace(item)
+                ? string.Empty
+                : "https://www.lmnt-gaming.net/images/items/" + Uri.EscapeDataString(item) + ".png";
+        }
+    }
+
+    public string Category
+    {
+        get => _category;
+        set
+        {
+            var normalized = value is "Weapons" or "Ammunition" or "Equipment" or "Consumables" or "Mixed" ? value : "Mixed";
+            if (SetProperty(ref _category, normalized)) OnPropertyChanged(nameof(CategorySortOrder));
+        }
+    }
+
+    public int CategorySortOrder => Category switch
+    {
+        "Weapons" => 0,
+        "Ammunition" => 1,
+        "Equipment" => 2,
+        "Consumables" => 3,
+        _ => 4
+    };
+    public string PreviewItemName => Items.FirstOrDefault(entry => !string.IsNullOrWhiteSpace(entry.Item))?.Item?.Trim() ?? "—";
+    public int ItemCount => Items.Count;
+    public int TotalQuantity => Items.Sum(item => Math.Max(1, item.Quantity));
+
+    private void Items_CollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        if (e.OldItems is not null)
+        {
+            foreach (LootItemEditorViewModel item in e.OldItems)
+            {
+                item.PropertyChanged -= LootItem_PropertyChanged;
+            }
+        }
+
+        if (e.NewItems is not null)
+        {
+            foreach (LootItemEditorViewModel item in e.NewItems)
+            {
+                item.PropertyChanged += LootItem_PropertyChanged;
+            }
+        }
+
+        RefreshPreview();
+    }
+
+    private void LootItem_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(LootItemEditorViewModel.Item) or nameof(LootItemEditorViewModel.Quantity))
+        {
+            RefreshPreview();
+        }
+    }
+
+    private void RefreshPreview()
+    {
+        OnPropertyChanged(nameof(PreviewImageUrl));
+        OnPropertyChanged(nameof(PreviewItemName));
+        OnPropertyChanged(nameof(ItemCount));
+        OnPropertyChanged(nameof(TotalQuantity));
+    }
 
     public static LootPackEditorViewModel FromPack(LootPack pack)
     {
-        var model = new LootPackEditorViewModel { Name = pack.Name ?? "LootPack", Enabled = pack.Enabled, Weight = Math.Max(1, pack.Weight), Location = pack.Location ?? "" };
+        var model = new LootPackEditorViewModel { Name = pack.Name ?? "LootPack", Category = pack.Category, Enabled = pack.Enabled, Weight = Math.Max(1, pack.Weight), Location = pack.Location ?? "" };
         foreach (var item in pack.Items) model.Items.Add(LootItemEditorViewModel.FromItem(item));
         return model;
     }
@@ -4996,6 +5988,7 @@ public sealed class LootPackEditorViewModel : ObservableObject
     public LootPack ToPack() => new()
     {
         Name = string.IsNullOrWhiteSpace(Name) ? "LootPack" : Name.Trim(),
+        Category = Category,
         Enabled = Enabled,
         Weight = Math.Max(1, Weight),
         Location = null,
@@ -5241,6 +6234,20 @@ public sealed class RedeemCodeEditorViewModel : ObservableObject
 
 public sealed class ChatCommandRuleEditorViewModel : ObservableObject
 {
+    private BuiltinChatCommandDefinition? _builtin;
+    private Func<bool>? _isGerman;
+    public bool IsBuiltin => _builtin is not null;
+    public Visibility BuiltinVisibility => IsBuiltin ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility EditableVisibility => IsBuiltin ? Visibility.Collapsed : Visibility.Visible;
+    public string BuiltinDescription => _builtin is null ? "" : _isGerman?.Invoke() == true ? _builtin.DescriptionDe : _builtin.DescriptionEn;
+    public string BuiltinAliases => _builtin is null || string.IsNullOrWhiteSpace(_builtin.Aliases) ? "" : "Aliases: " + _builtin.Aliases;
+    public static ChatCommandRuleEditorViewModel FromBuiltin(BuiltinChatCommandDefinition definition, Func<bool> isGerman)
+        => new() { _builtin = definition, _isGerman = isGerman, _trigger = definition.Syntax };
+    public void RefreshBuiltinText()
+    {
+        OnPropertyChanged(nameof(Summary));
+        OnPropertyChanged(nameof(BuiltinDescription));
+    }
     private bool _enabled = true;
     private string _trigger = string.Empty;
     private string _matchMode = "equals";
@@ -5254,8 +6261,8 @@ public sealed class ChatCommandRuleEditorViewModel : ObservableObject
 
     public bool Enabled
     {
-        get => _enabled;
-        set => SetProperty(ref _enabled, value);
+        get => IsBuiltin || _enabled;
+        set { if (!IsBuiltin) SetProperty(ref _enabled, value); }
     }
 
     public string Trigger
@@ -5263,6 +6270,7 @@ public sealed class ChatCommandRuleEditorViewModel : ObservableObject
         get => _trigger;
         set
         {
+            if (IsBuiltin) return;
             if (SetProperty(ref _trigger, value)) OnPropertyChanged(nameof(Summary));
         }
     }
@@ -5331,6 +6339,7 @@ public sealed class ChatCommandRuleEditorViewModel : ObservableObject
     {
         get
         {
+            if (_builtin is not null) return $"{_builtin.Syntax} · {(_isGerman?.Invoke() == true ? "PFLICHT · eingebaut" : "REQUIRED · built-in")}";
             var trigger = string.IsNullOrWhiteSpace(Trigger) ? "New trigger" : Trigger.Trim();
             var action = !string.IsNullOrWhiteSpace(Command) ? Command.Trim() : (!string.IsNullOrWhiteSpace(Response) ? "Send response" : "No action");
             var mode = ExecuteAsChatPlayer ? "ExecAs" : "Direct";
@@ -5536,7 +6545,7 @@ public sealed class WeeklySquadOverviewViewModel
 
 public sealed class WeeklyRewardClaimViewModel
 {
-    public WeeklyRewardClaimViewModel(WeeklyRewardClaim claim)
+    public WeeklyRewardClaimViewModel(WeeklyRewardClaim claim, bool isGerman)
     {
         Id = claim.Id;
         TaskTitle = claim.TaskTitle;
@@ -5546,11 +6555,10 @@ public sealed class WeeklyRewardClaimViewModel
         Code = claim.Code;
         Reward = claim.RewardSummary;
         Error = claim.LastError;
-        Status = claim.IsComplete
-            ? "Eingeloest " + claim.ClaimedUtc?.ToLocalTime().ToString("dd.MM.yyyy HH:mm")
-            : claim.ItemDeliveredUtc.HasValue || claim.MoneyDeliveredUtc.HasValue || claim.TextClaimedUtc.HasValue
-                ? "Teilweise ausgezahlt"
-                : claim.NotifiedUtc.HasValue ? "Code gesendet" : "Offen";
+        CanAcknowledge = true;
+        Status = claim.ItemDeliveredUtc.HasValue || claim.MoneyDeliveredUtc.HasValue || claim.FameDeliveredUtc.HasValue || claim.TextClaimedUtc.HasValue
+            ? (isGerman ? "Teilweise ausgezahlt" : "Partially paid out")
+            : claim.NotifiedUtc.HasValue ? (isGerman ? "Code gesendet" : "Code sent") : (isGerman ? "Offen" : "Open");
     }
 
     public string Id { get; }
@@ -5563,13 +6571,16 @@ public sealed class WeeklyRewardClaimViewModel
     public string Status { get; }
     public string Error { get; }
     public string Recipient => string.IsNullOrWhiteSpace(SquadName) ? $"{PlayerName} ({SteamId})" : $"{PlayerName} ({SteamId}) | Squad: {SquadName}";
-    public bool CanAcknowledge => !Status.StartsWith("Eingeloest", StringComparison.OrdinalIgnoreCase);
+    public bool CanAcknowledge { get; }
 }
 
 public sealed class ScriptRuntimeStatusViewModel
 {
     public ScriptRuntimeStatusViewModel(EventRuntime runtime)
     {
+        EventKey = string.IsNullOrWhiteSpace(runtime.Definition.Id)
+            ? runtime.Definition.Name
+            : runtime.Definition.Id;
         Name = runtime.Definition.Name;
         Mode = runtime.Definition.Mode;
         State = runtime.State.ToString();
@@ -5581,8 +6592,10 @@ public sealed class ScriptRuntimeStatusViewModel
         LastLootSummary = runtime.LastLootSummary;
         SpawnedLootCount = runtime.SpawnedLootCount;
         LastUpdated = runtime.LastUpdatedUtc > DateTime.MinValue ? runtime.LastUpdatedUtc.ToLocalTime().ToString("HH:mm:ss") : "";
+        CanManualStart = runtime.Definition.Enabled && runtime.State == EventRuntimeState.Stopped;
     }
 
+    public string EventKey { get; }
     public string Name { get; }
     public string Mode { get; }
     public string State { get; }
@@ -5594,6 +6607,7 @@ public sealed class ScriptRuntimeStatusViewModel
     public string LastLootSummary { get; }
     public int SpawnedLootCount { get; }
     public string LastUpdated { get; }
+    public bool CanManualStart { get; }
     public string StateLabel => State switch
     {
         nameof(EventRuntimeState.Initiated) => "Initiated",
@@ -5616,18 +6630,180 @@ public sealed class WeeklyRewardItemEditorViewModel : ObservableObject
     public int StackCount { get => _stackCount; set => SetProperty(ref _stackCount, value); }
 }
 
+public sealed class ChallengeCalendarDayViewModel
+{
+    public ChallengeCalendarDayViewModel(
+        DateTime date,
+        bool isCurrentMonth,
+        bool isToday,
+        bool isSelected,
+        IReadOnlyList<ChallengeCalendarEntryViewModel> entries,
+        bool isGerman)
+    {
+        Date = date;
+        IsCurrentMonth = isCurrentMonth;
+        IsToday = isToday;
+        IsSelected = isSelected;
+        VisibleEntries = entries.Take(4).ToList();
+        var hidden = Math.Max(0, entries.Count - VisibleEntries.Count);
+        MoreText = hidden == 0 ? string.Empty : (isGerman ? $"+ {hidden} weitere" : $"+ {hidden} more");
+    }
+
+    public DateTime Date { get; }
+    public int DayNumber => Date.Day;
+    public bool IsCurrentMonth { get; }
+    public bool IsToday { get; }
+    public bool IsSelected { get; }
+    public IReadOnlyList<ChallengeCalendarEntryViewModel> VisibleEntries { get; }
+    public string MoreText { get; }
+}
+public sealed class ChallengeCalendarEntryViewModel
+{
+    public string Title { get; init; } = string.Empty;
+    public string Type { get; init; } = string.Empty;
+    public bool Enabled { get; init; }
+    public DateTime? StartLocal { get; init; }
+    public DateTime? EndLocal { get; init; }
+    public string ScheduleText { get; init; } = string.Empty;
+    public string StatusText { get; init; } = string.Empty;
+    public double ProgressPercent { get; init; }
+
+    public static ChallengeCalendarEntryViewModel FromEditor(WeeklyTaskEditorViewModel editor, bool isGerman)
+    {
+        if (!editor.TryGetCalendarWindow(out var start, out var end))
+        {
+            return new ChallengeCalendarEntryViewModel
+            {
+                Title = string.IsNullOrWhiteSpace(editor.Title) ? (isGerman ? "Unbenannte Herausforderung" : "Unnamed challenge") : editor.Title,
+                Type = editor.Type,
+                Enabled = editor.Enabled,
+                ScheduleText = isGerman ? "Noch nicht terminiert" : "Not scheduled yet",
+                StatusText = editor.Enabled ? (isGerman ? "Ohne Startdatum" : "No start date") : (isGerman ? "Deaktiviert" : "Disabled")
+            };
+        }
+
+        var now = DateTime.Now;
+        var status = !editor.Enabled
+            ? (isGerman ? "Deaktiviert" : "Disabled")
+            : now < start
+                ? (isGerman ? "Geplant" : "Scheduled")
+                : now >= end
+                    ? (isGerman ? "Beendet" : "Ended")
+                    : (isGerman ? "Läuft" : "Running");
+        var duration = end - start;
+        var progress = duration <= TimeSpan.Zero ? 100 : Math.Clamp((now - start).TotalMilliseconds * 100.0 / duration.TotalMilliseconds, 0, 100);
+        var culture = isGerman ? CultureInfo.GetCultureInfo("de-DE") : CultureInfo.GetCultureInfo("en-US");
+        var format = isGerman ? "dd.MM.yyyy HH:mm" : "MM/dd/yyyy HH:mm";
+
+        return new ChallengeCalendarEntryViewModel
+        {
+            Title = string.IsNullOrWhiteSpace(editor.Title) ? (isGerman ? "Unbenannte Herausforderung" : "Unnamed challenge") : editor.Title,
+            Type = editor.Type,
+            Enabled = editor.Enabled,
+            StartLocal = start,
+            EndLocal = end,
+            ScheduleText = $"{start.ToString(format, culture)}  →  {end.ToString(format, culture)}",
+            StatusText = status,
+            ProgressPercent = progress
+        };
+    }
+}
+public sealed class WeeklyTaskGoalEditorViewModel : ObservableObject
+{
+    private WeeklyCommunityTaskStatTarget? _selectedTarget;
+    public WeeklyCommunityTaskStatTarget? SelectedTarget
+    {
+        get => _selectedTarget;
+        set
+        {
+            if (!SetProperty(ref _selectedTarget, value) || value is null) return;
+            StatTable = value.TableName;
+            StatColumn = value.ColumnName;
+        }
+    }
+
+    private string _statTable = "survival_stats";
+    public string StatTable { get => _statTable; set => SetProperty(ref _statTable, value); }
+
+    private string _statColumn = "puppets_killed";
+    public string StatColumn { get => _statColumn; set => SetProperty(ref _statColumn, value); }
+
+    private long _target = 1000;
+    public long Target { get => _target; set => SetProperty(ref _target, value); }
+
+    public WeeklyCommunityTaskGoalDefinition ToDefinition() => new()
+    {
+        StatTable = SelectedTarget?.TableName ?? StatTable,
+        StatColumn = SelectedTarget?.ColumnName ?? StatColumn,
+        Target = Math.Max(1, Target)
+    };
+
+    public static WeeklyTaskGoalEditorViewModel FromDefinition(
+        WeeklyCommunityTaskGoalDefinition definition,
+        IReadOnlyList<WeeklyCommunityTaskStatTarget> targets)
+    {
+        var editor = new WeeklyTaskGoalEditorViewModel
+        {
+            StatTable = string.IsNullOrWhiteSpace(definition.StatTable) ? "survival_stats" : definition.StatTable,
+            StatColumn = definition.StatColumn,
+            Target = Math.Max(1, definition.Target)
+        };
+        editor.SelectedTarget = targets.FirstOrDefault(x =>
+            x.TableName.Equals(editor.StatTable, StringComparison.OrdinalIgnoreCase) &&
+            x.ColumnName.Equals(editor.StatColumn, StringComparison.OrdinalIgnoreCase));
+        return editor;
+    }
+}
 public sealed class WeeklyTaskEditorViewModel : ObservableObject
 {
     private readonly IReadOnlyList<WeeklyCommunityTaskStatTarget> _targets;
+    public ObservableCollection<WeeklyTaskGoalEditorViewModel> Goals { get; } = new();
+    private bool _isGerman;
 
     private bool _enabled;
-    public bool Enabled { get => _enabled; set => SetProperty(ref _enabled, value); }
+    public bool Enabled
+    {
+        get => _enabled;
+        set
+        {
+            if (SetProperty(ref _enabled, value)) RefreshRuntimeDisplay();
+        }
+    }
 
     private string _id = string.Empty;
     public string Id { get => _id; set => SetProperty(ref _id, value); }
 
     private string _type = "Daily";
-    public string Type { get => _type; set { if (SetProperty(ref _type, value)) ApplyTypeDefaults(); } }
+    public string Type
+    {
+        get => _type;
+        set
+        {
+            if (!SetProperty(ref _type, value)) return;
+            ApplyTypeDefaults();
+            OnPropertyChanged(nameof(TypeSortOrder));
+            OnPropertyChanged(nameof(TypeGroupDisplay));
+            OnPropertyChanged(nameof(IsQuiz));
+            OnPropertyChanged(nameof(IsStatisticsChallenge));
+            OnPropertyChanged(nameof(ResetActionText));
+            OnPropertyChanged(nameof(HeaderDetails));
+            if (IsQuiz)
+            {
+                GoalScope = "PerPlayer";
+                RewardDistribution = "PerParticipant";
+            }
+        }
+    }
+    public int TypeSortOrder => Type.Equals("Daily", StringComparison.OrdinalIgnoreCase) ? 0 : Type.Equals("Weekly", StringComparison.OrdinalIgnoreCase) ? 1 : 2;
+    public string ResetActionText => IsQuiz
+        ? (_isGerman ? "Quiz neu starten" : "Restart quiz")
+        : (_isGerman ? "Zähler zurücksetzen" : "Reset counter");
+    public string TypeGroupDisplay => TypeSortOrder switch
+    {
+        0 => _isGerman ? "Tägliche Herausforderungen" : "Daily challenges",
+        1 => _isGerman ? "Wöchentliche Herausforderungen" : "Weekly challenges",
+        _ => _isGerman ? "Weitere Herausforderungen" : "Other challenges"
+    };
 
     private string _title = string.Empty;
     public string Title { get => _title; set => SetProperty(ref _title, value); }
@@ -5636,7 +6812,35 @@ public sealed class WeeklyTaskEditorViewModel : ObservableObject
     public string Description { get => _description; set => SetProperty(ref _description, value); }
 
     private string _goalScope = "Community";
-    public string GoalScope { get => _goalScope; set => SetProperty(ref _goalScope, value); }
+    public string GoalScope
+    {
+        get => _goalScope;
+        set
+        {
+            if (!SetProperty(ref _goalScope, value)) return;
+            OnPropertyChanged(nameof(IsPersonal));
+            OnPropertyChanged(nameof(IsCommunity));
+            OnPropertyChanged(nameof(HeaderDetails));
+        }
+    }
+    private string _goalLogic = "Any";
+    public string GoalLogic
+    {
+        get => _goalLogic;
+        set
+        {
+            if (!SetProperty(ref _goalLogic, string.Equals(value, "All", StringComparison.OrdinalIgnoreCase) ? "All" : "Any")) return;
+            OnPropertyChanged(nameof(GoalLogicHint));
+            OnPropertyChanged(nameof(HeaderDetails));
+        }
+    }
+    public string GoalLogicHint => string.Equals(GoalLogic, "All", StringComparison.OrdinalIgnoreCase)
+        ? (_isGerman ? "UND: Die Challenge ist erst geschafft, wenn alle Ziele erreicht wurden." : "AND: The challenge is completed only after all goals have been reached.")
+        : (_isGerman ? "ODER: Die Challenge ist geschafft, sobald eines der Ziele erreicht wurde." : "OR: The challenge is completed as soon as any goal is reached.");
+    public bool IsPersonal => string.Equals(GoalScope, "PerPlayer", StringComparison.OrdinalIgnoreCase);
+    public bool IsCommunity => !IsPersonal;
+    public bool IsQuiz => Type.Equals("Quiz", StringComparison.OrdinalIgnoreCase);
+    public bool IsStatisticsChallenge => !IsQuiz;
 
     private WeeklyCommunityTaskStatTarget? _selectedTarget;
     public WeeklyCommunityTaskStatTarget? SelectedTarget
@@ -5649,7 +6853,6 @@ public sealed class WeeklyTaskEditorViewModel : ObservableObject
                 StatTable = value.TableName;
                 StatColumn = value.ColumnName;
                 if (string.IsNullOrWhiteSpace(Title)) Title = value.DisplayName;
-                if (string.IsNullOrWhiteSpace(Id)) Id = (Type.Equals("Weekly", StringComparison.OrdinalIgnoreCase) ? "weekly-" : "daily-") + value.ColumnName.Replace('_', '-');
             }
         }
     }
@@ -5669,94 +6872,227 @@ public sealed class WeeklyTaskEditorViewModel : ObservableObject
         get => _durationHours;
         set
         {
-            if (SetProperty(ref _durationHours, value)) OnPropertyChanged(nameof(SchedulePreview));
+            if (!SetProperty(ref _durationHours, value)) return;
+            OnPropertyChanged(nameof(SchedulePreview));
+            RefreshRuntimeDisplay();
         }
     }
 
-    private double _minimumParticipationPercent = 2.0;
-    public double MinimumParticipationPercent { get => _minimumParticipationPercent; set => SetProperty(ref _minimumParticipationPercent, value); }
+    private long _minimumParticipationValue = 1;
+    public long MinimumParticipationValue { get => _minimumParticipationValue; set => SetProperty(ref _minimumParticipationValue, value); }
 
-    private string _startLocalText = string.Empty;
-    public string StartLocalText
+    private DateTime? _startDate;
+    public DateTime? StartDate
     {
-        get => _startLocalText;
+        get => _startDate;
         set
         {
-            if (SetProperty(ref _startLocalText, value)) OnPropertyChanged(nameof(SchedulePreview));
+            if (SetProperty(ref _startDate, value))
+            {
+                OnPropertyChanged(nameof(SchedulePreview));
+                OnPropertyChanged(nameof(StartSortValue));
+                OnPropertyChanged(nameof(HeaderDetails));
+                RefreshRuntimeDisplay();
+            }
+        }
+    }
+
+    private string _startTimeText = "00:00";
+    public string StartTimeText
+    {
+        get => _startTimeText;
+        set
+        {
+            if (SetProperty(ref _startTimeText, value))
+            {
+                OnPropertyChanged(nameof(SchedulePreview));
+                OnPropertyChanged(nameof(StartSortValue));
+                OnPropertyChanged(nameof(HeaderDetails));
+                RefreshRuntimeDisplay();
+            }
         }
     }
 
     private string _endUtc = string.Empty;
-    public string EndUtc { get => _endUtc; set => SetProperty(ref _endUtc, value); }
+    public string EndUtc
+    {
+        get => _endUtc;
+        set
+        {
+            if (SetProperty(ref _endUtc, value)) RefreshRuntimeDisplay();
+        }
+    }
 
-    private string _rewardText = string.Empty;
-    public string RewardText { get => _rewardText; set => SetProperty(ref _rewardText, value); }
-
-    private string _rewardMode = "FreeText";
-    public string RewardMode { get => _rewardMode; set => SetProperty(ref _rewardMode, value); }
+    private string _rewardLootPackName = string.Empty;
+    public string RewardLootPackName { get => _rewardLootPackName; set => SetProperty(ref _rewardLootPackName, value); }
+    public ObservableCollection<string> RewardLootPackNames { get; } = new();
+    public string RewardLootPackSelectionText => RewardLootPackNames.Count switch
+    {
+        0 => _isGerman ? "Kein Lootpack ausgewählt" : "No loot pack selected",
+        1 => RewardLootPackNames[0],
+        _ => (_isGerman ? "Zufällig: " : "Random: ") + string.Join(" / ", RewardLootPackNames)
+    };
 
     private string _rewardDistribution = "PerParticipant";
-    public string RewardDistribution { get => _rewardDistribution; set => SetProperty(ref _rewardDistribution, value); }
-
-    private string _rewardItem = string.Empty;
-    public string RewardItem { get => _rewardItem; set => SetProperty(ref _rewardItem, value); }
-
-    private int _rewardItemQuantity = 1;
-    public int RewardItemQuantity { get => _rewardItemQuantity; set => SetProperty(ref _rewardItemQuantity, value); }
-
-    private int _rewardItemStackCount;
-    public int RewardItemStackCount { get => _rewardItemStackCount; set => SetProperty(ref _rewardItemStackCount, value); }
+    public string RewardDistribution
+    {
+        get => _rewardDistribution;
+        set
+        {
+            if (SetProperty(ref _rewardDistribution, value)) OnPropertyChanged(nameof(HeaderDetails));
+        }
+    }
 
     public ObservableCollection<WeeklyRewardItemEditorViewModel> RewardItems { get; } = new();
 
     private int _rewardMoney;
     public int RewardMoney { get => _rewardMoney; set => SetProperty(ref _rewardMoney, value); }
 
+    private int _rewardFame;
+    public int RewardFame { get => _rewardFame; set => SetProperty(ref _rewardFame, value); }
+
     private string _completedText = string.Empty;
     public string CompletedText { get => _completedText; set => SetProperty(ref _completedText, value); }
+
+    private int _quizNumber = 1;
+    public int QuizNumber { get => _quizNumber; set => SetProperty(ref _quizNumber, Math.Max(1, value)); }
+    private string _quizQuestion = string.Empty;
+    public string QuizQuestion { get => _quizQuestion; set => SetProperty(ref _quizQuestion, value); }
+    private string _quizAcceptedAnswers = string.Empty;
+    public string QuizAcceptedAnswers { get => _quizAcceptedAnswers; set => SetProperty(ref _quizAcceptedAnswers, value); }
+    private string _quizImagePath = string.Empty;
+    public string QuizImagePath { get => _quizImagePath; set => SetProperty(ref _quizImagePath, value); }
+
+    private DateTime? _baselineStartUtc;
+    public string RuntimeStatusText
+    {
+        get
+        {
+            if (!Enabled) return _isGerman ? "Deaktiviert" : "Disabled";
+            if (!TryGetRuntimeWindow(out var start, out var end))
+            {
+                return _isGerman ? $"Startet mit dem nächsten Scan · Laufzeit {DurationHours}h" : $"Starts with the next scan · Duration {DurationHours}h";
+            }
+
+            var now = DateTime.Now;
+            if (now < start)
+            {
+                return (_isGerman ? "Startet in " : "Starts in ") + FormatRuntimeDistance(start - now);
+            }
+            if (now >= end)
+            {
+                return _isGerman ? "Laufzeit beendet" : "Duration ended";
+            }
+            return (_isGerman ? "Läuft noch " : "Runs for another ") + FormatRuntimeDistance(end - now);
+        }
+    }
+
+    public double RuntimeProgressPercent
+    {
+        get
+        {
+            if (!TryGetRuntimeWindow(out var start, out var end)) return 0;
+            var duration = end - start;
+            if (duration <= TimeSpan.Zero) return 100;
+            return Math.Clamp((DateTime.Now - start).TotalMilliseconds * 100.0 / duration.TotalMilliseconds, 0, 100);
+        }
+    }
+
+    public void SetBaselineStart(DateTime? baselineStartUtc)
+    {
+        _baselineStartUtc = baselineStartUtc;
+        RefreshRuntimeDisplay();
+    }
+
+    public void RefreshRuntimeDisplay()
+    {
+        OnPropertyChanged(nameof(RuntimeStatusText));
+        OnPropertyChanged(nameof(RuntimeProgressPercent));
+    }
+    public DateTime StartSortValue => TryGetLocalStart(out var value) ? value : DateTime.MaxValue;
+
+    public string HeaderDetails
+    {
+        get
+        {
+            var start = TryGetLocalStart(out var startLocal)
+                ? startLocal.ToString("dd.MM.yyyy HH:mm")
+                : (_isGerman ? "ohne Startdatum" : "no start date");
+            if (IsQuiz)
+            {
+                return _isGerman
+                    ? $"Startet am: {start}  ·  Rätsel / 2 Versuche  ·  Auszahlung pro Spieler"
+                    : $"Starts: {start}  ·  Quiz / 2 attempts  ·  Payout per player";
+            }
+            var goal = IsPersonal ? "Personal" : "Community";
+            var goalRule = string.Equals(GoalLogic, "All", StringComparison.OrdinalIgnoreCase)
+                ? (_isGerman ? "alle Ziele" : "all goals")
+                : (_isGerman ? "ein Ziel" : "any goal");
+            var payout = string.Equals(RewardDistribution, "PerSquad", StringComparison.OrdinalIgnoreCase)
+                ? (_isGerman ? "pro Squad" : "per squad")
+                : (_isGerman ? "pro Teilnehmer" : "per participant");
+            return _isGerman
+                ? $"Startet am: {start}  ·  Modus: {goal} / {goalRule}  ·  Auszahlung: {payout}"
+                : $"Starts: {start}  ·  Mode: {goal} / {goalRule}  ·  Payout: {payout}";
+        }
+    }
 
     public string SchedulePreview
     {
         get
         {
-            var start = TryParseLocalStart(out var startLocal) ? startLocal.ToString("dd.MM.yyyy HH:mm") : "sofort / beim naechsten Startwert";
+            var start = TryGetLocalStart(out var startLocal) ? startLocal.ToString("dd.MM.yyyy HH:mm") : (_isGerman ? "sofort" : "immediately");
             var duration = DurationHours > 0 ? DurationHours + "h" : "Auto";
-            return $"Start: {start} | Laufzeit: {duration}";
+            return _isGerman ? $"Start: {start} | Laufzeit: {duration}" : $"Start: {start} | Duration: {duration}";
         }
     }
 
-    private WeeklyTaskEditorViewModel(IReadOnlyList<WeeklyCommunityTaskStatTarget> targets)
+    private WeeklyTaskEditorViewModel(IReadOnlyList<WeeklyCommunityTaskStatTarget> targets, bool isGerman)
     {
         _targets = targets;
+        _isGerman = isGerman;
+        RewardLootPackNames.CollectionChanged += (_, _) => OnPropertyChanged(nameof(RewardLootPackSelectionText));
     }
 
-    public static WeeklyTaskEditorViewModel FromDefinition(WeeklyCommunityTaskDefinition definition, IReadOnlyList<WeeklyCommunityTaskStatTarget> targets)
+    public static WeeklyTaskEditorViewModel FromDefinition(WeeklyCommunityTaskDefinition definition, IReadOnlyList<WeeklyCommunityTaskStatTarget> targets, bool isGerman)
     {
-        var editor = new WeeklyTaskEditorViewModel(targets)
+        var personal = string.Equals(definition.GoalScope, "PerPlayer", StringComparison.OrdinalIgnoreCase);
+        var editor = new WeeklyTaskEditorViewModel(targets, isGerman)
         {
             Enabled = definition.Enabled,
-            Id = definition.Id,
+            Id = string.IsNullOrWhiteSpace(definition.Id) ? "challenge-" + Guid.NewGuid().ToString("N")[..8] : definition.Id,
             Type = string.IsNullOrWhiteSpace(definition.Type) ? "Weekly" : definition.Type,
             Title = definition.Title,
             Description = definition.Description,
             GoalScope = string.IsNullOrWhiteSpace(definition.GoalScope) ? "Community" : definition.GoalScope,
+            GoalLogic = string.Equals(definition.GoalLogic, "All", StringComparison.OrdinalIgnoreCase) ? "All" : "Any",
             StatTable = string.IsNullOrWhiteSpace(definition.StatTable) ? "survival_stats" : definition.StatTable,
             StatColumn = definition.StatColumn,
             Target = definition.Target,
             DurationHours = definition.DurationHours <= 0 ? (string.Equals(definition.Type, "Daily", StringComparison.OrdinalIgnoreCase) ? 24 : 168) : definition.DurationHours,
-            MinimumParticipationPercent = definition.MinimumParticipationPercent <= 0 ? 2.0 : definition.MinimumParticipationPercent,
+            MinimumParticipationValue = personal ? 0 : (definition.MinimumParticipationValue > 0 ? definition.MinimumParticipationValue : Math.Max(1, (long)Math.Floor(Math.Max(1, definition.Target) * definition.MinimumParticipationPercent / 100.0))),
             EndUtc = definition.EndUtc,
-            RewardText = definition.RewardText,
-            RewardMode = string.IsNullOrWhiteSpace(definition.RewardMode) ? "FreeText" : definition.RewardMode,
             RewardDistribution = string.IsNullOrWhiteSpace(definition.RewardDistribution) ? "PerParticipant" : definition.RewardDistribution,
-            RewardItem = definition.RewardItem,
-            RewardItemQuantity = Math.Max(1, definition.RewardItemQuantity),
-            RewardItemStackCount = Math.Max(0, definition.RewardItemStackCount),
             RewardMoney = Math.Max(0, definition.RewardMoney),
-            CompletedText = definition.CompletedText
+            RewardFame = Math.Max(0, definition.RewardFame),
+            CompletedText = definition.CompletedText,
+            QuizNumber = Math.Max(1, definition.QuizNumber),
+            QuizQuestion = definition.QuizQuestion,
+            QuizAcceptedAnswers = definition.QuizAcceptedAnswers,
+            QuizImagePath = definition.QuizImagePath
         };
 
-        foreach (var item in WeeklyRewardItems.GetConfigured(definition))
+        foreach (var packName in WeeklyRewardItems.GetConfiguredLootPackNames(definition))
+            editor.RewardLootPackNames.Add(packName);
+
+        foreach (var goal in WeeklyCommunityTaskService.GetConfiguredGoals(definition))
+        {
+            editor.Goals.Add(WeeklyTaskGoalEditorViewModel.FromDefinition(goal, targets));
+        }
+        IEnumerable<WeeklyRewardItemDefinition> editorRewardItems = WeeklyRewardItems.GetConfiguredLootPackNames(definition).Count == 0
+            ? WeeklyRewardItems.GetConfigured(definition)
+            : Array.Empty<WeeklyRewardItemDefinition>();
+        foreach (var item in editorRewardItems)
         {
             editor.RewardItems.Add(new WeeklyRewardItemEditorViewModel
             {
@@ -5765,22 +7101,24 @@ public sealed class WeeklyTaskEditorViewModel : ObservableObject
                 StackCount = item.StackCount
             });
         }
-        if (editor.RewardItems.Count == 0) editor.RewardItems.Add(new WeeklyRewardItemEditorViewModel());
 
         var startUtc = WeeklyCommunityTaskService.GetTaskStartUtc(definition);
-        editor.StartLocalText = startUtc.HasValue ? startUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : string.Empty;
-        editor.SelectedTarget = targets.FirstOrDefault(x => x.TableName.Equals(editor.StatTable, StringComparison.OrdinalIgnoreCase) && x.ColumnName.Equals(editor.StatColumn, StringComparison.OrdinalIgnoreCase));
+        if (startUtc.HasValue)
+        {
+            var local = startUtc.Value.ToLocalTime();
+            editor.StartDate = local.Date;
+            editor.StartTimeText = local.ToString("HH:mm");
+        }
+
+        editor.SelectedTarget = editor.Goals.FirstOrDefault()?.SelectedTarget;
         return editor;
     }
 
     public WeeklyCommunityTaskDefinition ToDefinition()
     {
-        var startUtc = string.Empty;
-        if (TryParseLocalStart(out var startLocal))
-        {
-            startUtc = startLocal.ToUniversalTime().ToString("O");
-        }
-
+        var startUtc = TryGetLocalStart(out var startLocal)
+            ? DateTime.SpecifyKind(startLocal, DateTimeKind.Local).ToUniversalTime().ToString("O")
+            : string.Empty;
         var rewardItems = RewardItems
             .Where(x => !string.IsNullOrWhiteSpace(x.Item))
             .Select(x => new WeeklyRewardItemDefinition
@@ -5790,35 +7128,79 @@ public sealed class WeeklyTaskEditorViewModel : ObservableObject
                 StackCount = Math.Max(0, x.StackCount)
             })
             .ToList();
-        var firstRewardItem = rewardItems.FirstOrDefault();
+        var goals = Goals.Select(x => x.ToDefinition()).ToList();
+        if (goals.Count == 0)
+        {
+            goals.Add(new WeeklyCommunityTaskGoalDefinition
+            {
+                StatTable = SelectedTarget?.TableName ?? StatTable,
+                StatColumn = SelectedTarget?.ColumnName ?? StatColumn,
+                Target = Math.Max(1, Target)
+            });
+        }
+        var primaryGoal = goals[0];
+        var rewardLootPackNames = RewardLootPackNames
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var useLootPack = rewardLootPackNames.Count > 0;
+        var firstRewardItem = useLootPack ? null : rewardItems.FirstOrDefault();
 
         return new WeeklyCommunityTaskDefinition
         {
             Enabled = Enabled,
-            Id = string.IsNullOrWhiteSpace(Id) ? Guid.NewGuid().ToString("N")[..8] : Id.Trim(),
+            Id = string.IsNullOrWhiteSpace(Id) ? "challenge-" + Guid.NewGuid().ToString("N")[..8] : Id.Trim(),
             Type = string.IsNullOrWhiteSpace(Type) ? "Weekly" : Type.Trim(),
             Title = Title?.Trim() ?? string.Empty,
             Description = Description?.Trim() ?? string.Empty,
             GoalScope = string.IsNullOrWhiteSpace(GoalScope) ? "Community" : GoalScope.Trim(),
-            StatTable = SelectedTarget?.TableName ?? StatTable,
-            StatColumn = SelectedTarget?.ColumnName ?? StatColumn,
-            Target = Math.Max(1, Target),
+            GoalLogic = string.Equals(GoalLogic, "All", StringComparison.OrdinalIgnoreCase) ? "All" : "Any",
+            StatTable = primaryGoal.StatTable,
+            StatColumn = primaryGoal.StatColumn,
+            Target = primaryGoal.Target,
+            Goals = goals,
             StartUtc = startUtc,
             DurationHours = DurationHours,
-            MinimumParticipationPercent = MinimumParticipationPercent,
+            MinimumParticipationValue = IsPersonal ? 0 : Math.Max(1, MinimumParticipationValue),
+            MinimumParticipationPercent = 0,
             EndUtc = EndUtc?.Trim() ?? string.Empty,
-            RewardText = RewardText?.Trim() ?? string.Empty,
-            RewardMode = string.IsNullOrWhiteSpace(RewardMode) ? "FreeText" : RewardMode.Trim(),
+            RewardText = string.Empty,
+            RewardMode = "Item",
             RewardDistribution = string.IsNullOrWhiteSpace(RewardDistribution) ? "PerParticipant" : RewardDistribution.Trim(),
+            RewardLootPackName = rewardLootPackNames.FirstOrDefault() ?? string.Empty,
+            RewardLootPackNames = rewardLootPackNames,
             RewardItem = firstRewardItem?.Item ?? string.Empty,
             RewardItemQuantity = firstRewardItem?.Quantity ?? 1,
             RewardItemStackCount = firstRewardItem?.StackCount ?? 0,
-            RewardItems = rewardItems,
+            RewardItems = useLootPack ? new List<WeeklyRewardItemDefinition>() : rewardItems,
             RewardMoney = Math.Max(0, RewardMoney),
-            CompletedText = CompletedText?.Trim() ?? string.Empty
+            RewardFame = Math.Max(0, RewardFame),
+            CompletedText = CompletedText?.Trim() ?? string.Empty,
+            QuizNumber = Math.Max(1, QuizNumber),
+            QuizQuestion = QuizQuestion?.Trim() ?? string.Empty,
+            QuizAcceptedAnswers = QuizAcceptedAnswers?.Trim() ?? string.Empty,
+            QuizImagePath = QuizImagePath?.Trim() ?? string.Empty
         };
     }
 
+    public void AddGoal()
+    {
+        var selected = Goals.FirstOrDefault()?.SelectedTarget ?? _targets.FirstOrDefault();
+        var target = selected?.TableName.Equals("fishing_stats", StringComparison.OrdinalIgnoreCase) == true ? 100 : 1000;
+        Goals.Add(WeeklyTaskGoalEditorViewModel.FromDefinition(new WeeklyCommunityTaskGoalDefinition
+        {
+            StatTable = selected?.TableName ?? "survival_stats",
+            StatColumn = selected?.ColumnName ?? "puppets_killed",
+            Target = target
+        }, _targets));
+    }
+
+    public bool RemoveGoal(WeeklyTaskGoalEditorViewModel goal)
+    {
+        if (Goals.Count <= 1) return false;
+        return Goals.Remove(goal);
+    }
     private void ApplyTypeDefaults()
     {
         if (DurationHours <= 0 || DurationHours == 24 || DurationHours == 168)
@@ -5826,20 +7208,62 @@ public sealed class WeeklyTaskEditorViewModel : ObservableObject
             DurationHours = Type.Equals("Daily", StringComparison.OrdinalIgnoreCase) ? 24 : 168;
         }
         OnPropertyChanged(nameof(SchedulePreview));
+        RefreshRuntimeDisplay();
     }
 
-    private bool TryParseLocalStart(out DateTime startLocal)
+    public void SetLanguage(bool isGerman)
     {
-        if (string.IsNullOrWhiteSpace(StartLocalText))
+        _isGerman = isGerman;
+        OnPropertyChanged(nameof(SchedulePreview));
+        OnPropertyChanged(nameof(HeaderDetails));
+        OnPropertyChanged(nameof(GoalLogicHint));
+        OnPropertyChanged(nameof(TypeGroupDisplay));
+        OnPropertyChanged(nameof(ResetActionText));
+        RefreshRuntimeDisplay();
+    }
+
+    public bool TryGetCalendarWindow(out DateTime startLocal, out DateTime endLocal) => TryGetRuntimeWindow(out startLocal, out endLocal);
+
+    private bool TryGetRuntimeWindow(out DateTime startLocal, out DateTime endLocal)
+    {
+        if (!TryGetLocalStart(out startLocal))
         {
-            startLocal = default;
-            return false;
+            if (!_baselineStartUtc.HasValue)
+            {
+                endLocal = default;
+                return false;
+            }
+            startLocal = _baselineStartUtc.Value.ToLocalTime();
         }
 
-        return DateTime.TryParse(StartLocalText.Trim(), out startLocal);
+        if (!string.IsNullOrWhiteSpace(EndUtc) &&
+            DateTime.TryParse(EndUtc, null, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var configuredEndUtc))
+        {
+            endLocal = configuredEndUtc.ToLocalTime();
+        }
+        else
+        {
+            endLocal = startLocal.AddHours(Math.Max(1, DurationHours));
+        }
+        return true;
+    }
+
+    private static string FormatRuntimeDistance(TimeSpan value)
+    {
+        if (value < TimeSpan.Zero) value = TimeSpan.Zero;
+        if (value.TotalDays >= 1) return $"{(int)value.TotalDays}d {value.Hours}h";
+        if (value.TotalHours >= 1) return $"{(int)value.TotalHours}h {value.Minutes}m";
+        return $"{Math.Max(1, (int)Math.Ceiling(value.TotalMinutes))}m";
+    }
+    private bool TryGetLocalStart(out DateTime startLocal)
+    {
+        startLocal = default;
+        if (!StartDate.HasValue) return false;
+        if (!TimeSpan.TryParse(StartTimeText?.Trim(), out var time)) time = TimeSpan.Zero;
+        startLocal = StartDate.Value.Date.Add(time);
+        return true;
     }
 }
-
 internal static class AsyncDisposableExtensions
 {
     public static async Task DisposeIfNotNullAsync(this IAsyncDisposable? disposable)

@@ -68,12 +68,25 @@ public static class EventDefinitionStore
     public static string Save(EventDefinition script)
     {
         Directory.CreateDirectory(ScriptDirectory);
-        var path = string.IsNullOrWhiteSpace(script.SourceFilePath)
-            ? Path.Combine(ScriptDirectory, SanitizeFileName(string.IsNullOrWhiteSpace(script.Id) ? script.Name : script.Id) + ".json")
-            : script.SourceFilePath!;
+        var fileKey = string.IsNullOrWhiteSpace(script.Name) ? script.Id : script.Name;
+        var path = Path.Combine(ScriptDirectory, SanitizeFileName(fileKey) + ".json");
+        var previousPath = script.SourceFilePath;
+
+        if (!string.IsNullOrWhiteSpace(previousPath)
+            && !string.Equals(Path.GetFullPath(previousPath), Path.GetFullPath(path), StringComparison.OrdinalIgnoreCase)
+            && File.Exists(path))
+        {
+            throw new IOException($"Eine Script-Datei mit dem Namen '{Path.GetFileName(path)}' existiert bereits.");
+        }
 
         script.SourceFilePath = path;
         File.WriteAllText(path, JsonSerializer.Serialize(script, Options));
+        if (!string.IsNullOrWhiteSpace(previousPath)
+            && !string.Equals(Path.GetFullPath(previousPath), Path.GetFullPath(path), StringComparison.OrdinalIgnoreCase)
+            && File.Exists(previousPath))
+        {
+            File.Delete(previousPath);
+        }
         return path;
     }
 
@@ -85,9 +98,7 @@ public static class EventDefinitionStore
             definition.Id = SanitizeFileName(definition.Name);
         }
 
-        definition.SourceFilePath = string.IsNullOrWhiteSpace(existingPath)
-            ? Path.Combine(ScriptDirectory, SanitizeFileName(definition.Id) + ".json")
-            : existingPath;
+        definition.SourceFilePath = existingPath;
 
         Save(definition);
         return definition;
@@ -135,11 +146,11 @@ public static class EventDefinitionStore
 
     public static EventDefinition CreateTemplate()
     {
-        var id = "new_script_" + DateTime.Now.ToString("yyyyMMdd_HHmmss");
+        var id = "Neues Script " + DateTime.Now.ToString("yyyyMMdd HHmmss");
         return new EventDefinition
         {
             Id = id,
-            Name = "Neues Script",
+            Name = id,
             Enabled = false,
             Mode = "SilentZone",
             IncludeInRandomizer = false,
@@ -176,10 +187,7 @@ public static class EventDefinitionStore
             {
                 Name = "LiveBlock",
                 Enabled = true,
-                Commands = new List<EventCommand>
-                {
-                    new() { Name = "Eventzone started", Command = "#Broadcast Red Eventzone started", DelayMs = 50 }
-                }
+                Commands = new List<EventCommand>()
             },
             SpawnBlocks = new List<SpawnBlock>
             {
@@ -190,7 +198,7 @@ public static class EventDefinitionStore
                     Type = "ArmedNPC",
                     Asset = "BP_Guard_Lvl_1",
                     Quantity = 1,
-                    Location = "[{X=0 Y=0 Z=0|P=0 Y=0 R=0}]",
+                    Location = "{npc_npc_1}",
                     DespawnLifetimeSeconds = 600,
                     Repeat = 1,
                     DelayMs = 250,
@@ -200,7 +208,19 @@ public static class EventDefinitionStore
             EmptyBlock = new ScriptBlock
             {
                 Name = "EmptyBlock",
-                Enabled = true,
+                Enabled = false,
+                Commands = new List<EventCommand>()
+            },
+            PreLiveCleanupBlock = new ScriptBlock
+            {
+                Name = "PreLiveCleanupBlock",
+                Enabled = false,
+                Commands = new List<EventCommand>()
+            },
+            CleanupBlock = new ScriptBlock
+            {
+                Name = "CleanupBlock",
+                Enabled = false,
                 Commands = new List<EventCommand>()
             },
             CleanupWhenEmptySeconds = 300,

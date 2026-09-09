@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using ScumRconTool.Models;
 
 namespace ScumRconTool.Services;
 
@@ -21,12 +22,15 @@ public sealed class WeeklyRewardClaim
     public int RewardItemStackCount { get; set; }
     public List<WeeklyRewardClaimItem> RewardItems { get; set; } = new();
     public int RewardMoney { get; set; }
+    public int RewardFame { get; set; }
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime? NotifiedUtc { get; set; }
     public DateTime? ItemDeliveredUtc { get; set; }
     public DateTime? MoneyDeliveredUtc { get; set; }
+    public DateTime? FameDeliveredUtc { get; set; }
     public DateTime? TextClaimedUtc { get; set; }
     public DateTime? ClaimedUtc { get; set; }
+    public DateTime? AdminAcknowledgedUtc { get; set; }
     public string LastError { get; set; } = string.Empty;
 
     public List<WeeklyRewardClaimItem> GetOrCreateRewardItems()
@@ -48,12 +52,13 @@ public sealed class WeeklyRewardClaim
 
     public bool NeedsItem => GetOrCreateRewardItems().Any(x => !string.IsNullOrWhiteSpace(x.Item));
     public bool NeedsMoney => RewardMoney > 0;
+    public bool NeedsFame => RewardFame > 0;
     public bool NeedsText => !NeedsItem && !string.IsNullOrWhiteSpace(RewardText);
-    public bool IsComplete => (!NeedsItem || GetOrCreateRewardItems().Where(x => !string.IsNullOrWhiteSpace(x.Item)).All(x => x.DeliveredUtc.HasValue)) && (!NeedsMoney || MoneyDeliveredUtc.HasValue) && (!NeedsText || TextClaimedUtc.HasValue);
+    public bool IsComplete => (!NeedsItem || GetOrCreateRewardItems().Where(x => !string.IsNullOrWhiteSpace(x.Item)).All(x => x.DeliveredUtc.HasValue)) && (!NeedsMoney || MoneyDeliveredUtc.HasValue) && (!NeedsFame || FameDeliveredUtc.HasValue) && (!NeedsText || TextClaimedUtc.HasValue);
     public string RewardSummary => string.Join(" + ", GetOrCreateRewardItems()
         .Where(x => NeedsItem && !string.IsNullOrWhiteSpace(x.Item))
         .Select(x => $"{Math.Max(1, x.Quantity)}x {x.Item}" + (x.StackCount > 0 ? $" (Stack {x.StackCount})" : string.Empty))
-        .Concat(new[] { NeedsMoney ? $"{RewardMoney}$" : string.Empty, NeedsText ? RewardText : string.Empty })
+        .Concat(new[] { NeedsMoney ? $"{RewardMoney}$" : string.Empty, NeedsFame ? $"⭐ {RewardFame} Fame" : string.Empty, NeedsText ? RewardText : string.Empty })
         .Where(x => !string.IsNullOrWhiteSpace(x)));
 }
 
@@ -70,6 +75,7 @@ public sealed class WeeklyRewardState
     public List<WeeklyRewardClaim> Claims { get; set; } = new();
     public HashSet<string> GeneratedCompletionKeys { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public HashSet<string> DeactivatedCompletionKeys { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public HashSet<string> CompletedCompletionKeys { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 public sealed class WeeklyRewardStore
@@ -85,6 +91,7 @@ public sealed class WeeklyRewardStore
         Directory.CreateDirectory(dir);
         _path = Path.Combine(dir, "weekly-reward-claims.json");
         _state = Load();
+        if (ArchiveCompletedClaimsCore() > 0) SaveCore();
     }
 
     public IReadOnlyList<WeeklyRewardClaim> GetAll()
@@ -102,32 +109,30 @@ public sealed class WeeklyRewardStore
         lock (_sync) return _state.Claims.FirstOrDefault(x => !x.IsComplete && x.Code.Equals(code.Trim(), StringComparison.OrdinalIgnoreCase));
     }
 
-    public IReadOnlyList<WeeklyRewardClaim> GetUnnotifiedFor(IEnumerable<string> steamIds)
+    public IReadOnlyList<WeeklyRewardClaim> GetPendingFor(IEnumerable<string> steamIds)
     {
         var ids = steamIds.Where(x => !string.IsNullOrWhiteSpace(x)).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        lock (_sync) return _state.Claims.Where(x => !x.IsComplete && !x.NotifiedUtc.HasValue && ids.Contains(x.SteamId)).ToList();
+        lock (_sync) return _state.Claims.Where(x => !x.IsComplete && ids.Contains(x.SteamId)).ToList();
     }
 
-    public bool Acknowledge(string claimId)
+    public IReadOnlyList<WeeklyRewardClaim> GetPendingForSteamId(string steamId)
+    {
+        var id = (steamId ?? string.Empty).Trim();
+        if (id.Length == 0) return Array.Empty<WeeklyRewardClaim>();
+        lock (_sync) return _state.Claims
+            .Where(x => !x.IsComplete && x.SteamId.Equals(id, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(x => x.CreatedUtc)
+            .ToList();
+    }
+
+    public bool Remove(string claimId)
     {
         lock (_sync)
         {
             var claim = _state.Claims.FirstOrDefault(x => x.Id.Equals(claimId, StringComparison.OrdinalIgnoreCase));
-            if (claim is null || claim.IsComplete) return false;
-
-            var nowUtc = DateTime.UtcNow;
-            if (claim.NeedsItem)
-            {
-                foreach (var item in claim.GetOrCreateRewardItems().Where(x => !string.IsNullOrWhiteSpace(x.Item)))
-                {
-                    item.DeliveredUtc ??= nowUtc;
-                }
-                claim.ItemDeliveredUtc ??= nowUtc;
-            }
-            if (claim.NeedsMoney) claim.MoneyDeliveredUtc ??= nowUtc;
-            if (claim.NeedsText) claim.TextClaimedUtc ??= nowUtc;
-            claim.ClaimedUtc = nowUtc;
-            claim.LastError = string.Empty;
+            if (claim is null) return false;
+            _state.Claims.Remove(claim);
+            ArchiveCompletionKeyIfFinished(claim.CompletionKey);
             SaveCore();
             return true;
         }
@@ -159,16 +164,17 @@ public sealed class WeeklyRewardStore
 
     private static bool IsClaimCardEnabled(WeeklyRewardClaim claim, IReadOnlyDictionary<string, WeeklyCommunityTaskDefinition> definitions)
     {
+        if (claim.TaskId.StartsWith("quiz-", StringComparison.OrdinalIgnoreCase)) return true;
         return definitions.TryGetValue(claim.TaskId, out var definition) && definition.Enabled;
     }
     public bool EnsureClaims(WeeklyCommunityTaskProgress progress, IReadOnlyList<GgconSquadResponse> squads, Action<string> log)
     {
         var definition = progress.Definition;
         var completionKey = $"{definition.Id}|{progress.Baseline.CreatedUtc:O}";
-        var configuredItems = WeeklyRewardItems.GetConfigured(definition);
         lock (_sync)
         {
             if (_state.DeactivatedCompletionKeys.Contains(completionKey)) return false;
+            if (_state.CompletedCompletionKeys.Contains(completionKey)) return false;
 
             if (_state.GeneratedCompletionKeys.Contains(completionKey))
             {
@@ -223,17 +229,13 @@ public sealed class WeeklyRewardStore
                         PlayerName = string.IsNullOrWhiteSpace(member.CharacterName) ? member.SteamId : member.CharacterName,
                         Code = CreateUniqueCode(_state.Claims.Concat(plannedClaims)),
                         RewardMode = string.IsNullOrWhiteSpace(definition.RewardMode) ? "FreeText" : definition.RewardMode,
-                        RewardText = definition.RewardText ?? string.Empty,
+                        RewardText = string.Empty,
                         RewardItem = definition.RewardItem ?? string.Empty,
                         RewardItemQuantity = Math.Max(1, definition.RewardItemQuantity),
                         RewardItemStackCount = Math.Max(0, definition.RewardItemStackCount),
-                        RewardItems = configuredItems.Select(x => new WeeklyRewardClaimItem
-                        {
-                            Item = x.Item,
-                            Quantity = x.Quantity,
-                            StackCount = x.StackCount
-                        }).ToList(),
-                        RewardMoney = Math.Max(0, definition.RewardMoney)
+                        RewardItems = CreateRandomRewardItems(definition),
+                        RewardMoney = Math.Max(0, definition.RewardMoney),
+                        RewardFame = Math.Max(0, definition.RewardFame)
                     });
                 }
             }
@@ -248,14 +250,13 @@ public sealed class WeeklyRewardStore
     public bool EnsurePlayerClaims(WeeklyCommunityTaskProgress progress, Action<string> log)
     {
         var definition = progress.Definition;
-        var configuredItems = WeeklyRewardItems.GetConfigured(definition);
         var created = false;
         lock (_sync)
         {
             foreach (var player in progress.PlayerProgress.Where(x => x.IsCompleted && !string.IsNullOrWhiteSpace(x.SteamId)))
             {
                 var completionKey = $"{definition.Id}|{progress.Baseline.CreatedUtc:O}|player:{player.SteamId.Trim()}";
-                if (_state.GeneratedCompletionKeys.Contains(completionKey)) continue;
+                if (_state.GeneratedCompletionKeys.Contains(completionKey) || _state.CompletedCompletionKeys.Contains(completionKey)) continue;
 
                 _state.Claims.Add(new WeeklyRewardClaim
                 {
@@ -266,17 +267,13 @@ public sealed class WeeklyRewardStore
                     PlayerName = string.IsNullOrWhiteSpace(player.PlayerName) ? player.SteamId : player.PlayerName,
                     Code = CreateUniqueCode(_state.Claims),
                     RewardMode = string.IsNullOrWhiteSpace(definition.RewardMode) ? "FreeText" : definition.RewardMode,
-                    RewardText = definition.RewardText ?? string.Empty,
+                    RewardText = string.Empty,
                     RewardItem = definition.RewardItem ?? string.Empty,
                     RewardItemQuantity = Math.Max(1, definition.RewardItemQuantity),
                     RewardItemStackCount = Math.Max(0, definition.RewardItemStackCount),
-                    RewardItems = configuredItems.Select(x => new WeeklyRewardClaimItem
-                    {
-                        Item = x.Item,
-                        Quantity = x.Quantity,
-                        StackCount = x.StackCount
-                    }).ToList(),
-                    RewardMoney = Math.Max(0, definition.RewardMoney)
+                    RewardItems = CreateRandomRewardItems(definition),
+                    RewardMoney = Math.Max(0, definition.RewardMoney),
+                        RewardFame = Math.Max(0, definition.RewardFame)
                 });
                 _state.GeneratedCompletionKeys.Add(completionKey);
                 created = true;
@@ -285,6 +282,56 @@ public sealed class WeeklyRewardStore
 
             if (created) SaveCore();
             return created;
+        }
+    }
+
+    private static List<WeeklyRewardClaimItem> CreateRandomRewardItems(WeeklyCommunityTaskDefinition definition) =>
+        WeeklyRewardItems.GetRandomConfigured(definition)
+            .Select(item => new WeeklyRewardClaimItem
+            {
+                Item = item.Item,
+                Quantity = item.Quantity,
+                StackCount = item.StackCount
+            }).ToList();
+    public WeeklyRewardClaim? CreateLootPackClaim(
+        string completionKey,
+        string taskId,
+        string taskTitle,
+        string steamId,
+        string playerName,
+        IEnumerable<LootItem> items,
+        int rewardMoney = 0,
+        int rewardFame = 0)
+    {
+        lock (_sync)
+        {
+            var existing = _state.Claims.FirstOrDefault(x => x.CompletionKey.Equals(completionKey, StringComparison.OrdinalIgnoreCase));
+            if (existing is not null) return existing;
+            if (_state.CompletedCompletionKeys.Contains(completionKey)) return null;
+
+            var rewardItems = items
+                .Where(x => !string.IsNullOrWhiteSpace(x.Item))
+                .Select(x => new WeeklyRewardClaimItem { Item = x.Item.Trim(), Quantity = Math.Max(1, x.Quantity) })
+                .ToList();
+            if (rewardItems.Count == 0 && rewardMoney <= 0 && rewardFame <= 0) return null;
+
+            var claim = new WeeklyRewardClaim
+            {
+                CompletionKey = completionKey,
+                TaskId = taskId,
+                TaskTitle = taskTitle,
+                SteamId = steamId.Trim(),
+                PlayerName = string.IsNullOrWhiteSpace(playerName) ? steamId.Trim() : playerName.Trim(),
+                Code = CreateUniqueCode(_state.Claims),
+                RewardMode = "Item",
+                RewardItems = rewardItems,
+                RewardMoney = Math.Max(0, rewardMoney),
+                RewardFame = Math.Max(0, rewardFame)
+            };
+            _state.Claims.Add(claim);
+            _state.GeneratedCompletionKeys.Add(completionKey);
+            SaveCore();
+            return claim;
         }
     }
     public void Save()
@@ -302,6 +349,7 @@ public sealed class WeeklyRewardStore
             foreach (var claim in state.Claims) claim.GetOrCreateRewardItems();
             state.GeneratedCompletionKeys = new HashSet<string>(state.GeneratedCompletionKeys ?? new HashSet<string>(), StringComparer.OrdinalIgnoreCase);
             state.DeactivatedCompletionKeys = new HashSet<string>(state.DeactivatedCompletionKeys ?? new HashSet<string>(), StringComparer.OrdinalIgnoreCase);
+            state.CompletedCompletionKeys = new HashSet<string>(state.CompletedCompletionKeys ?? new HashSet<string>(), StringComparer.OrdinalIgnoreCase);
             return state;
         }
         catch
@@ -315,13 +363,32 @@ public sealed class WeeklyRewardStore
         File.WriteAllText(_path, JsonSerializer.Serialize(_state, Options));
     }
 
+    private int ArchiveCompletedClaimsCore()
+    {
+        var completed = _state.Claims.Where(x => x.IsComplete).ToList();
+        if (completed.Count == 0) return 0;
+        foreach (var claim in completed) _state.Claims.Remove(claim);
+        foreach (var key in completed.Select(x => x.CompletionKey).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            ArchiveCompletionKeyIfFinished(key);
+        }
+        return completed.Count;
+    }
+
+    private void ArchiveCompletionKeyIfFinished(string completionKey)
+    {
+        if (string.IsNullOrWhiteSpace(completionKey)) return;
+        if (_state.Claims.Any(x => x.CompletionKey.Equals(completionKey, StringComparison.OrdinalIgnoreCase))) return;
+        _state.CompletedCompletionKeys.Add(completionKey);
+    }
+
     private static string CreateUniqueCode(IEnumerable<WeeklyRewardClaim> claims)
     {
         var existing = claims.Select(x => x.Code).ToHashSet(StringComparer.OrdinalIgnoreCase);
         string code;
         do
         {
-            code = "/reward-" + Convert.ToHexString(RandomNumberGenerator.GetBytes(4));
+            code = BuiltinChatCommandCatalog.RewardPrefix + Convert.ToHexString(RandomNumberGenerator.GetBytes(4));
         } while (existing.Contains(code));
         return code;
     }

@@ -199,17 +199,30 @@ public sealed class WeeklyCommunityTaskService
         CancellationToken cancellationToken = default,
         bool resetBaseline = false)
     {
-        var allDefinitions = settings.GetWeeklyTaskDefinitions()
-            .Where(x => x.Enabled)
+        var storedDefinitions = settings.GetWeeklyTaskDefinitions();
+        var nowUtc = DateTime.UtcNow;
+        var expiredDefinitions = storedDefinitions
+            .Where(x => x.Enabled && !x.Type.Equals("Quiz", StringComparison.OrdinalIgnoreCase) && IsTaskExpiredByConfigurationOrBaseline(x, nowUtc))
             .ToList();
 
-        var nowUtc = DateTime.UtcNow;
+        if (expiredDefinitions.Count > 0)
+        {
+            foreach (var definition in expiredDefinitions)
+            {
+                definition.Enabled = false;
+            }
+
+            WeeklyTaskDefinitionStore.Save(storedDefinitions);
+            _log($"Herausforderungen automatisch deaktiviert: {string.Join(", ", expiredDefinitions.Select(x => x.Id))}.");
+        }
+
+        var allDefinitions = storedDefinitions.Where(x => x.Enabled && !x.Type.Equals("Quiz", StringComparison.OrdinalIgnoreCase)).ToList();
         var definitions = allDefinitions
             .Where(x => IsTaskRunnableNow(x, nowUtc))
             .ToList();
 
         var plannedCount = allDefinitions.Count(x => IsTaskPlannedForFuture(x, nowUtc));
-        var expiredCount = allDefinitions.Count(x => IsTaskExpiredByConfigurationOrBaseline(x, nowUtc));
+        var expiredCount = expiredDefinitions.Count;
 
         if (definitions.Count == 0)
         {
@@ -276,14 +289,216 @@ public sealed class WeeklyCommunityTaskService
 
     private WeeklyCommunityTaskProgress ScanDefinitionFromLocalDb(string localDb, WeeklyCommunityTaskDefinition definition, bool resetBaseline)
     {
+        var goals = GetConfiguredGoals(definition);
+        if (goals.Count == 1)
+        {
+            ApplyGoal(definition, goals[0]);
+            var progress = ScanSingleDefinitionFromLocalDb(localDb, definition, resetBaseline);
+            progress.GoalProgresses = BuildGoalProgresses(new[] { progress });
+            return progress;
+        }
+
+        var goalResults = new List<WeeklyCommunityTaskProgress>();
+        for (var index = 0; index < goals.Count; index++)
+        {
+            var goalDefinition = CloneDefinition(definition);
+            goalDefinition.Id = GetGoalBaselineTaskId(definition.Id, index);
+            goalDefinition.Goals = new List<WeeklyCommunityTaskGoalDefinition>();
+            ApplyGoal(goalDefinition, goals[index]);
+            goalResults.Add(ScanSingleDefinitionFromLocalDb(localDb, goalDefinition, resetBaseline));
+        }
+
+        return CombineAlternativeGoalProgress(definition, goalResults);
+    }
+
+    public static IReadOnlyList<WeeklyCommunityTaskGoalDefinition> GetConfiguredGoals(WeeklyCommunityTaskDefinition definition)
+    {
+        var configured = (definition.Goals ?? new List<WeeklyCommunityTaskGoalDefinition>())
+            .Where(x => x is not null && !string.IsNullOrWhiteSpace(x.StatColumn) && x.Target > 0)
+            .Select(x => new WeeklyCommunityTaskGoalDefinition
+            {
+                StatTable = string.IsNullOrWhiteSpace(x.StatTable) ? "survival_stats" : x.StatTable.Trim(),
+                StatColumn = x.StatColumn.Trim(),
+                Target = Math.Max(1, x.Target)
+            })
+            .ToList();
+
+        if (configured.Count > 0) return configured;
+        return new[]
+        {
+            new WeeklyCommunityTaskGoalDefinition
+            {
+                StatTable = string.IsNullOrWhiteSpace(definition.StatTable) ? "survival_stats" : definition.StatTable.Trim(),
+                StatColumn = definition.StatColumn?.Trim() ?? string.Empty,
+                Target = Math.Max(1, definition.Target)
+            }
+        };
+    }
+
+    private static void ApplyGoal(WeeklyCommunityTaskDefinition definition, WeeklyCommunityTaskGoalDefinition goal)
+    {
+        definition.StatTable = goal.StatTable;
+        definition.StatColumn = goal.StatColumn;
+        definition.Target = Math.Max(1, goal.Target);
+    }
+
+    private static WeeklyCommunityTaskDefinition CloneDefinition(WeeklyCommunityTaskDefinition definition) =>
+        JsonSerializer.Deserialize<WeeklyCommunityTaskDefinition>(JsonSerializer.Serialize(definition), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+        ?? throw new InvalidOperationException("Challenge konnte nicht kopiert werden.");
+
+    private static string GetGoalBaselineTaskId(string taskId, int index) =>
+        index == 0 ? taskId : $"{taskId}--goal-{index + 1}";
+
+    private static List<WeeklyCommunityTaskGoalProgress> BuildGoalProgresses(IEnumerable<WeeklyCommunityTaskProgress> results)
+    {
+        return results.Select(result =>
+        {
+            var target = ResolveStatTarget(result.Definition);
+            var personal = IsPersonalGoal(result.Definition);
+            return new WeeklyCommunityTaskGoalProgress
+            {
+                StatTable = target.TableName,
+                StatColumn = target.ColumnName,
+                DisplayName = target.DisplayName,
+                Target = Math.Max(1, result.Definition.Target),
+                Progress = result.Progress,
+                Percent = result.Percent,
+                IsCompleted = result.IsCompleted || (personal && result.PlayerProgress.Any(x => x.IsCompleted)),
+                PlayerProgress = result.PlayerProgress
+            };
+        }).ToList();
+    }
+
+    public static bool RequiresAllGoals(WeeklyCommunityTaskDefinition definition) =>
+        string.Equals(definition.GoalLogic, "All", StringComparison.OrdinalIgnoreCase);
+
+    private static WeeklyCommunityTaskProgress CombineAlternativeGoalProgress(
+        WeeklyCommunityTaskDefinition originalDefinition,
+        IReadOnlyList<WeeklyCommunityTaskProgress> results)
+    {
+        var personal = IsPersonalGoal(originalDefinition);
+        var requireAll = RequiresAllGoals(originalDefinition);
+        var selected = requireAll
+            ? results.OrderBy(x => x.Percent).ThenBy(x => x.Progress).First()
+            : results
+                .OrderByDescending(x => x.IsCompleted || (personal && x.PlayerProgress.Any(player => player.IsCompleted)))
+                .ThenByDescending(x => x.Percent)
+                .ThenByDescending(x => x.Progress)
+                .First();
+
+        var combinedDefinition = CloneDefinition(originalDefinition);
+        combinedDefinition.StatTable = selected.Definition.StatTable;
+        combinedDefinition.StatColumn = selected.Definition.StatColumn;
+        combinedDefinition.Target = selected.Definition.Target;
+        selected.Definition = combinedDefinition;
+        selected.GoalProgresses = BuildGoalProgresses(results);
+        selected.Baseline.CreatedUtc = results.Min(x => x.Baseline.CreatedUtc);
+
+        if (personal)
+        {
+            selected.PlayerProgress = requireAll
+                ? MergePlayerProgressForAllGoals(results)
+                : results
+                    .SelectMany(x => x.PlayerProgress)
+                    .GroupBy(PlayerProgressKey, StringComparer.OrdinalIgnoreCase)
+                    .Select(group => group
+                        .OrderByDescending(x => x.IsCompleted)
+                        .ThenByDescending(x => x.Percent)
+                        .ThenByDescending(x => x.Progress)
+                        .First())
+                    .OrderByDescending(x => x.IsCompleted)
+                    .ThenByDescending(x => x.Percent)
+                    .ThenBy(x => x.PlayerName, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+            var best = selected.PlayerProgress.OrderByDescending(x => x.Percent).ThenByDescending(x => x.Progress).FirstOrDefault();
+            selected.Progress = best?.Progress ?? 0;
+            selected.Remaining = best?.Remaining ?? results.Sum(x => Math.Max(1, x.Definition.Target));
+            selected.Percent = best?.Percent ?? 0;
+            selected.IsCompleted = false;
+        }
+        else if (requireAll)
+        {
+            selected.Percent = results.Average(x => x.Percent);
+            selected.IsCompleted = results.All(x => x.IsCompleted);
+            selected.PlayerProgress = MergePlayerProgressForAllGoals(results);
+            selected.SquadProgress = MergeSquadProgressForAllGoals(results);
+        }
+
+        return selected;
+    }
+
+    private static string PlayerProgressKey(WeeklyCommunityTaskPlayerProgress player) =>
+        string.IsNullOrWhiteSpace(player.SteamId) ? "name:" + player.PlayerName : "steam:" + player.SteamId;
+
+    private static List<WeeklyCommunityTaskPlayerProgress> MergePlayerProgressForAllGoals(IReadOnlyList<WeeklyCommunityTaskProgress> results)
+    {
+        var playersByGoal = results
+            .Select(result => result.PlayerProgress.ToDictionary(PlayerProgressKey, StringComparer.OrdinalIgnoreCase))
+            .ToList();
+        var allKeys = playersByGoal.SelectMany(x => x.Keys).Distinct(StringComparer.OrdinalIgnoreCase);
+        return allKeys.Select(key =>
+            {
+                var entries = playersByGoal.Select(x => x.GetValueOrDefault(key)).ToList();
+                var identity = entries.First(x => x is not null)!;
+                var target = results.Sum(x => Math.Max(1, x.Definition.Target));
+                var value = entries.Sum(x => x?.Progress ?? 0);
+                return new WeeklyCommunityTaskPlayerProgress
+                {
+                    SteamId = identity.SteamId,
+                    PlayerName = identity.PlayerName,
+                    SquadId = identity.SquadId,
+                    SquadName = identity.SquadName,
+                    CurrentTotal = entries.Sum(x => x?.CurrentTotal ?? 0),
+                    BaselineValue = entries.Sum(x => x?.BaselineValue ?? 0),
+                    Progress = value,
+                    Target = target,
+                    Remaining = Math.Max(0, target - value),
+                    Percent = entries.Select(x => x?.Percent ?? 0).Average(),
+                    IsCompleted = entries.All(x => x?.IsCompleted == true)
+                };
+            })
+            .OrderByDescending(x => x.IsCompleted)
+            .ThenByDescending(x => x.Percent)
+            .ThenBy(x => x.PlayerName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static List<WeeklyCommunityTaskSquadProgress> MergeSquadProgressForAllGoals(IReadOnlyList<WeeklyCommunityTaskProgress> results)
+    {
+        var squadsByGoal = results
+            .Select(result => result.SquadProgress.ToDictionary(x => x.SquadId, StringComparer.OrdinalIgnoreCase))
+            .ToList();
+        var allIds = squadsByGoal.SelectMany(x => x.Keys).Distinct(StringComparer.OrdinalIgnoreCase);
+        return allIds.Select(id =>
+            {
+                var entries = squadsByGoal.Select(x => x.GetValueOrDefault(id)).ToList();
+                var identity = entries.First(x => x is not null)!;
+                return new WeeklyCommunityTaskSquadProgress
+                {
+                    SquadId = identity.SquadId,
+                    SquadName = identity.SquadName,
+                    CurrentTotal = entries.Sum(x => x?.CurrentTotal ?? 0),
+                    BaselineValue = entries.Sum(x => x?.BaselineValue ?? 0),
+                    Progress = entries.Sum(x => x?.Progress ?? 0),
+                    Percent = entries.Select(x => x?.Percent ?? 0).Average(),
+                    IsSuccessfulParticipant = entries.Any(x => x?.IsSuccessfulParticipant == true)
+                };
+            })
+            .OrderByDescending(x => x.Progress)
+            .ThenBy(x => x.SquadName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private WeeklyCommunityTaskProgress ScanSingleDefinitionFromLocalDb(string localDb, WeeklyCommunityTaskDefinition definition, bool resetBaseline)
+    {
         var statTarget = ResolveStatTarget(definition);
         definition.StatTable = statTarget.TableName;
         definition.StatColumn = statTarget.ColumnName;
 
-        var perPlayer = string.Equals(definition.GoalScope, "PerPlayer", StringComparison.OrdinalIgnoreCase);
+        var perPlayer = IsPersonalGoal(definition);
         var currentTotal = ReadStatTotal(localDb, statTarget);
         var currentSquadTotals = perPlayer ? new List<WeeklyCommunityTaskSquadProgress>() : ReadSquadStatTotals(localDb, statTarget);
-        var currentPlayerTotals = perPlayer ? ReadPlayerStatTotals(localDb, statTarget) : new List<WeeklyCommunityTaskPlayerProgress>();
+        var currentPlayerTotals = ReadPlayerStatTotals(localDb, statTarget);
         var baseline = LoadBaseline(definition);
         baseline.SquadBaselineValues ??= new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
         baseline.PlayerBaselineValues ??= new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
@@ -311,7 +526,7 @@ public sealed class WeeklyCommunityTaskService
             SaveBaseline(baseline);
             _log($"{GetTaskKind(definition)} Task '{definition.Title}': Startwert gespeichert ({statTarget.Key}={currentTotal}, Spieler={baseline.PlayerBaselineValues.Count}, Squads={baseline.SquadBaselineValues.Count}).");
         }
-        else if (perPlayer)
+        else
         {
             var addedPlayers = 0;
             foreach (var player in currentPlayerTotals.Where(x => !baseline.PlayerBaselineValues.ContainsKey(x.SteamId)))
@@ -325,7 +540,7 @@ public sealed class WeeklyCommunityTaskService
                 _log($"{GetTaskKind(definition)} Task '{definition.Title}': Startwerte fuer {addedPlayers} neue Spieler gespeichert.");
             }
         }
-        else if (baseline.SquadBaselineValues.Count == 0 && currentSquadTotals.Count > 0)
+        if (!perPlayer && baseline.SquadBaselineValues.Count == 0 && currentSquadTotals.Count > 0)
         {
             baseline.SquadBaselineValues = currentSquadTotals.ToDictionary(x => x.SquadId, x => x.CurrentTotal, StringComparer.OrdinalIgnoreCase);
             SaveBaseline(baseline);
@@ -333,10 +548,10 @@ public sealed class WeeklyCommunityTaskService
         }
 
         var target = Math.Max(1, definition.Target);
-        var minimumParticipationPercent = GetMinimumParticipationPercent(definition);
-        var minimumParticipationValue = GetMinimumParticipationValue(target, minimumParticipationPercent);
+        var minimumParticipationValue = perPlayer ? 0 : GetMinimumParticipationValue(definition, target);
+        var minimumParticipationPercent = minimumParticipationValue <= 0 ? 0 : minimumParticipationValue * 100.0 / target;
         var squadProgress = perPlayer ? new List<WeeklyCommunityTaskSquadProgress>() : BuildSquadProgress(currentSquadTotals, baseline, target, minimumParticipationValue);
-        var playerProgress = perPlayer ? BuildPlayerProgress(currentPlayerTotals, baseline, target) : new List<WeeklyCommunityTaskPlayerProgress>();
+        var playerProgress = BuildPlayerProgress(currentPlayerTotals, baseline, target);
         var progressValue = perPlayer ? (playerProgress.Count == 0 ? 0 : playerProgress.Max(x => x.Progress)) : Math.Max(0, currentTotal - baseline.BaselineValue);
         if (!perPlayer && baseline.CompletedUtc.HasValue)
         {
@@ -438,6 +653,10 @@ public sealed class WeeklyCommunityTaskService
         }
     }
 
+    public static bool IsPersonalGoal(WeeklyCommunityTaskDefinition definition) =>
+        string.Equals(definition.GoalScope, "PerPlayer", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(definition.GoalScope, "Personal", StringComparison.OrdinalIgnoreCase);
+
     public static string GetTaskKind(WeeklyCommunityTaskDefinition definition)
     {
         var type = string.IsNullOrWhiteSpace(definition.Type) ? "Weekly" : definition.Type.Trim();
@@ -510,9 +729,13 @@ public sealed class WeeklyCommunityTaskService
     private static void ValidateDefinition(WeeklyCommunityTaskDefinition definition)
     {
         if (string.IsNullOrWhiteSpace(definition.Id)) throw new InvalidOperationException("Weekly Task ID fehlt.");
-        if (string.IsNullOrWhiteSpace(definition.StatColumn)) throw new InvalidOperationException("Weekly Task StatColumn fehlt.");
-        _ = ResolveStatTarget(definition);
-        if (definition.Target <= 0) throw new InvalidOperationException("Weekly Task Ziel muss groesser 0 sein.");
+        foreach (var goal in GetConfiguredGoals(definition))
+        {
+            if (string.IsNullOrWhiteSpace(goal.StatColumn)) throw new InvalidOperationException("Weekly Task StatColumn fehlt.");
+            var goalDefinition = new WeeklyCommunityTaskDefinition { StatTable = goal.StatTable, StatColumn = goal.StatColumn, Target = goal.Target };
+            _ = ResolveStatTarget(goalDefinition);
+            if (goal.Target <= 0) throw new InvalidOperationException("Weekly Task Ziel muss groesser 0 sein.");
+        }
     }
 
     private static WeeklyCommunityTaskStatTarget ResolveStatTarget(WeeklyCommunityTaskDefinition definition)
@@ -575,11 +798,15 @@ public sealed class WeeklyCommunityTaskService
 SELECT
     TRIM(CAST(up.user_id AS TEXT)) AS steam_id,
     COALESCE(NULLIF(TRIM(up.name), ''), TRIM(CAST(up.user_id AS TEXT))) AS player_name,
+    COALESCE(CAST(s.id AS TEXT), '') AS squad_id,
+    COALESCE(NULLIF(TRIM(s.name), ''), '') AS squad_name,
     COALESCE(SUM(CAST(st.{target.ColumnName} AS INTEGER)), 0) AS total
 FROM {target.TableName} st
 INNER JOIN user_profile up ON up.id = st.user_profile_id
+LEFT JOIN squad_member sm ON sm.user_profile_id = up.id
+LEFT JOIN squad s ON s.id = sm.squad_id
 WHERE up.user_id IS NOT NULL AND TRIM(CAST(up.user_id AS TEXT)) <> ''
-GROUP BY up.id, up.user_id, up.name
+GROUP BY up.id, up.user_id, up.name, s.id, s.name
 ORDER BY total DESC";
 
         var result = new List<WeeklyCommunityTaskPlayerProgress>();
@@ -590,7 +817,9 @@ ORDER BY total DESC";
             {
                 SteamId = reader.GetString(0),
                 PlayerName = reader.GetString(1),
-                CurrentTotal = Convert.ToInt64(reader.GetValue(2))
+                SquadId = reader.GetString(2),
+                SquadName = reader.GetString(3),
+                CurrentTotal = Convert.ToInt64(reader.GetValue(4))
             });
         }
 
@@ -600,6 +829,8 @@ ORDER BY total DESC";
             {
                 SteamId = x.Key,
                 PlayerName = x.Select(y => y.PlayerName).FirstOrDefault(y => !string.IsNullOrWhiteSpace(y)) ?? x.Key,
+                SquadId = x.Select(y => y.SquadId).FirstOrDefault(y => !string.IsNullOrWhiteSpace(y)) ?? string.Empty,
+                SquadName = x.Select(y => y.SquadName).FirstOrDefault(y => !string.IsNullOrWhiteSpace(y)) ?? string.Empty,
                 CurrentTotal = x.Sum(y => y.CurrentTotal)
             })
             .ToList();
@@ -693,9 +924,12 @@ ORDER BY total DESC";
                 {
                     SteamId = current.SteamId,
                     PlayerName = current.PlayerName,
+                    SquadId = current.SquadId,
+                    SquadName = current.SquadName,
                     CurrentTotal = current.CurrentTotal,
                     BaselineValue = playerBaseline,
                     Progress = value,
+                    Target = target,
                     Remaining = Math.Max(0, target - value),
                     Percent = Math.Min(100.0, value * 100.0 / Math.Max(1, target)),
                     IsCompleted = value >= target
@@ -706,15 +940,14 @@ ORDER BY total DESC";
             .ThenBy(x => x.PlayerName, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
-    private static double GetMinimumParticipationPercent(WeeklyCommunityTaskDefinition definition)
+    private static long GetMinimumParticipationValue(WeeklyCommunityTaskDefinition definition, long target)
     {
-        return definition.MinimumParticipationPercent > 0 ? definition.MinimumParticipationPercent : 2.0;
-    }
-
-    private static long GetMinimumParticipationValue(long target, double percent)
-    {
-        var value = (long)Math.Floor(Math.Max(1, target) * percent / 100.0);
-        return Math.Max(1, value);
+        if (definition.MinimumParticipationValue > 0) return definition.MinimumParticipationValue;
+        if (definition.MinimumParticipationPercent > 0)
+        {
+            return Math.Max(1, (long)Math.Floor(Math.Max(1, target) * definition.MinimumParticipationPercent / 100.0));
+        }
+        return 1;
     }
 
     private static WeeklyCommunityTaskBaseline LoadBaseline(WeeklyCommunityTaskDefinition definition)
@@ -740,6 +973,30 @@ ORDER BY total DESC";
         return new WeeklyCommunityTaskBaseline();
     }
 
+    public static int DeleteSavedBaseline(WeeklyCommunityTaskDefinition definition)
+    {
+        var removed = 0;
+        var goalCount = Math.Max(1, GetConfiguredGoals(definition).Count);
+        for (var index = 0; index < goalCount; index++)
+        {
+            var baselineDefinition = new WeeklyCommunityTaskDefinition { Id = GetGoalBaselineTaskId(definition.Id, index) };
+            foreach (var directory in GetBaselineDirectories())
+            {
+                var path = GetBaselinePath(baselineDefinition, directory);
+                try
+                {
+                    if (!File.Exists(path)) continue;
+                    File.Delete(path);
+                    removed++;
+                }
+                catch (Exception ex)
+                {
+                    AppLogService.WriteException("WeeklyCommunityTask.DeleteBaseline " + baselineDefinition.Id, ex);
+                }
+            }
+        }
+        return removed;
+    }
     public static List<WeeklyCommunityTaskBaseline> LoadSavedBaselines()
     {
         var result = new List<WeeklyCommunityTaskBaseline>();
@@ -753,6 +1010,7 @@ ORDER BY total DESC";
                     var json = File.ReadAllText(path);
                     var baseline = JsonSerializer.Deserialize<WeeklyCommunityTaskBaseline>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                     if (baseline is null || string.IsNullOrWhiteSpace(baseline.TaskId)) continue;
+                    if (baseline.TaskId.Contains("--goal-", StringComparison.OrdinalIgnoreCase)) continue;
                     result.Add(baseline);
                 }
                 catch
@@ -806,7 +1064,7 @@ ORDER BY total DESC";
             StatColumn = column,
             Target = targetValue,
             DurationHours = kind.Equals("Daily", StringComparison.OrdinalIgnoreCase) ? 24 : 168,
-            MinimumParticipationPercent = 2.0,
+            MinimumParticipationValue = 1,
             RewardText = rewardText,
             CompletedText = completedText
         };
@@ -848,7 +1106,7 @@ ORDER BY total DESC";
         return Path.Combine(directory, safeId + ".baseline.json");
     }
 
-    public static string BuildDefaultTaskJson()
+    public static string BuildDefaultTaskJson(bool isGerman = true)
     {
         var examples = new List<WeeklyCommunityTaskDefinition>
         {
@@ -856,43 +1114,43 @@ ORDER BY total DESC";
             {
                 Id = "weekly-puppets",
                 Type = "Weekly",
-                Title = "Zombie Jagd",
-                Description = "Killt gemeinsam 5.000 Zombies.",
+                Title = isGerman ? "Zombie Jagd" : "Zombie Hunt",
+                Description = isGerman ? "Killt gemeinsam 5.000 Zombies." : "Kill 5,000 puppets together.",
                 StatTable = "survival_stats",
                 StatColumn = "puppets_killed",
                 Target = 5000,
                 DurationHours = 168,
-                MinimumParticipationPercent = 2.0,
-                RewardText = "Fuer jede Teilnehmergruppe 1 Level 1 Basebuilding Expansion Kit",
-                CompletedText = "Krass! Ihr habt euch alle 1 Basebuilding Expansionkit verdient! Nervt diesen Admin, um euer Expansion Kit zu erhalten!"
+                MinimumParticipationValue = 1,
+                RewardText = isGerman ? "Fuer jede Teilnehmergruppe 1 Level 1 Basebuilding Expansion Kit" : "One level 1 base-building expansion kit for each participating group",
+                CompletedText = isGerman ? "Krass! Ihr habt euch alle 1 Basebuilding Expansionkit verdient! Nervt diesen Admin, um euer Expansion Kit zu erhalten!" : "Amazing! You have all earned one base-building expansion kit. Contact an admin to receive it!"
             },
             new()
             {
                 Id = "daily-animals",
                 Type = "Daily",
-                Title = "Tierische Jagd",
-                Description = "Killt gemeinsam 250 Tiere.",
+                Title = isGerman ? "Tierische Jagd" : "Animal Hunt",
+                Description = isGerman ? "Killt gemeinsam 250 Tiere." : "Kill 250 animals together.",
                 StatTable = "survival_stats",
                 StatColumn = "animals_killed",
                 Target = 250,
                 DurationHours = 24,
-                MinimumParticipationPercent = 2.0,
-                RewardText = "Bei Abschluss wird der Skillgain fuer Bogen und Ueberleben verdoppelt.",
-                CompletedText = "Krass! Ihr habt es geschafft!"
+                MinimumParticipationValue = 1,
+                RewardText = isGerman ? "Bei Abschluss wird der Skillgain fuer Bogen und Ueberleben verdoppelt." : "Bow and survival skill gain is doubled upon completion.",
+                CompletedText = isGerman ? "Krass! Ihr habt es geschafft!" : "Amazing! You did it!"
             },
             new()
             {
                 Id = "daily-fishing",
                 Type = "Daily",
-                Title = "Angelkoenig",
-                Description = "Fangt gemeinsam 100 Fische.",
+                Title = isGerman ? "Angelkoenig" : "Fishing Champion",
+                Description = isGerman ? "Fangt gemeinsam 100 Fische." : "Catch 100 fish together.",
                 StatTable = "fishing_stats",
                 StatColumn = "fish_caught",
                 Target = 100,
                 DurationHours = 24,
-                MinimumParticipationPercent = 2.0,
-                RewardText = "Fishing Reward wird manuell freigeschaltet.",
-                CompletedText = "Krass! Die Fishing Challenge wurde geschafft!"
+                MinimumParticipationValue = 1,
+                RewardText = isGerman ? "Fishing Reward wird manuell freigeschaltet." : "The fishing reward is enabled manually.",
+                CompletedText = isGerman ? "Krass! Die Fishing Challenge wurde geschafft!" : "Amazing! The fishing challenge has been completed!"
             }
         };
 

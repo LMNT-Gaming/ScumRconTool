@@ -170,12 +170,15 @@ public static partial class AutomationLogParser
     private static DateTime? TryParseScumTimestampUtc(string value)
     {
         if (string.IsNullOrWhiteSpace(value)) return null;
-        if (!DateTime.TryParseExact(value, "yyyy.MM.dd-HH.mm.ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var localTime))
+        // SCUM timestamps are UTC even though the text has no Z suffix.
+        // Treating them as the desktop's local time makes fresh chat commands hours old.
+        if (!DateTime.TryParseExact(value, "yyyy.MM.dd-HH.mm.ss", CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var utcTime))
         {
             return null;
         }
 
-        return DateTime.SpecifyKind(localTime, DateTimeKind.Local).ToUniversalTime();
+        return utcTime;
     }
 
     public static bool IsMatch(ChatAutomationRule rule, string message)

@@ -153,6 +153,42 @@ public sealed class DiscordBridgeService : IAsyncDisposable
 
 
 
+    public async Task SendQuizChallengeAsync(
+        ulong channelId,
+        int quizNumber,
+        string title,
+        string question,
+        string imagePath,
+        string lootPackName,
+        int maxAttempts,
+        bool isGerman)
+    {
+        if (_client is null || !IsReady) throw new InvalidOperationException("Discord Bot ist nicht verbunden.");
+        if (channelId == 0) throw new InvalidOperationException(isGerman ? "Discord Channel-ID für Rätsel-Challenges fehlt." : "Discord channel ID for quiz challenges is missing.");
+        if (_client.GetChannel(channelId) is not IMessageChannel channel)
+            throw new InvalidOperationException(isGerman ? "Discord Channel wurde nicht gefunden." : "Discord channel was not found.");
+
+        var embed = new EmbedBuilder()
+            .WithTitle(Truncate($"Quiz {quizNumber}: {title}", 250))
+            .WithDescription(Truncate(question, 3900))
+            .WithColor(new Color(211, 21, 42))
+            .AddField(isGerman ? "So nimmst du teil" : "How to participate",
+                isGerman ? $"Schreibe ingame `/quiz{quizNumber} DEINE ANTWORT`. Du hast **{maxAttempts} Versuche**." : $"Type `/quiz{quizNumber} YOUR ANSWER` in game. You have **{maxAttempts} attempts**.", false)
+            .AddField(isGerman ? "Belohnung" : "Reward", CleanDiscordName(lootPackName), true)
+            .WithFooter($"Red Raven | Quiz {quizNumber}")
+            .WithCurrentTimestamp();
+
+        if (!string.IsNullOrWhiteSpace(imagePath))
+        {
+            if (!File.Exists(imagePath)) throw new FileNotFoundException(isGerman ? "Das ausgewählte Rätselbild wurde nicht gefunden." : "The selected quiz image was not found.", imagePath);
+            var fileName = Path.GetFileName(imagePath);
+            embed.WithImageUrl("attachment://" + fileName);
+            await channel.SendFileAsync(imagePath, embed: embed.Build());
+            return;
+        }
+
+        await channel.SendMessageAsync(embed: embed.Build());
+    }
     public async Task SendChatEmbedAsync(ulong channelId, ChatLogMessage message)
     {
         if (_client is null || !IsReady) throw new InvalidOperationException("Discord Bot ist nicht verbunden.");
@@ -212,6 +248,29 @@ public sealed class DiscordBridgeService : IAsyncDisposable
         await channel.SendMessageAsync(embed: embed.Build());
     }
 
+    public async Task SendVehicleInactivityWarningAsync(ulong channelId, VehicleInactivityWarning warning, string? iconUrl, CancellationToken cancellationToken = default)
+    {
+        if (_client is null || !IsReady) throw new InvalidOperationException("Discord Bot ist nicht verbunden.");
+        if (channelId == 0 || _client.GetChannel(channelId) is not IMessageChannel channel)
+            throw new InvalidOperationException("Discord-Channel für Fahrzeug-Inaktivitätswarnungen wurde nicht gefunden.");
+
+        var unix = new DateTimeOffset(warning.DeletionUtc).ToUnixTimeSeconds();
+        var builder = new EmbedBuilder()
+            .WithTitle("⚠️ Fahrzeug wird bald gelöscht")
+            .WithDescription($"**{CleanDiscordName(warning.VehicleName)}** von **{CleanDiscordName(warning.OwnerName)}**")
+            .AddField("Fahrzeugtyp", CleanDiscordName(warning.VehicleName), true)
+            .AddField("Fahrzeug-ID", warning.VehicleId, true)
+            .AddField("Voraussichtliche Löschung", $"<t:{unix}:F>\n<t:{unix}:R>", true)
+            .AddField("Was ist zu tun?", "Bewege beziehungsweise benutze das Fahrzeug rechtzeitig, damit der Inaktivitätszeitpunkt zurückgesetzt wird.")
+            .WithColor(new Color(243, 156, 18))
+            .WithFooter("RedRaven Fahrzeug-Inaktivitätswarnung")
+            .WithCurrentTimestamp();
+        if (Uri.TryCreate(iconUrl, UriKind.Absolute, out var iconUri) && iconUri.Scheme == Uri.UriSchemeHttps && iconUri.Host.Equals("icons.gghost.games", StringComparison.OrdinalIgnoreCase))
+            builder.WithThumbnailUrl(iconUri.AbsoluteUri);
+        var embed = builder.Build();
+        await channel.SendMessageAsync(embed: embed, options: new RequestOptions { CancelToken = cancellationToken });
+    }
+
     private static (string Title, string Description, Color Color) BuildVehicleEventPresentation(string action)
     {
         return action.Trim() switch
@@ -235,7 +294,9 @@ public sealed class DiscordBridgeService : IAsyncDisposable
         IReadOnlyCollection<ScumPlayer> players,
         int maxPlayers,
         GgconWeatherResponse? weather,
-        IEnumerable<EventRuntime> runtimes)
+        IEnumerable<EventRuntime> runtimes,
+        IReadOnlyCollection<string> variableSettings,
+        bool isGerman)
     {
         if (_client is null || !IsReady) throw new InvalidOperationException("Discord Bot ist nicht verbunden.");
         if (channelId == 0) throw new InvalidOperationException("Discord Serverstatus Channel-ID fehlt.");
@@ -256,14 +317,24 @@ public sealed class DiscordBridgeService : IAsyncDisposable
         var weatherText = BuildWeatherStatusText(weather);
         var eventText = BuildActiveEventStatusText(runtimes);
 
-        var embed = new EmbedBuilder()
+        var embedBuilder = new EmbedBuilder()
             .WithTitle(title)
             .WithColor(new Color(46, 204, 113))
             .AddField("Server", $"**{serverName}**\n`{serverAddress}`", false)
-            .AddField("Spieler", onlineText + "\n" + playerText, false)
-            .AddField("Wetter / Zeit", weatherText, false)
-            .AddField("Aktive Events", eventText, false)
-            .WithFooter("Automatisch aktualisiert")
+            .AddField(isGerman ? "Spieler" : "Players", onlineText + "\n" + playerText, false)
+            .AddField(isGerman ? "Wetter / Zeit" : "Weather / time", weatherText, false);
+
+        if (variableSettings.Count > 0)
+        {
+            embedBuilder.AddField(
+                isGerman ? "Variable Servereinstellungen" : "Variable server settings",
+                BuildVariableServerSettingsText(variableSettings),
+                false);
+        }
+
+        var embed = embedBuilder
+            .AddField(isGerman ? "Aktive Events" : "Active events", eventText, false)
+            .WithFooter(isGerman ? "Automatisch aktualisiert" : "Updated automatically")
             .WithCurrentTimestamp()
             .Build();
 
@@ -281,6 +352,15 @@ public sealed class DiscordBridgeService : IAsyncDisposable
         await channel.SendMessageAsync(embed: embed);
     }
 
+    private static string BuildVariableServerSettingsText(IReadOnlyCollection<string> statusTexts)
+    {
+        var lines = statusTexts
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => "• " + CleanDiscordName(x))
+            .Take(20);
+        var text = string.Join(Environment.NewLine, lines);
+        return text.Length <= 1024 ? text : text[..1021] + "...";
+    }
     private static string BuildPlayerPreview(IReadOnlyCollection<ScumPlayer> players)
     {
         if (players.Count == 0)
@@ -314,11 +394,16 @@ public sealed class DiscordBridgeService : IAsyncDisposable
         var water = GgconWeatherResponse.FormatTemperatureValue(weather.WaterTemperature);
         var time = weather.FormatIngameTime();
         var score = weather.GetWeatherScore().ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
-        var icon = weather.GetWeatherIcon();
+        var thermometer = char.ConvertFromUtf32(0x1F321) + char.ConvertFromUtf32(0xFE0F);
+        var swimmer = char.ConvertFromUtf32(0x1F3CA);
+        var clock = char.ConvertFromUtf32(0x231A);
+        var degree = char.ConvertFromUtf32(0x00B0);
 
-        return $"{icon} Wetterwert `{score}`\n🌡️ Luft: **{air}°C** | 🏊 Wasser: **{water}°C** | ⌚ Ingame: **{time}**";
+        return weather.GetWeatherIcon() + " Wetterwert " + score + Environment.NewLine +
+               thermometer + " Luft: **" + air + degree + "C** | " +
+               swimmer + " Wasser: **" + water + degree + "C** | " +
+               clock + " Ingame: **" + time + "**";
     }
-
     private static string BuildActiveEventStatusText(IEnumerable<EventRuntime> runtimes)
     {
         var active = runtimes
@@ -349,88 +434,212 @@ public sealed class DiscordBridgeService : IAsyncDisposable
 
 
 
-    public async Task SendOrUpdateWeeklyTaskAsync(ulong channelId, WeeklyCommunityTaskProgress progress)
+    public async Task SendOrUpdateWeeklyTaskAsync(ulong channelId, WeeklyCommunityTaskProgress progress, bool isGerman)
     {
         if (_client is null || !IsReady) throw new InvalidOperationException("Discord Bot ist nicht verbunden.");
-        if (channelId == 0) throw new InvalidOperationException("Discord Weekly Task Channel-ID fehlt.");
+        if (channelId == 0) throw new InvalidOperationException("Discord Herausforderungen Channel-ID fehlt.");
         if (_client.GetChannel(channelId) is not IMessageChannel channel)
         {
-            throw new InvalidOperationException("Discord Weekly Task Channel wurde nicht gefunden. Ist der Bot auf dem Server und hat Zugriff auf den Channel?");
+            throw new InvalidOperationException("Discord Herausforderungen Channel wurde nicht gefunden.");
         }
 
         var definition = progress.Definition;
-        var perPlayer = string.Equals(definition.GoalScope, "PerPlayer", StringComparison.OrdinalIgnoreCase);
-        var progressLine = perPlayer
-            ? $"{progress.CompletedPlayerCount:N0} Spieler haben das Ziel erreicht\nBester Stand: {progress.Progress:N0}/{Math.Max(1, definition.Target):N0} ({progress.Percent:0.0}%)"
-            : $"{progress.Progress:N0}/{Math.Max(1, definition.Target):N0} ({progress.Percent:0.0}%)";
-        var bar = BuildProgressBar(progress.Percent);
+        var perPlayer = WeeklyCommunityTaskService.IsPersonalGoal(definition);
         var kind = WeeklyCommunityTaskService.GetTaskKind(definition);
-        var title = string.IsNullOrWhiteSpace(definition.Title) ? kind + " Aufgabe" : CleanDiscordName(definition.Title);
-        var discordTitle = kind + (perPlayer ? " Pro-Spieler-Aufgabe: " : " Community Aufgabe: ") + title;
-        var description = string.IsNullOrWhiteSpace(definition.Description) ? "Challenge" : definition.Description.Trim();
-        var rewardItems = WeeklyRewardItems.GetConfigured(definition);
-        var rewardItemVisuals = await Task.WhenAll(rewardItems.Take(9).Select(async item =>
-        {
-            var url = WeeklyRewardItems.GetIconUrl(item.Item);
-            return (Item: item, Url: url, Available: await IsItemImageAvailableAsync(url));
-        }));
+        var title = string.IsNullOrWhiteSpace(definition.Title) ? (isGerman ? "Herausforderung" : "Challenge") : CleanDiscordName(definition.Title);
+        var personIcon = char.ConvertFromUtf32(0x1F464);
+        var globeIcon = char.ConvertFromUtf32(0x1F30D);
+        var moneyIcon = char.ConvertFromUtf32(0x1F4B0);
+        var starIcon = char.ConvertFromUtf32(0x2B50);
+        var diceIcon = char.ConvertFromUtf32(0x1F3B2);
+        const string bullet = "•";
+        var discordTitle = (perPlayer ? personIcon + " " : globeIcon + " ") + title;
+        var description = string.IsNullOrWhiteSpace(definition.Description) ? (isGerman ? "Aktive Herausforderung" : "Active challenge") : definition.Description.Trim();
+        var rewardPackNames = WeeklyRewardItems.GetConfiguredLootPackNames(definition);
+        var rewardItems = rewardPackNames.Count == 0
+            ? WeeklyRewardItems.GetConfigured(definition)
+            : new List<WeeklyRewardItemDefinition>();
+        var rewardParts = rewardPackNames.Count > 0
+            ? new List<string>
+            {
+                isGerman ? $"{diceIcon} Ein zufälliges Lootpack pro Empfänger:": $"{diceIcon} One random loot pack per recipient:",
+                string.Join(Environment.NewLine, rewardPackNames.Select(name => $"{bullet} 🎁 {CleanDiscordName(name)}"))
+            }
+            : rewardItems.Select(x => bullet + " " + WeeklyRewardItems.Format(x)).ToList();
+        if (definition.RewardMoney > 0) rewardParts.Add(isGerman ? $"{bullet} {moneyIcon} {definition.RewardMoney:N0} pro Empfaenger" : $"{bullet} {moneyIcon} {definition.RewardMoney:N0} per recipient");
+        if (definition.RewardFame > 0) rewardParts.Add(isGerman ? $"{bullet} {starIcon} {definition.RewardFame:N0} Fame pro Empfaenger" : $"{bullet} {starIcon} {definition.RewardFame:N0} fame per recipient");
+        var reward = Truncate(rewardParts.Count == 0 ? (isGerman ? "Keine Belohnung hinterlegt." : "No reward configured.") : string.Join(Environment.NewLine, rewardParts), 1024);
 
-        var rewardParts = rewardItems.Select(x => "• " + WeeklyRewardItems.Format(x)).ToList();
-        if (definition.RewardMoney > 0) rewardParts.Add($"• {definition.RewardMoney:N0}$ pro Empfaenger");
-        if (!string.IsNullOrWhiteSpace(definition.RewardText)) rewardParts.Add(definition.RewardText.Trim());
-        var reward = Truncate(rewardParts.Count == 0 ? "Reward wird manuell gesetzt." : string.Join("\n", rewardParts), 1024);
-        var completedText = string.IsNullOrWhiteSpace(definition.CompletedText) ? "Ziel erreicht!" : definition.CompletedText.Trim();
-
+        var payoutPerSquad = string.Equals(definition.RewardDistribution, "PerSquad", StringComparison.OrdinalIgnoreCase);
+        var contributorCount = progress.PlayerProgress.Count(x => x.Progress > 0);
+        var multipleGoals = progress.GoalProgresses.Count > 1;
+        var requireAllGoals = WeeklyCommunityTaskService.RequiresAllGoals(definition);
+        var progressText = multipleGoals
+            ? $"{progress.Percent:0.0}%{Environment.NewLine}{BuildProgressBar(progress.Percent)}"
+            : $"{progress.Progress:N0}/{Math.Max(1, definition.Target):N0} ({progress.Percent:0.0}%){Environment.NewLine}{BuildProgressBar(progress.Percent)}";
+        var participationText = payoutPerSquad
+            ? BuildSquadAndSoloContributionText(progress, isGerman)
+            : BuildPlayerContributionText(progress, isGerman);
+        var participationHeading = payoutPerSquad
+            ? (isGerman ? "Squads & Spieler ohne Squad" : "Squads & players without a squad")
+            : (isGerman ? $"Teilnehmer ({contributorCount:N0})" : $"Participants ({contributorCount:N0})");
         var embedBuilder = new EmbedBuilder()
             .WithTitle(discordTitle)
-            .WithColor(progress.IsCompleted ? new Color(46, 204, 113) : new Color(241, 196, 15))
+            .WithColor(perPlayer ? new Color(88, 101, 242) : (progress.IsCompleted ? new Color(46, 204, 113) : new Color(241, 196, 15)))
             .WithDescription(description)
-            .AddField(perPlayer ? "Individueller Fortschritt" : "Fortschritt", progressLine + "\n" + bar, false)
-            .AddField(perPlayer ? "Ziel pro Spieler" : "Offen", perPlayer ? Math.Max(1, definition.Target).ToString("N0") : (progress.IsCompleted ? "0" : progress.Remaining.ToString("N0")), true)
-            .AddField("Reward", reward, true)
-            .AddField("Laufzeit", BuildChallengeRuntimeText(progress), false);
+            .AddField(isGerman ? "Typ" : "Type", perPlayer ? "Personal" : "Community", true)
+            .AddField(isGerman ? (requireAllGoals ? "Ziele (UND)" : "Ziele (ODER)") : (requireAllGoals ? "Goals (AND)" : "Goals (OR)"), BuildChallengeGoalText(progress), false);
 
-        var firstAvailableImage = rewardItemVisuals.FirstOrDefault(x => x.Available);
-        if (firstAvailableImage.Available)
+        if (perPlayer)
         {
-            embedBuilder.WithThumbnailUrl(firstAvailableImage.Url);
+            var personalFields = BuildPersonalGoalContributionFields(progress, isGerman);
+            for (var index = 0; index < personalFields.Count; index++)
+            {
+                embedBuilder.AddField(
+                    index == 0 ? (isGerman ? "Persönliche Spielerstände" : "Personal player progress") : (isGerman ? "Spielerstände – Fortsetzung" : "Player progress – continued"),
+                    personalFields[index],
+                    false);
+            }
+        }
+        else
+        {
+            embedBuilder.AddField(isGerman ? "Community-Fortschritt" : "Community progress", progressText, false);
+            if (multipleGoals)
+            {
+                var contributionFields = BuildPersonalGoalContributionFields(progress, isGerman);
+                for (var index = 0; index < contributionFields.Count; index++)
+                {
+                    embedBuilder.AddField(
+                        index == 0 ? (isGerman ? "Spielerstände je Ziel" : "Player progress by goal") : (isGerman ? "Spielerstände – Fortsetzung" : "Player progress – continued"),
+                        contributionFields[index],
+                        false);
+                }
+            }
+            else
+            {
+                embedBuilder.AddField(participationHeading, participationText, false);
+            }
         }
 
-        embedBuilder.AddField(perPlayer ? "Spielerfortschritt" : "Beitrag pro Squad",
-            perPlayer ? BuildPlayerContributionText(progress) : BuildSquadContributionText(progress), false);
+        embedBuilder
+            .AddField(isGerman ? "Loot & Belohnung" : "Loot & reward", reward, false)
+            .AddField(isGerman ? "Laufzeit" : "Duration", BuildChallengeRuntimeText(progress, isGerman), false)
+            .AddField("Status", progress.IsCompleted ? char.ConvertFromUtf32(0x2705) + " " + (isGerman ? "Erreicht" : "Completed") : (isGerman ? "Aktiv" : "Active"), true)
+            .WithFooter($"RR-Herausforderung-ID: {definition.Id} | {kind}")
+            .WithTimestamp(progress.UpdatedUtc);
 
-        var embed = embedBuilder
-            .AddField("Status", perPlayer ? $"Aktiv · {progress.CompletedPlayerCount:N0} Spieler abgeschlossen" : (progress.IsCompleted ? completedText : "Aktiv"), false)
-            .WithFooter(perPlayer
-                ? $"Typ: {kind} | Modus: Pro Spieler | Stat: {definition.StatColumn}"
-                : $"Typ: {kind} | Modus: Community | Stat: {definition.StatColumn} | Startwert: {progress.Baseline.BaselineValue:N0}")
-            .WithTimestamp(progress.UpdatedUtc)
-            .Build();
+        var firstItem = rewardItems.FirstOrDefault();
+        if (firstItem is not null)
+        {
+            var imageUrl = WeeklyRewardItems.GetIconUrl(firstItem.Item);
+            if (await IsItemImageAvailableAsync(imageUrl)) embedBuilder.WithThumbnailUrl(imageUrl);
+        }
 
-        var itemEmbeds = rewardItemVisuals
-            .Select(itemVisual =>
-            {
-                var itemEmbed = new EmbedBuilder()
-                    .WithTitle(WeeklyRewardItems.Format(itemVisual.Item))
-                    .WithDescription(itemVisual.Available ? "Item-Reward" : $"Item: **{itemVisual.Item.Item}** (kein Bild verfuegbar)")
-                    .WithColor(new Color(88, 101, 242));
-                if (itemVisual.Available) itemEmbed.WithThumbnailUrl(itemVisual.Url);
-                return itemEmbed.Build();
-            });
-        var embeds = new[] { embed }.Concat(itemEmbeds).ToArray();
-
-        var ownMessage = await FindOwnMessageByTitleAsync(channel, discordTitle);
+        var embed = embedBuilder.Build();
+        var marker = "RR-Herausforderung-ID: " + definition.Id;
+        var ownMessage = await FindOwnMessageAsync(channel, e =>
+            e.Footer?.Text?.StartsWith(marker, StringComparison.OrdinalIgnoreCase) == true);
         if (ownMessage is not null)
         {
             await ownMessage.ModifyAsync(x =>
             {
                 x.Content = string.Empty;
-                x.Embeds = embeds;
+                x.Embed = embed;
             });
             return;
         }
 
-        await channel.SendMessageAsync(embeds: embeds);
+        await channel.SendMessageAsync(embed: embed);
+    }
+
+    public async Task<bool> SendOrUpdatePlannedWeeklyTasksAsync(
+        ulong channelId,
+        IReadOnlyCollection<WeeklyCommunityTaskDefinition> plannedDefinitions,
+        bool isGerman)
+    {
+        if (_client is null || !IsReady || channelId == 0) return false;
+        if (_client.GetChannel(channelId) is not IMessageChannel channel) return false;
+
+        const string footerMarker = "RR-Herausforderungen-Planung";
+        var entries = plannedDefinitions
+            .Select(definition => new
+            {
+                Definition = definition,
+                StartUtc = WeeklyCommunityTaskService.GetTaskStartUtc(definition)
+            })
+            .Where(x => x.StartUtc.HasValue)
+            .OrderBy(x => x.StartUtc)
+            .Select(x =>
+            {
+                var title = string.IsNullOrWhiteSpace(x.Definition.Title) ? x.Definition.Id : CleanDiscordName(x.Definition.Title);
+                var unix = new DateTimeOffset(DateTime.SpecifyKind(x.StartUtc!.Value, DateTimeKind.Utc)).ToUnixTimeSeconds();
+                return $"**{title}** - <t:{unix}:f>";
+            })
+            .ToList();
+
+        var description = entries.Count == 0
+            ? (isGerman ? "Aktuell sind keine Herausforderungen geplant." : "No challenges are currently scheduled.")
+            : string.Join(Environment.NewLine, entries);
+
+        var embed = new EmbedBuilder()
+            .WithTitle(isGerman ? "Geplante Herausforderungen" : "Scheduled challenges")
+            .WithDescription(Truncate(description, 4096))
+            .WithColor(new Color(88, 101, 242))
+            .WithFooter(footerMarker)
+            .WithCurrentTimestamp()
+            .Build();
+
+        var ownMessage = await FindOwnMessageAsync(channel,
+            e => string.Equals(e.Footer?.Text, footerMarker, StringComparison.Ordinal));
+        if (ownMessage is not null)
+        {
+            await ownMessage.ModifyAsync(x =>
+            {
+                x.Content = string.Empty;
+                x.Embed = embed;
+            });
+            return false;
+        }
+
+        await channel.SendMessageAsync(embed: embed);
+        return true;
+    }
+
+    public async Task DeleteMarkedWeeklyTaskEmbedsForReorderAsync(ulong channelId)
+    {
+        if (_client?.CurrentUser is null || !IsReady || channelId == 0) return;
+        if (_client.GetChannel(channelId) is not IMessageChannel channel) return;
+
+        var messages = await channel.GetMessagesAsync(100).FlattenAsync();
+        foreach (var message in messages.OfType<IUserMessage>().Where(x => x.Author.Id == _client.CurrentUser.Id))
+        {
+            var isMarkedChallenge = message.Embeds.Any(e =>
+                e.Footer?.Text?.StartsWith("RR-Herausforderung-ID: ", StringComparison.OrdinalIgnoreCase) == true);
+            if (isMarkedChallenge) await message.DeleteAsync();
+        }
+    }
+    public async Task DeleteInactiveWeeklyTasksAsync(ulong channelId, IReadOnlyCollection<string> activeTaskIds)
+    {
+        if (_client?.CurrentUser is null || !IsReady || channelId == 0) return;
+        if (_client.GetChannel(channelId) is not IMessageChannel channel) return;
+
+        var active = new HashSet<string>(activeTaskIds.Where(x => !string.IsNullOrWhiteSpace(x)), StringComparer.OrdinalIgnoreCase);
+        var messages = await channel.GetMessagesAsync(100).FlattenAsync();
+        foreach (var message in messages.OfType<IUserMessage>().Where(x => x.Author.Id == _client.CurrentUser.Id))
+        {
+            var challengeEmbed = message.Embeds.FirstOrDefault(e =>
+                e.Footer?.Text?.StartsWith("RR-Herausforderung-ID: ", StringComparison.OrdinalIgnoreCase) == true);
+            if (challengeEmbed is not null)
+            {
+                var footer = challengeEmbed.Footer?.Text ?? string.Empty;
+                var idPart = footer["RR-Herausforderung-ID: ".Length..];
+                var separator = idPart.IndexOf(" |", StringComparison.Ordinal);
+                var taskId = (separator >= 0 ? idPart[..separator] : idPart).Trim();
+                if (!active.Contains(taskId)) await message.DeleteAsync();
+                continue;
+            }
+
+        }
     }
     private static async Task<bool> IsItemImageAvailableAsync(string url)
     {
@@ -447,14 +656,14 @@ public sealed class DiscordBridgeService : IAsyncDisposable
             return false;
         }
     }
-    private static string BuildChallengeRuntimeText(WeeklyCommunityTaskProgress progress)
+    private static string BuildChallengeRuntimeText(WeeklyCommunityTaskProgress progress, bool isGerman)
     {
         var configuredStartUtc = WeeklyCommunityTaskService.GetTaskStartUtc(progress.Definition);
         var startUtc = configuredStartUtc ?? (progress.Baseline.CreatedUtc == default ? progress.UpdatedUtc : progress.Baseline.CreatedUtc);
         var endUtc = WeeklyCommunityTaskService.GetTaskEndUtc(progress.Definition, startUtc);
         if (endUtc is null)
         {
-            return "Keine feste Laufzeit konfiguriert.";
+            return isGerman ? "Keine feste Laufzeit konfiguriert." : "No fixed duration configured.";
         }
 
         var nowUtc = DateTime.UtcNow;
@@ -464,15 +673,15 @@ public sealed class DiscordBridgeService : IAsyncDisposable
 
         if (progress.IsCompleted)
         {
-            return $"Abgeschlossen. Lief seit <t:{unixStart}:f> bis <t:{unixEnd}:f>.";
+            return isGerman ? $"Abgeschlossen. Lief seit <t:{unixStart}:f> bis <t:{unixEnd}:f>." : $"Completed. Ran from <t:{unixStart}:f> until <t:{unixEnd}:f>.";
         }
 
         if (remaining <= TimeSpan.Zero)
         {
-            return $"Abgelaufen seit <t:{unixEnd}:R>. Ende war <t:{unixEnd}:f>.";
+            return isGerman ? $"Abgelaufen seit <t:{unixEnd}:R>. Ende war <t:{unixEnd}:f>." : $"Expired <t:{unixEnd}:R>. Ended at <t:{unixEnd}:f>.";
         }
 
-        return $"Endet <t:{unixEnd}:R> (<t:{unixEnd}:f>)\nVerbleibend: {FormatDuration(remaining)}";
+        return isGerman ? $"Endet <t:{unixEnd}:R> (<t:{unixEnd}:f>)\nVerbleibend: {FormatDuration(remaining)}" : $"Ends <t:{unixEnd}:R> (<t:{unixEnd}:f>)\nRemaining: {FormatDuration(remaining)}";
     }
 
     private static string FormatDuration(TimeSpan value)
@@ -490,30 +699,161 @@ public sealed class DiscordBridgeService : IAsyncDisposable
         return $"{Math.Max(0, value.Minutes)}m";
     }
 
-    private static string BuildPlayerContributionText(WeeklyCommunityTaskProgress progress)
+    private static string BuildChallengeGoalText(WeeklyCommunityTaskProgress progress)
     {
-        if (progress.PlayerProgress.Count == 0)
+        var goals = progress.GoalProgresses.Count > 0
+            ? progress.GoalProgresses
+            : new List<WeeklyCommunityTaskGoalProgress>
+            {
+                new()
+                {
+                    StatTable = progress.Definition.StatTable,
+                    StatColumn = progress.Definition.StatColumn,
+                    DisplayName = progress.Definition.StatColumn,
+                    Target = Math.Max(1, progress.Definition.Target),
+                    Progress = progress.Progress,
+                    Percent = progress.Percent,
+                    IsCompleted = progress.IsCompleted
+                }
+            };
+        if (WeeklyCommunityTaskService.IsPersonalGoal(progress.Definition))
         {
-            return "Noch keine Spielerstatistiken seit dem Startwert gefunden.";
+            return Truncate(string.Join(Environment.NewLine, goals.Select(goal =>
+                $"• **{CleanDiscordName(goal.DisplayName)}**: Ziel {Math.Max(1, goal.Target):N0}")), 1024);
         }
 
-        var lines = progress.PlayerProgress
-            .Take(10)
-            .Select(player => $"{(player.IsCompleted ? "✅" : "▫️")} **{CleanDiscordName(player.PlayerName)}**: {player.Progress:N0}/{Math.Max(1, progress.Definition.Target):N0}")
-            .ToList();
-        if (progress.PlayerProgress.Count > 10)
-        {
-            lines.Add($"Weitere Spieler: {progress.PlayerProgress.Count - 10:N0}");
-        }
-
-        var text = string.Join("\n", lines);
-        return text.Length <= 1024 ? text : text[..1020] + "...";
+        var checkMark = char.ConvertFromUtf32(0x2705);
+        return Truncate(string.Join(Environment.NewLine, goals.Select(goal =>
+            $"• **{CleanDiscordName(goal.DisplayName)}**: {goal.Progress:N0}/{Math.Max(1, goal.Target):N0} ({goal.Percent:0.0}%)" +
+            (goal.IsCompleted ? " " + checkMark : string.Empty))), 1024);
     }
-    private static string BuildSquadContributionText(WeeklyCommunityTaskProgress progress)
+
+    private static List<string> BuildPersonalGoalContributionFields(WeeklyCommunityTaskProgress progress, bool isGerman)
+    {
+        var goals = progress.GoalProgresses;
+        if (goals.Count == 0) return new List<string> { BuildPlayerContributionText(progress, isGerman) };
+
+        static string PlayerKey(WeeklyCommunityTaskPlayerProgress player) =>
+            string.IsNullOrWhiteSpace(player.SteamId) ? "name:" + player.PlayerName : "steam:" + player.SteamId;
+
+        var playerKeys = goals
+            .SelectMany(goal => goal.PlayerProgress)
+            .Where(player => player.Progress > 0)
+            .Select(PlayerKey)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (playerKeys.Count == 0)
+        {
+            return new List<string> { isGerman ? "Noch keine Spielerbeiträge seit dem Start erfasst." : "No player contributions recorded since the start." };
+        }
+
+        var blocks = playerKeys.Select(key =>
+            {
+                var identity = goals.SelectMany(goal => goal.PlayerProgress).First(player => PlayerKey(player).Equals(key, StringComparison.OrdinalIgnoreCase));
+                var lines = new List<string> { $"**{CleanDiscordName(identity.PlayerName)}**" };
+                foreach (var goal in goals)
+                {
+                    var own = goal.PlayerProgress.FirstOrDefault(player => PlayerKey(player).Equals(key, StringComparison.OrdinalIgnoreCase));
+                    var value = own?.Progress ?? 0;
+                    var target = Math.Max(1, goal.Target);
+                    var percent = own?.Percent ?? 0;
+                    var check = own?.IsCompleted == true ? " " + char.ConvertFromUtf32(0x2705) : string.Empty;
+                    lines.Add($"• {CleanDiscordName(goal.DisplayName)}: {value:N0}/{target:N0} ({percent:0.0}%){check}");
+                }
+                return new { Text = string.Join(Environment.NewLine, lines), Score = goals.Sum(goal => goal.PlayerProgress.FirstOrDefault(player => PlayerKey(player).Equals(key, StringComparison.OrdinalIgnoreCase))?.Percent ?? 0) };
+            })
+            .OrderByDescending(x => x.Score)
+            .ToList();
+
+        var fields = new List<string>();
+        var current = new List<string>();
+        foreach (var block in blocks)
+        {
+            var candidate = string.Join(Environment.NewLine + Environment.NewLine, current.Append(block.Text));
+            if (candidate.Length > 1000 && current.Count > 0)
+            {
+                fields.Add(string.Join(Environment.NewLine + Environment.NewLine, current));
+                current.Clear();
+            }
+            current.Add(block.Text);
+            if (fields.Count >= 15) break;
+        }
+        if (current.Count > 0 && fields.Count < 16) fields.Add(Truncate(string.Join(Environment.NewLine + Environment.NewLine, current), 1024));
+        return fields;
+    }
+
+    private static string BuildPlayerContributionText(WeeklyCommunityTaskProgress progress, bool isGerman)
+    {
+        var checkMark = char.ConvertFromUtf32(0x2705);
+        var contributors = progress.PlayerProgress
+            .Where(player => player.Progress > 0)
+            .OrderByDescending(player => player.IsCompleted)
+            .ThenByDescending(player => player.Progress)
+            .ThenBy(player => player.PlayerName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (contributors.Count == 0)
+        {
+            return isGerman ? "Noch keine Spielerbeitraege seit dem Start erfasst." : "No player contributions recorded since the start.";
+        }
+
+        var target = Math.Max(1, progress.Definition.Target);
+        var lines = new List<string>();
+        foreach (var player in contributors)
+        {
+            var playerTarget = player.Target > 0 ? player.Target : target;
+            var line = $"**{CleanDiscordName(player.PlayerName)}**: {player.Progress:N0}/{playerTarget:N0}" + (player.IsCompleted ? " " + checkMark : string.Empty);
+            var candidate = string.Join(Environment.NewLine, lines.Append(line));
+            if (candidate.Length > 960)
+            {
+                lines.Add(isGerman ? $"... und {contributors.Count - lines.Count:N0} weitere Spieler" : $"... and {contributors.Count - lines.Count:N0} more players");
+                break;
+            }
+            lines.Add(line);
+        }
+
+        return Truncate(string.Join(Environment.NewLine, lines), 1024);
+    }
+    private static string BuildSquadAndSoloContributionText(WeeklyCommunityTaskProgress progress, bool isGerman)
+    {
+        var checkMark = char.ConvertFromUtf32(0x2705);
+        var lines = progress.SquadProgress
+            .Where(x => x.Progress > 0)
+            .OrderByDescending(x => x.Progress)
+            .ThenBy(x => x.SquadName, StringComparer.OrdinalIgnoreCase)
+            .Select(x => $"Squad **{CleanDiscordName(x.SquadName)}**: {x.Progress:N0}" + (x.IsSuccessfulParticipant ? " " + checkMark : string.Empty))
+            .ToList();
+
+        foreach (var player in progress.PlayerProgress
+                     .Where(x => !x.HasSquad && x.Progress > 0)
+                     .OrderByDescending(x => x.Progress)
+                     .ThenBy(x => x.PlayerName, StringComparer.OrdinalIgnoreCase))
+        {
+            lines.Add($"**{CleanDiscordName(player.PlayerName)}**: {player.Progress:N0}" +
+                      (player.Progress >= progress.MinimumParticipationValue ? " " + checkMark : string.Empty));
+        }
+
+        if (lines.Count == 0)
+        {
+            return isGerman ? "Noch keine Beitraege seit dem Start erfasst." : "No contributions recorded since the start.";
+        }
+
+        var result = new List<string>();
+        foreach (var line in lines)
+        {
+            if (string.Join(Environment.NewLine, result.Append(line)).Length > 1000)
+            {
+                result.Add(isGerman ? "... weitere Teilnehmer" : "... more participants");
+                break;
+            }
+            result.Add(line);
+        }
+        return Truncate(string.Join(Environment.NewLine, result), 1024);
+    }
+    private static string BuildSquadContributionText(WeeklyCommunityTaskProgress progress, bool isGerman)
     {
         if (progress.SquadProgress.Count == 0)
         {
-            return "Keine Squads in der DB gefunden oder keine Spieler sind einem Squad zugeordnet.";
+            return isGerman ? "Keine Squads in der DB gefunden oder keine Spieler sind einem Squad zugeordnet." : "No squads found in the database, or no players are assigned to a squad.";
         }
 
         var qualifiedSquads = progress.SquadProgress
@@ -522,7 +862,7 @@ public sealed class DiscordBridgeService : IAsyncDisposable
             .ThenBy(x => x.SquadName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        var minimumLine = $"Mindestbeitrag fuer erfolgreiche Teilnahme: **{progress.MinimumParticipationValue:N0}** ({progress.MinimumParticipationPercent:0.##}% vom Ziel, abgerundet).";
+        var minimumLine = isGerman ? $"Mindestbeitrag fuer erfolgreiche Teilnahme: **{progress.MinimumParticipationValue:N0}**." : $"Minimum contribution for successful participation: **{progress.MinimumParticipationValue:N0}**.";
 
         if (qualifiedSquads.Count == 0)
         {
@@ -532,10 +872,10 @@ public sealed class DiscordBridgeService : IAsyncDisposable
 
             if (bestSquad is null || bestSquad.Progress <= 0)
             {
-                return minimumLine + "\nNoch kein Squad hat seit dem gespeicherten Startwert beigetragen.";
+                return minimumLine + (isGerman ? "\nNoch kein Squad hat seit dem gespeicherten Startwert beigetragen." : "\nNo squad has contributed since the saved baseline yet.");
             }
 
-            return minimumLine + $"\nNoch kein Squad hat die Mindestbeteiligung erreicht. Bester Stand: **{CleanDiscordName(bestSquad.SquadName)}** mit {bestSquad.Progress:N0}.";
+            return minimumLine + (isGerman ? $"\nNoch kein Squad hat die Mindestbeteiligung erreicht. Bester Stand: **{CleanDiscordName(bestSquad.SquadName)}** mit {bestSquad.Progress:N0}." : $"\nNo squad has reached the minimum contribution yet. Best progress: **{CleanDiscordName(bestSquad.SquadName)}** with {bestSquad.Progress:N0}.");
         }
 
         var lines = qualifiedSquads
@@ -548,7 +888,7 @@ public sealed class DiscordBridgeService : IAsyncDisposable
         if (qualifiedSquads.Count > 10)
         {
             var rest = qualifiedSquads.Skip(10).Sum(x => x.Progress);
-            lines.Add($"Weitere erfolgreiche Squads: {rest:N0}");
+            lines.Add(isGerman ? $"Weitere erfolgreiche Squads: {rest:N0}" : $"Additional successful squads: {rest:N0}");
         }
 
         var text = string.Join("\n", lines);
@@ -613,7 +953,7 @@ public sealed class DiscordBridgeService : IAsyncDisposable
 
         try
         {
-            var messages = await channel.GetMessagesAsync(30).FlattenAsync();
+            var messages = await channel.GetMessagesAsync(100).FlattenAsync();
             return messages
                 .OfType<IUserMessage>()
                 .Where(x => x.Author.Id == _client.CurrentUser.Id)

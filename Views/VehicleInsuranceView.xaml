@@ -1,0 +1,79 @@
+<UserControl x:Class="ScumRconTool.Views.VehicleInsuranceView"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+ <TabControl Background="Transparent">
+  <TabItem Header="{Binding Texts[Overview]}">
+   <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel>
+     <TextBlock Text="{Binding Texts[VehicleInsurance]}" FontSize="30" FontWeight="Bold" Margin="0,10,0,10"/>
+     <TextBlock Text="{Binding Texts[InsuranceHelp]}" TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}" Margin="0,0,0,10"/>
+     <WrapPanel><Button Content="{Binding Texts[RefreshNow]}" Command="{Binding RefreshInsuranceCommand}"/>
+      <Button Content="{Binding Texts[EconomyPublishWebsite]}" Command="{Binding PublishInsuranceCommand}"/></WrapPanel>
+     <TextBlock Text="{Binding InsuranceStatus}" TextWrapping="Wrap" Foreground="{StaticResource AccentBrush}" Margin="0,8,0,12"/>
+     <ItemsControl ItemsSource="{Binding InsurancePolicies}">
+      <ItemsControl.ItemTemplate><DataTemplate>
+       <Border Style="{StaticResource Card}"><StackPanel>
+        <TextBlock Text="{Binding Summary, Mode=OneWay}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+        <TextBlock Text="{Binding Price, StringFormat={}{0:N0} $}" Foreground="{StaticResource MutedTextBrush}" Margin="0,5,0,5"/>
+        <Expander Header="{Binding DataContext.Texts[InsuranceReview], RelativeSource={RelativeSource AncestorType=UserControl}}">
+         <StackPanel>
+          <ItemsControl ItemsSource="{Binding History}"><ItemsControl.ItemTemplate><DataTemplate><TextBlock Text="{Binding}" TextWrapping="Wrap" FontSize="11"/></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+          <WrapPanel Margin="0,8,0,0">
+           <Button Content="{Binding DataContext.Texts[InsuranceSucceeded], RelativeSource={RelativeSource AncestorType=UserControl}}" Command="{Binding DataContext.InsuranceTransactionSucceededCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}"/>
+           <Button Content="{Binding DataContext.Texts[InsuranceFailed], RelativeSource={RelativeSource AncestorType=UserControl}}" Command="{Binding DataContext.InsuranceTransactionFailedCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}"/>
+          </WrapPanel>
+         </StackPanel>
+        </Expander>
+       </StackPanel></Border>
+      </DataTemplate></ItemsControl.ItemTemplate>
+     </ItemsControl>
+    </StackPanel>
+   </ScrollViewer>
+  </TabItem>
+  <TabItem Header="{Binding Texts[ChallengeSettings]}">
+   <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel>
+    <Border Style="{StaticResource Card}"><StackPanel>
+     <CheckBox Content="{Binding Texts[InsuranceEnabled]}" IsChecked="{Binding Settings.VehicleInsurance.Enabled}"/>
+     <UniformGrid Columns="3" Margin="0,12,0,10">
+      <StackPanel Margin="0,0,12,0"><TextBlock Text="{Binding Texts[InsuranceBasePrice]}"/><TextBox Text="{Binding Settings.VehicleInsurance.DefaultWeeklyPrice, UpdateSourceTrigger=PropertyChanged}"/></StackPanel>
+      <StackPanel Margin="0,0,12,0"><TextBlock Text="{Binding Texts[InsuranceDiscount2]}"/><TextBox Text="{Binding Settings.VehicleInsurance.TwoWeekDiscountPercent, UpdateSourceTrigger=PropertyChanged}"/></StackPanel>
+      <StackPanel><TextBlock Text="{Binding Texts[InsuranceDiscount4]}"/><TextBox Text="{Binding Settings.VehicleInsurance.FourWeekDiscountPercent, UpdateSourceTrigger=PropertyChanged}"/></StackPanel>
+     </UniformGrid>
+     <TextBlock Text="{Binding Texts[InsurancePricingHelp]}" TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}"/>
+     <WrapPanel Margin="0,10,0,0"><Button Content="{Binding Texts[InsuranceLoadTypes]}" Command="{Binding LoadInsuranceTypesCommand}"/><Button Content="{Binding Texts[Save]}" Command="{Binding SaveInsuranceSettingsCommand}"/></WrapPanel>
+    </StackPanel></Border>
+    <Border Style="{StaticResource Card}"><StackPanel>
+     <TextBlock Text="Fahrzeug-Inaktivitätswarnung" FontSize="18" FontWeight="SemiBold" />
+     <CheckBox Content="Vor automatischer Fahrzeuglöschung in Discord warnen" IsChecked="{Binding Settings.VehicleInactivityWarningEnabled}" Margin="0,10,0,0" />
+     <TextBlock Text="Eigene Discord Channel-ID" Foreground="{StaticResource MutedTextBrush}" Margin="0,8,0,0" />
+     <TextBox Text="{Binding Settings.VehicleInactivityWarningDiscordChannelId, UpdateSourceTrigger=PropertyChanged}" />
+     <UniformGrid Columns="2" Margin="0,8,0,0">
+      <StackPanel Margin="0,0,12,0"><TextBlock Text="Warnzeit vorher (Stunden)" Foreground="{StaticResource MutedTextBrush}"/><TextBox Text="{Binding Settings.VehicleInactivityWarningHours, UpdateSourceTrigger=PropertyChanged}"/></StackPanel>
+      <StackPanel><TextBlock Text="Prüfintervall (Minuten)" Foreground="{StaticResource MutedTextBrush}"/><TextBox Text="{Binding Settings.VehicleInactivityScanMinutes, UpdateSourceTrigger=PropertyChanged}"/></StackPanel>
+     </UniformGrid>
+     <TextBlock Text="Liest MaximumTimeOfVehicleInactivity aus der ServerSettings.ini und den letzten Zugriff aus SCUM.db. Empfohlenes Prüfintervall: 60 Minuten. Pro Löschzeitpunkt wird nur einmal gewarnt." Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" Margin="0,8,0,10" />
+     <Button Content="{Binding Texts[Save]}" Command="{Binding SaveInsuranceSettingsCommand}" HorizontalAlignment="Left" />
+    </StackPanel></Border>
+    <ItemsControl ItemsSource="{Binding InsurancePrices}">
+     <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+     <ItemsControl.ItemTemplate><DataTemplate>
+      <Border Style="{StaticResource Card}" Width="300"><StackPanel>
+       <CheckBox Content="{Binding VehicleClass}" IsChecked="{Binding Enabled}" FontWeight="SemiBold"/>
+       <TextBlock Text="{Binding DataContext.Texts[InsuranceWeeklyPrice], RelativeSource={RelativeSource AncestorType=UserControl}}" Foreground="{StaticResource MutedTextBrush}" Margin="0,8,0,2"/>
+       <TextBox Text="{Binding WeeklyPrice, UpdateSourceTrigger=PropertyChanged}"/>
+      </StackPanel></Border>
+     </DataTemplate></ItemsControl.ItemTemplate>
+    </ItemsControl>
+    <Border Style="{StaticResource Card}"><StackPanel>
+     <CheckBox Content="{Binding Texts[InsuranceWebEnabled]}" IsChecked="{Binding Settings.VehicleInsurance.WebEnabled}"/>
+     <TextBlock Text="{Binding Texts[InsuranceWebHelp]}" TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}" Margin="0,8,0,10"/>
+     <TextBlock Text="{Binding Texts[WeeklyWebApiEndpoint]}"/>
+     <TextBox Text="{Binding Settings.VehicleInsurance.WebEndpoint, UpdateSourceTrigger=PropertyChanged}"/>
+     <TextBlock Text="{Binding Texts[WeeklyWebApiToken]}"/>
+     <PasswordBox Loaded="TokenLoaded" PasswordChanged="TokenChanged"/>
+     <Button Content="{Binding Texts[Save]}" Command="{Binding SaveInsuranceSettingsCommand}" HorizontalAlignment="Left"/>
+    </StackPanel></Border>
+   </StackPanel></ScrollViewer>
+  </TabItem>
+ </TabControl>
+</UserControl>

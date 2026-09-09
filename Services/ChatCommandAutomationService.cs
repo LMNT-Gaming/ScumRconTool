@@ -8,12 +8,14 @@ public sealed class ChatCommandAutomationService
     private readonly Func<string, Task<string>> _sendRconAsync;
     private readonly Action<string> _log;
     private readonly Func<IReadOnlyDictionary<string, string>> _dynamicPlaceholderProvider;
-    private readonly Func<CancellationToken, Task<string>> _challengeTextProvider;
+    private readonly Func<ChatLogMessage?, CancellationToken, Task<string>> _challengeTextProvider;
     private readonly Func<ChatLogMessage, string?, CancellationToken, Task<string>>? _buyEventHandler;
     private readonly Func<IReadOnlyList<RedeemCodeRule>> _redeemCodeProvider;
     private readonly Func<RedeemCodeRule, ChatLogMessage, CancellationToken, Task>? _redeemCodeUsedHandler;
     private readonly Func<bool> _weeklyRewardClaimsAvailable;
     private readonly Func<ChatLogMessage, CancellationToken, Task<bool>>? _weeklyRewardClaimHandler;
+    private readonly Func<ChatLogMessage, CancellationToken, Task<bool>>? _builtinCommandHandler;
+    private readonly Action<string>? _cancelOtherConfirmation;
     private readonly FileReadPositionStore _positions = new("chat-command-positions.json");
     private readonly GenericSeenStore _newPlayerWelcomeSeen = new("chat-command-new-player-welcome-seen.json");
     private readonly AutomationLimiter _limiter = new();
@@ -29,23 +31,27 @@ public sealed class ChatCommandAutomationService
         Func<string, Task<string>> sendRconAsync,
         Action<string> log,
         Func<IReadOnlyDictionary<string, string>>? dynamicPlaceholderProvider = null,
-        Func<CancellationToken, Task<string>>? challengeTextProvider = null,
+        Func<ChatLogMessage?, CancellationToken, Task<string>>? challengeTextProvider = null,
         Func<ChatLogMessage, string?, CancellationToken, Task<string>>? buyEventHandler = null,
         Func<IReadOnlyList<RedeemCodeRule>>? redeemCodeProvider = null,
         Func<RedeemCodeRule, ChatLogMessage, CancellationToken, Task>? redeemCodeUsedHandler = null,
         Func<bool>? weeklyRewardClaimsAvailable = null,
-        Func<ChatLogMessage, CancellationToken, Task<bool>>? weeklyRewardClaimHandler = null)
+        Func<ChatLogMessage, CancellationToken, Task<bool>>? weeklyRewardClaimHandler = null,
+        Func<ChatLogMessage, CancellationToken, Task<bool>>? builtinCommandHandler = null,
+        Action<string>? cancelOtherConfirmation = null)
     {
         _sftpLogService = sftpLogService;
         _sendRconAsync = sendRconAsync;
         _log = log;
         _dynamicPlaceholderProvider = dynamicPlaceholderProvider ?? (() => new Dictionary<string, string>());
-        _challengeTextProvider = challengeTextProvider ?? (_ => Task.FromResult(string.Empty));
+        _challengeTextProvider = challengeTextProvider ?? ((_, _) => Task.FromResult(string.Empty));
         _buyEventHandler = buyEventHandler;
         _redeemCodeProvider = redeemCodeProvider ?? (() => Array.Empty<RedeemCodeRule>());
         _redeemCodeUsedHandler = redeemCodeUsedHandler;
         _weeklyRewardClaimsAvailable = weeklyRewardClaimsAvailable ?? (() => false);
         _weeklyRewardClaimHandler = weeklyRewardClaimHandler;
+        _builtinCommandHandler = builtinCommandHandler;
+        _cancelOtherConfirmation = cancelOtherConfirmation;
     }
 
     public bool IsRunning => _loopTask is not null && !_loopTask.IsCompleted;
@@ -80,7 +86,7 @@ public sealed class ChatCommandAutomationService
     public async Task ScanOnceAsync(BotSettings settings, CancellationToken cancellationToken = default)
     {
         var rules = LoadRules(settings.ChatAutomationRulesJson);
-        if (rules.Count == 0 && !HasRedeemCodesAvailable() && !_weeklyRewardClaimsAvailable())
+        if (rules.Count == 0 && !HasRedeemCodesAvailable() && !_weeklyRewardClaimsAvailable() && _builtinCommandHandler is null)
         {
             _log("Chat Commands: keine Regeln, RedeemCodes oder Weekly-Rewards konfiguriert.");
             return;
@@ -117,6 +123,17 @@ public sealed class ChatCommandAutomationService
                     executed++;
                 }
 
+                continue;
+            }
+
+            // A newer insurance quote cancels a pending vote. The built-in handler gets
+            // /ja first only while it owns a quote; otherwise the vote handler receives it.
+            if (_builtinCommandHandler is not null && await _builtinCommandHandler(message, cancellationToken))
+            {
+                var insuranceCommand = BuiltinChatCommandCatalog.Resolve(message.Message);
+                if (insuranceCommand is BuiltinChatCommandId.InsuranceQuote or BuiltinChatCommandId.Confirm or BuiltinChatCommandId.Cancel)
+                    _pendingPaidVotes.Remove(BuildVoteCooldownKey(message));
+                executed++;
                 continue;
             }
 
@@ -363,7 +380,7 @@ public sealed class ChatCommandAutomationService
         var value = ApplyChatPlaceholders(template, message);
         if (!ContainsChallengePlaceholder(value)) return value;
 
-        var challenges = await BuildChallengeTextAsync(cancellationToken);
+        var challenges = await BuildChallengeTextAsync(message, cancellationToken);
         return ReplaceChallengePlaceholders(value, challenges);
     }
 
@@ -382,24 +399,27 @@ public sealed class ChatCommandAutomationService
             return false;
         }
 
-        var text = await BuildChallengeTextAsync(cancellationToken);
+        var text = await BuildChallengeTextAsync(message, cancellationToken);
         text = NormalizeInlineText(text, settings.AutoMessagesMaxLength);
         if (string.IsNullOrWhiteSpace(text))
         {
             return false;
         }
 
-        var messageType = string.IsNullOrWhiteSpace(settings.AutoMessagesBroadcastType) ? "Cyan" : settings.AutoMessagesBroadcastType;
-        await _sendRconAsync(CommandRegistry.Broadcast(messageType, text));
-        _log($"Chat Commands: Challenge-Status durch {message.PlayerName} abgerufen: {text}");
+        if (!await SendPlayerDirectNoticeAsync(message, text))
+        {
+            return false;
+        }
+
+        _log($"Chat Commands: persönlicher Challenge-Status durch {message.PlayerName} abgerufen: {text}");
         return true;
     }
 
-    private async Task<string> BuildChallengeTextAsync(CancellationToken cancellationToken)
+    private async Task<string> BuildChallengeTextAsync(ChatLogMessage? message, CancellationToken cancellationToken)
     {
         try
         {
-            var text = await _challengeTextProvider(cancellationToken);
+            var text = await _challengeTextProvider(message, cancellationToken);
             return string.IsNullOrWhiteSpace(text) ? string.Empty : text.Trim();
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -416,10 +436,7 @@ public sealed class ChatCommandAutomationService
 
     private static bool IsChallengeRequest(string message)
     {
-        var text = (message ?? string.Empty).Trim();
-        return text.Equals("/wc", StringComparison.OrdinalIgnoreCase)
-            || text.Equals("/challenge", StringComparison.OrdinalIgnoreCase)
-            || text.Equals("/challenges", StringComparison.OrdinalIgnoreCase);
+        return BuiltinChatCommandCatalog.Is(BuiltinChatCommandId.Challenges, message);
     }
 
     private async Task<bool> HandleBuyEventCommandAsync(ChatLogMessage message, string? eventName, CancellationToken cancellationToken)
@@ -457,18 +474,9 @@ public sealed class ChatCommandAutomationService
     {
         eventName = null;
         var text = (message ?? string.Empty).Trim();
-        const string command = "/buyevent";
-        if (text.Equals(command, StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        if (!text.StartsWith(command + " ", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        eventName = text[command.Length..].Trim();
+        if (!BuiltinChatCommandCatalog.Is(BuiltinChatCommandId.BuyEvent, text)) return false;
+        var separator = text.IndexOf(' ');
+        if (separator >= 0) eventName = text[(separator + 1)..].Trim();
         return true;
     }
 
@@ -703,6 +711,7 @@ public sealed class ChatCommandAutomationService
 
     private void StorePendingPaidVote(BotSettings settings, ChatLogMessage message, ChatAutomationRule rule, string command)
     {
+        _cancelOtherConfirmation?.Invoke(message.SteamId);
         var key = BuildVoteCooldownKey(message);
         var cost = Math.Max(1, settings.VotePrice <= 0 ? 5000 : settings.VotePrice);
         var timeoutSeconds = Math.Max(10, settings.VoteConfirmationTimeoutSeconds <= 0 ? 60 : settings.VoteConfirmationTimeoutSeconds);

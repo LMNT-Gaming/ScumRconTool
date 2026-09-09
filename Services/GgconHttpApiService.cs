@@ -1,12 +1,14 @@
 using System.Globalization;
 using System.Net.Http;
+using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using ScumRconTool.Models;
 
 namespace ScumRconTool.Services;
 
-public sealed class GgconHttpApiService
+public sealed partial class GgconHttpApiService
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -43,6 +45,212 @@ public sealed class GgconHttpApiService
         return weather;
     }
 
+    public async Task SetServerTimeAsync(double hour, CancellationToken cancellationToken = default) =>
+        _ = await PostServerControlAsync("/server/time", new { hour = Math.Clamp(hour, 0d, 23.999d) }, "Serverzeit", cancellationToken);
+
+    public async Task SetServerWeatherAsync(double value, CancellationToken cancellationToken = default) =>
+        _ = await PostServerControlAsync("/server/weather", new { value = Math.Clamp(value, 0d, 1d) }, "Wetter", cancellationToken);
+
+    public Task<string> SpawnRazorAtAsync(double x, double y, double z, CancellationToken cancellationToken = default) =>
+        PostServerControlAsync("/spawn-at", new { type = "razor", x, y, z }, "Razor-Spawn", cancellationToken);
+
+    public async Task<string> ExecuteCommandAsync(string command, CancellationToken cancellationToken = default)
+    {
+        command = command?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            throw new ArgumentException("ggCON HTTP Command fehlt.", nameof(command));
+        }
+
+        var baseUrl = RequireBaseUrl();
+        using var client = CreateClient();
+        var url = Combine(baseUrl, "/command");
+
+        try
+        {
+            using var response = await client.PostAsJsonAsync(
+                url,
+                new GgconCommandRequest(command),
+                JsonOptions,
+                cancellationToken);
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var shortBody = string.IsNullOrWhiteSpace(json) ? string.Empty : " Antwort: " + Truncate(json, 300);
+                throw new InvalidOperationException($"ggCON HTTP Command Fehler {(int)response.StatusCode} {response.ReasonPhrase}.{shortBody}");
+            }
+
+            var result = JsonSerializer.Deserialize<GgconCommandResponse>(json, JsonOptions);
+            if (result is null)
+            {
+                throw new InvalidOperationException("ggCON HTTP Command Antwort war leer.");
+            }
+
+            // Location-based cleanup commands can return only { "ok": true,
+            // "message": "Command dispatched ..." }. Missing status flags are
+            // therefore unknown; an explicitly false flag is still an error.
+            if (!result.Ok || result.Accepted == false || result.Dispatched == false)
+            {
+                var reason = !string.IsNullOrWhiteSpace(result.Message)
+                    ? result.Message
+                    : !string.IsNullOrWhiteSpace(result.Error)
+                        ? result.Error
+                        : "Command wurde nicht ausgefuehrt.";
+                throw new InvalidOperationException("ggCON HTTP Command abgelehnt: " + reason);
+            }
+
+            return result.Lines is { Count: > 0 }
+                ? string.Join(Environment.NewLine, result.Lines)
+                : result.Message ?? string.Empty;
+        }
+        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException("ggCON HTTP Command: Der Server hat innerhalb von 12 Sekunden nicht geantwortet.");
+        }
+    }
+
+    public Task SendMessageAsync(
+        string text,
+        string type = "ServerMessage",
+        string? steamId = null,
+        CancellationToken cancellationToken = default)
+    {
+        text = (text ?? string.Empty)
+            .Replace("\r", " ", StringComparison.Ordinal)
+            .Replace("\n", " ", StringComparison.Ordinal)
+            .Trim();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            throw new ArgumentException("ggCON HTTP Nachricht fehlt.", nameof(text));
+        }
+
+        var payload = new Dictionary<string, object>
+        {
+            ["text"] = text,
+            ["type"] = string.IsNullOrWhiteSpace(type) ? "ServerMessage" : type.Trim()
+        };
+
+        if (!string.IsNullOrWhiteSpace(steamId))
+        {
+            payload["steamId"] = steamId.Trim();
+        }
+
+        return AwaitServerControlAsync("/message", payload, "Nachricht", cancellationToken);
+    }
+
+    public Task SendWarningAsync(
+        string text,
+        string color = "#d3152a",
+        int durationSeconds = 8,
+        string? steamId = null,
+        CancellationToken cancellationToken = default)
+    {
+        text = (text ?? string.Empty)
+            .Replace("\r", " ", StringComparison.Ordinal)
+            .Replace("\n", " ", StringComparison.Ordinal)
+            .Trim();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            throw new ArgumentException("ggCON HTTP Announcement fehlt.", nameof(text));
+        }
+
+        var payload = new Dictionary<string, object>
+        {
+            ["method"] = "warning",
+            ["text"] = text,
+            ["color"] = string.IsNullOrWhiteSpace(color) ? "#d3152a" : color.Trim(),
+            ["duration"] = Math.Clamp(durationSeconds, 1, 30)
+        };
+
+        if (!string.IsNullOrWhiteSpace(steamId))
+        {
+            payload["steamId"] = steamId.Trim();
+        }
+
+        return AwaitServerControlAsync("/message", payload, "Announcement", cancellationToken);
+    }
+
+    public async Task<List<ScumPlayer>> GetOnlinePlayersAsync(CancellationToken cancellationToken = default)
+    {
+        var baseUrl = RequireBaseUrl();
+        using var client = CreateClient();
+        var url = Combine(baseUrl, "/players.json");
+
+        try
+        {
+            using var response = await client.GetAsync(url, cancellationToken);
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                var shortBody = string.IsNullOrWhiteSpace(json) ? string.Empty : " Antwort: " + Truncate(json, 300);
+                throw new InvalidOperationException($"ggCON HTTP Spieler Fehler {(int)response.StatusCode} {response.ReasonPhrase}.{shortBody}");
+            }
+
+            var result = JsonSerializer.Deserialize<PlayerListResponse>(json, JsonOptions);
+            if (result is null || !result.Ok)
+            {
+                throw new InvalidOperationException("ggCON HTTP Spieler-Antwort war leer oder ok=false.");
+            }
+
+            return result.Players
+                .Where(player => !string.IsNullOrWhiteSpace(player.DisplayName))
+                .ToList();
+        }
+        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException("ggCON HTTP Spieler: Der Server hat innerhalb von 12 Sekunden nicht geantwortet.");
+        }
+    }
+    private async Task AwaitServerControlAsync(string path, object payload, string label, CancellationToken cancellationToken)
+    {
+        _ = await PostServerControlAsync(path, payload, label, cancellationToken);
+    }
+
+    private async Task<string> PostServerControlAsync(string path, object payload, string label, CancellationToken cancellationToken)
+    {
+        var baseUrl = RequireBaseUrl();
+        using var client = CreateClient();
+        var url = Combine(baseUrl, path);
+
+        try
+        {
+            using var response = await client.PostAsJsonAsync(url, payload, JsonOptions, cancellationToken);
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                var shortBody = string.IsNullOrWhiteSpace(json) ? string.Empty : " Antwort: " + Truncate(json, 300);
+                throw new InvalidOperationException($"ggCON HTTP {label} Fehler {(int)response.StatusCode} {response.ReasonPhrase}.{shortBody}");
+            }
+
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return "HTTP " + (int)response.StatusCode;
+            }
+
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind == JsonValueKind.Object &&
+                document.RootElement.TryGetProperty("ok", out var ok) &&
+                ok.ValueKind == JsonValueKind.False)
+            {
+                throw new InvalidOperationException($"ggCON HTTP {label} meldet ok=false. Antwort: {Truncate(json, 300)}");
+            }
+
+            if (document.RootElement.ValueKind == JsonValueKind.Object &&
+                document.RootElement.TryGetProperty("message", out var message) &&
+                message.ValueKind == JsonValueKind.String &&
+                !string.IsNullOrWhiteSpace(message.GetString()))
+            {
+                return message.GetString()!;
+            }
+
+            return Truncate(json, 300);
+        }
+        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException($"ggCON HTTP {label}: Der Server hat innerhalb von 12 Sekunden nicht geantwortet.");
+        }
+    }
     public async Task<GgconPlayerAccountResponse> GetPlayerAccountAsync(string steamId, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(steamId))
@@ -158,6 +366,55 @@ public sealed class GgconHttpApiService
         }
     }
 
+    public async Task AddPlayerFameAsync(string steamId, int amount, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await ChangePlayerFameAsync(steamId, "change", Math.Abs(amount), cancellationToken);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("Invalid action", StringComparison.OrdinalIgnoreCase))
+        {
+            // Older ggCON versions used add/remove; newer builds use a signed change amount.
+            await ChangePlayerFameAsync(steamId, "add", Math.Abs(amount), cancellationToken);
+        }
+    }
+
+    private async Task ChangePlayerFameAsync(string steamId, string action, int amount, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(steamId))
+        {
+            throw new ArgumentException("SteamID fehlt.", nameof(steamId));
+        }
+
+        if (amount == 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(amount), "Fame-Betrag darf nicht 0 sein.");
+        }
+
+        var baseUrl = RequireBaseUrl();
+        using var client = CreateClient();
+        var url = Combine(baseUrl, "/players/" + Uri.EscapeDataString(steamId.Trim()) + "/fame");
+        var payload = JsonSerializer.Serialize(new GgconCurrencyChangeRequest(action, amount), JsonOptions);
+        using var content = new StringContent(payload, Encoding.UTF8, "application/json");
+        using var response = await client.PostAsync(url, content, cancellationToken);
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var shortBody = string.IsNullOrWhiteSpace(json) ? string.Empty : " Antwort: " + Truncate(json, 300);
+            throw new InvalidOperationException($"ggCON HTTP Fame Fehler {(int)response.StatusCode} {response.ReasonPhrase}.{shortBody}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(json))
+        {
+            var result = JsonSerializer.Deserialize<GgconOkResponse>(json, JsonOptions);
+            if (result is not null && !result.Ok)
+            {
+                var reason = !string.IsNullOrWhiteSpace(result.Reason) ? result.Reason : result.Error;
+                throw new InvalidOperationException("ggCON HTTP Fame Antwort ok=false" + (string.IsNullOrWhiteSpace(reason) ? "." : ": " + reason));
+            }
+        }
+    }
     private async Task ChangePlayerCurrencyAsync(string steamId, string action, int amount, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(steamId))
@@ -482,6 +739,33 @@ public sealed class GgconLogLine
 public sealed record GgconCurrencyChangeRequest(
     [property: JsonPropertyName("action")] string Action,
     [property: JsonPropertyName("amount")] int Amount);
+
+public sealed record GgconCommandRequest(
+    [property: JsonPropertyName("command")] string Command);
+
+public sealed class GgconCommandResponse
+{
+    [JsonPropertyName("ok")]
+    public bool Ok { get; set; }
+
+    [JsonPropertyName("accepted")]
+    public bool? Accepted { get; set; }
+
+    [JsonPropertyName("dispatched")]
+    public bool? Dispatched { get; set; }
+
+    [JsonPropertyName("command")]
+    public string Command { get; set; } = string.Empty;
+
+    [JsonPropertyName("lines")]
+    public List<string> Lines { get; set; } = new();
+
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
+
+    [JsonPropertyName("error")]
+    public string? Error { get; set; }
+}
 
 public sealed class GgconOkResponse
 {

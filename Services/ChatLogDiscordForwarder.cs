@@ -9,6 +9,7 @@ public sealed class ChatLogDiscordForwarder
     private readonly FileReadPositionStore _vehiclePositions = new("vehiclelog-discord-positions.json");
     private readonly GenericSeenStore _vehicleSeen = new("vehiclelog-discord-seen.json");
     private readonly VehicleEventStateStore _vehicleState = new();
+    private long? _ggconChatLogCursorMs;
     private CancellationTokenSource? _cts;
     private Task? _loopTask;
 
@@ -56,21 +57,60 @@ public sealed class ChatLogDiscordForwarder
 
     private async Task ScanChatLogOnceAsync(BotSettings settings, ulong discordChannelId, CancellationToken cancellationToken)
     {
-        var local = await _sftpLogService.DownloadLatestLogAsync(settings.FtpChatLogPattern, "Chat", cancellationToken);
-        if (string.IsNullOrWhiteSpace(local) || !File.Exists(local))
+        IReadOnlyList<string> lines;
+        if (settings.GgconHttpLogsEnabled)
         {
-            _log($"Chatlog Discord: keine Datei gefunden. Pattern: {settings.FtpChatLogPattern}");
-            return;
+            var api = new GgconHttpApiService(settings);
+            _ggconChatLogCursorMs ??= DateTimeOffset.UtcNow
+                .AddSeconds(-Math.Max(0, settings.GgconHttpLogInitialBackfillSeconds))
+                .ToUnixTimeMilliseconds();
+
+            var result = await api.GetLogsAsync(_ggconChatLogCursorMs, "chat", cancellationToken);
+            if (result.Next.HasValue && result.Next.Value > 0)
+            {
+                _ggconChatLogCursorMs = result.Next.Value;
+            }
+            else if (result.Lines.Count > 0)
+            {
+                _ggconChatLogCursorMs = result.Lines.Max(x => x.T) + 1;
+            }
+
+            lines = result.Lines
+                .Where(x => !string.IsNullOrWhiteSpace(x.Line))
+                .Where(x => string.IsNullOrWhiteSpace(x.Source) || x.Source.Equals("chat", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(x => x.T)
+                .Select(x => x.Line)
+                .ToList();
+        }
+        else
+        {
+            lines = await ReadChatLinesFromSftpAsync(settings, cancellationToken);
         }
 
-        _log("Chatlog Discord: Chatlog geladen: " + local);
-        var lines = ScumLogFileReader.ReadNewLines(local, _positions, Path.GetFileName(local));
         if (lines.Count == 0)
         {
             _log("Chatlog Discord: keine neuen Zeilen.");
             return;
         }
 
+        await ForwardChatLinesAsync(lines, discordChannelId, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<string>> ReadChatLinesFromSftpAsync(BotSettings settings, CancellationToken cancellationToken)
+    {
+        var local = await _sftpLogService.DownloadLatestLogAsync(settings.FtpChatLogPattern, "Chat", cancellationToken);
+        if (string.IsNullOrWhiteSpace(local) || !File.Exists(local))
+        {
+            _log($"Chatlog Discord: keine Datei gefunden. Pattern: {settings.FtpChatLogPattern}");
+            return Array.Empty<string>();
+        }
+
+        _log("Chatlog Discord: Chatlog geladen: " + local);
+        return ScumLogFileReader.ReadNewLines(local, _positions, Path.GetFileName(local));
+    }
+
+    private async Task ForwardChatLinesAsync(IReadOnlyList<string> lines, ulong discordChannelId, CancellationToken cancellationToken)
+    {
         var parsed = 0;
         var skippedNonGlobal = 0;
         var sent = 0;

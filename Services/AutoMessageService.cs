@@ -18,7 +18,7 @@ public sealed class AutoMessageService
     public void Start(
         BotSettings settings,
         Func<CancellationToken, Task<int>> getOnlinePlayersAsync,
-        Func<CancellationToken, Task<string>> buildChallengeTextAsync,
+        Func<CancellationToken, Task<IReadOnlyList<string>>> buildChallengeTextsAsync,
         Func<string, string, CancellationToken, Task> sendBroadcastAsync)
     {
         Stop();
@@ -34,7 +34,7 @@ public sealed class AutoMessageService
                 try
                 {
                     await Task.Delay(TimeSpan.FromSeconds(15), token);
-                    await TickScheduledAsync(settings, getOnlinePlayersAsync, buildChallengeTextAsync, sendBroadcastAsync, token);
+                    await TickScheduledAsync(settings, getOnlinePlayersAsync, buildChallengeTextsAsync, sendBroadcastAsync, token);
                 }
                 catch (OperationCanceledException) when (token.IsCancellationRequested)
                 {
@@ -60,7 +60,7 @@ public sealed class AutoMessageService
     private async Task TickScheduledAsync(
         BotSettings settings,
         Func<CancellationToken, Task<int>> getOnlinePlayersAsync,
-        Func<CancellationToken, Task<string>> buildChallengeTextAsync,
+        Func<CancellationToken, Task<IReadOnlyList<string>>> buildChallengeTextsAsync,
         Func<string, string, CancellationToken, Task> sendBroadcastAsync,
         CancellationToken cancellationToken)
     {
@@ -74,7 +74,7 @@ public sealed class AutoMessageService
         var queueSteps = steps.Where(x => !AutoMessageFlow.IsStandalone(x.Mode)).ToList();
         if (queueSteps.Count > 0 && now >= _nextQueueUtc)
         {
-            await SendNextQueueStepAsync(settings, queueSteps, getOnlinePlayersAsync, buildChallengeTextAsync, sendBroadcastAsync, cancellationToken);
+            await SendNextQueueStepAsync(settings, queueSteps, getOnlinePlayersAsync, buildChallengeTextsAsync, sendBroadcastAsync, cancellationToken);
             _nextQueueUtc = now.AddMinutes(GetQueueIntervalMinutes(settings));
         }
 
@@ -99,7 +99,7 @@ public sealed class AutoMessageService
                 continue;
             }
 
-            await SendStepAsync(settings, step, getOnlinePlayersAsync, buildChallengeTextAsync, sendBroadcastAsync, cancellationToken);
+            await SendStepAsync(settings, step, getOnlinePlayersAsync, buildChallengeTextsAsync, sendBroadcastAsync, cancellationToken);
             _nextStandaloneUtc[key] = now.AddMinutes(interval);
         }
     }
@@ -107,7 +107,7 @@ public sealed class AutoMessageService
     public async Task TickAsync(
         BotSettings settings,
         Func<CancellationToken, Task<int>> getOnlinePlayersAsync,
-        Func<CancellationToken, Task<string>> buildChallengeTextAsync,
+        Func<CancellationToken, Task<IReadOnlyList<string>>> buildChallengeTextsAsync,
         Func<string, string, CancellationToken, Task> sendBroadcastAsync,
         CancellationToken cancellationToken = default)
     {
@@ -121,18 +121,18 @@ public sealed class AutoMessageService
         var queueSteps = steps.Where(x => !AutoMessageFlow.IsStandalone(x.Mode)).ToList();
         if (queueSteps.Count == 0)
         {
-            await SendStepAsync(settings, steps[0], getOnlinePlayersAsync, buildChallengeTextAsync, sendBroadcastAsync, cancellationToken);
+            await SendStepAsync(settings, steps[0], getOnlinePlayersAsync, buildChallengeTextsAsync, sendBroadcastAsync, cancellationToken);
             return;
         }
 
-        await SendNextQueueStepAsync(settings, queueSteps, getOnlinePlayersAsync, buildChallengeTextAsync, sendBroadcastAsync, cancellationToken);
+        await SendNextQueueStepAsync(settings, queueSteps, getOnlinePlayersAsync, buildChallengeTextsAsync, sendBroadcastAsync, cancellationToken);
     }
 
     private async Task SendNextQueueStepAsync(
         BotSettings settings,
         List<AutoMessageStep> queueSteps,
         Func<CancellationToken, Task<int>> getOnlinePlayersAsync,
-        Func<CancellationToken, Task<string>> buildChallengeTextAsync,
+        Func<CancellationToken, Task<IReadOnlyList<string>>> buildChallengeTextsAsync,
         Func<string, string, CancellationToken, Task> sendBroadcastAsync,
         CancellationToken cancellationToken)
     {
@@ -140,14 +140,14 @@ public sealed class AutoMessageService
         var step = queueSteps[_nextStepIndex];
         _nextStepIndex = (_nextStepIndex + 1) % queueSteps.Count;
 
-        await SendStepAsync(settings, step, getOnlinePlayersAsync, buildChallengeTextAsync, sendBroadcastAsync, cancellationToken);
+        await SendStepAsync(settings, step, getOnlinePlayersAsync, buildChallengeTextsAsync, sendBroadcastAsync, cancellationToken);
     }
 
     private async Task SendStepAsync(
         BotSettings settings,
         AutoMessageStep step,
         Func<CancellationToken, Task<int>> getOnlinePlayersAsync,
-        Func<CancellationToken, Task<string>> buildChallengeTextAsync,
+        Func<CancellationToken, Task<IReadOnlyList<string>>> buildChallengeTextsAsync,
         Func<string, string, CancellationToken, Task> sendBroadcastAsync,
         CancellationToken cancellationToken)
     {
@@ -162,30 +162,27 @@ public sealed class AutoMessageService
         }
 
         var messageType = string.IsNullOrWhiteSpace(step.MessageType) ? settings.AutoMessagesBroadcastType : step.MessageType;
-        string text;
-
+        IReadOnlyList<string> texts;
         if (AutoMessageFlow.IsChallengeStep(step.Type))
         {
-            text = await buildChallengeTextAsync(cancellationToken);
-            if (string.IsNullOrWhiteSpace(text))
-            {
-                text = settings.AutoMessagesNoChallengeText;
-            }
+            texts = await buildChallengeTextsAsync(cancellationToken);
+            if (texts.Count == 0) texts = [settings.AutoMessagesNoChallengeText];
         }
         else
         {
-            text = step.Text;
+            texts = [step.Text];
         }
 
-        text = NormalizeText(text, settings.AutoMessagesMaxLength);
-        if (string.IsNullOrWhiteSpace(text))
+        var sent = 0;
+        foreach (var rawText in texts)
         {
-            _log("Auto Messages: leerer Flow-Schritt uebersprungen.");
-            return;
+            var text = NormalizeText(rawText, settings.AutoMessagesMaxLength);
+            if (string.IsNullOrWhiteSpace(text)) continue;
+            await sendBroadcastAsync(messageType, text, cancellationToken);
+            sent++;
+            _log($"Auto Messages gesendet: {messageType} {text}");
         }
-
-        await sendBroadcastAsync(messageType, text, cancellationToken);
-        _log($"Auto Messages gesendet: {messageType} {text}");
+        if (sent == 0) _log("Auto Messages: leerer Flow-Schritt uebersprungen.");
     }
 
     public void ResetFlow()

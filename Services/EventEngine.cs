@@ -13,7 +13,7 @@ public sealed class EventEngine : IDisposable
 {
     private const string LootPuppetAsset = "BP_Zombie_Civilian_Skinny_Loot";
 
-    private readonly SourceRconClient _rcon;
+    private readonly Func<string, CancellationToken, Task<string>> _sendCommandAsync;
     private readonly Action<string> _log;
     private readonly Action? _stateChanged;
     private readonly List<EventRuntime> _events;
@@ -29,12 +29,14 @@ public sealed class EventEngine : IDisposable
     private DateTime _lastRandomizerLimitLogUtc = DateTime.MinValue;
     private DateTime _lastEngineHealthLogUtc = DateTime.MinValue;
     private DateTime _lastZoneDiagnosticLogUtc = DateTime.MinValue;
+    private DateTime _lastNoPlayersPauseLogUtc = DateTime.MinValue;
+    private readonly SemaphoreSlim _runtimeOperationLock = new(1, 1);
 
     public bool IsRunning => _loopTask is not null && !_loopTask.IsCompleted;
 
-    public EventEngine(SourceRconClient rcon, IEnumerable<EventDefinition> definitions, Action<string> log, Action? stateChanged = null, BotSettings? settings = null, IEnumerable<LootPack>? globalLootPacks = null)
+    public EventEngine(Func<string, CancellationToken, Task<string>> sendCommandAsync, IEnumerable<EventDefinition> definitions, Action<string> log, Action? stateChanged = null, BotSettings? settings = null, IEnumerable<LootPack>? globalLootPacks = null)
     {
-        _rcon = rcon;
+        _sendCommandAsync = sendCommandAsync ?? throw new ArgumentNullException(nameof(sendCommandAsync));
         _log = log;
         _stateChanged = stateChanged;
         _settings = settings;
@@ -143,13 +145,80 @@ public sealed class EventEngine : IDisposable
 
     public async Task ManualAnnounceAsync(EventRuntime runtime, CancellationToken cancellationToken = default)
     {
-        await InitiateAsync(runtime, null, cancellationToken, manual: true);
+        if (runtime is null) throw new ArgumentNullException(nameof(runtime));
+        await ManualStartRuntimeAsync(runtime, cancellationToken);
+    }
+
+    public async Task ManualStartAsync(string eventKey, CancellationToken cancellationToken = default)
+    {
+        var key = (eventKey ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            throw new ArgumentException("Event-ID fehlt.", nameof(eventKey));
+        }
+
+        var runtime = _events.FirstOrDefault(candidate =>
+            string.Equals(candidate.Definition.Id, key, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(candidate.Definition.Name, key, StringComparison.OrdinalIgnoreCase));
+        if (runtime is null)
+        {
+            throw new InvalidOperationException($"Event '{key}' wurde in der laufenden Engine nicht gefunden.");
+        }
+
+        await ManualStartRuntimeAsync(runtime, cancellationToken);
     }
 
     public async Task ManualScanAsync(CancellationToken cancellationToken = default)
     {
         var players = await FetchPlayersAsync(cancellationToken);
-        await EvaluateAsync(players, cancellationToken);
+        await _runtimeOperationLock.WaitAsync(cancellationToken);
+        try
+        {
+            await EvaluateAsync(players, cancellationToken);
+        }
+        finally
+        {
+            _runtimeOperationLock.Release();
+        }
+    }
+
+    private async Task ManualStartRuntimeAsync(EventRuntime runtime, CancellationToken cancellationToken)
+    {
+        await _runtimeOperationLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (!runtime.Definition.Enabled)
+            {
+                throw new InvalidOperationException($"{runtime.Definition.Name}: Event ist deaktiviert.");
+            }
+
+            if (runtime.State != EventRuntimeState.Stopped)
+            {
+                throw new InvalidOperationException($"{runtime.Definition.Name}: manueller Start nicht moeglich, aktueller Status ist {runtime.State}.");
+            }
+
+            if (!IsDirectLive(runtime) && runtime.Definition.EffectiveZone.Radius <= 0)
+            {
+                throw new InvalidOperationException($"{runtime.Definition.Name}: Aktivierzone hat keinen gueltigen Radius.");
+            }
+
+            if (IsGroupBlocked(runtime))
+            {
+                throw new InvalidOperationException($"{runtime.Definition.Name}: In der Eventgruppe '{runtime.Definition.EventGroup}' laeuft bereits ein anderes Event.");
+            }
+
+            var onlinePlayers = await FetchPlayersAsync(cancellationToken);
+            if (onlinePlayers.Count == 0)
+            {
+                throw new InvalidOperationException($"{runtime.Definition.Name}: Event kann ohne einen Spieler online nicht gestartet werden.");
+            }
+
+            await InitiateAsync(runtime, null, cancellationToken, manual: true);
+        }
+        finally
+        {
+            _runtimeOperationLock.Release();
+        }
     }
 
     private async Task LoopAsync(TimeSpan pollInterval, CancellationToken cancellationToken)
@@ -159,7 +228,15 @@ public sealed class EventEngine : IDisposable
             try
             {
                 var players = await FetchPlayersAsync(cancellationToken);
-                await EvaluateAsync(players, cancellationToken);
+                await _runtimeOperationLock.WaitAsync(cancellationToken);
+                try
+                {
+                    await EvaluateAsync(players, cancellationToken);
+                }
+                finally
+                {
+                    _runtimeOperationLock.Release();
+                }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -167,13 +244,13 @@ public sealed class EventEngine : IDisposable
             }
             catch (ObjectDisposedException ex) when (!cancellationToken.IsCancellationRequested)
             {
-                _log("Script Engine Fehler: RCON-Client wurde beendet. Engine-Loop wird gestoppt, um Reconnect-/Auth-Spam zu verhindern.");
+                _log("Script Engine Fehler: Der Command-Transport wurde beendet. Engine-Loop wird gestoppt.");
                 AppLogService.WriteException("ScriptEngine.Loop.ObjectDisposed", ex);
                 break;
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
-                _log("Script Engine Fehler: " + ex.Message + " - Engine bleibt aktiv, aber RCON-Reconnects sind jetzt gedrosselt.");
+                _log("Script Engine Fehler: " + ex.Message + " - Engine bleibt aktiv und versucht es beim naechsten Poll erneut.");
                 AppLogService.WriteException("ScriptEngine.Loop", ex);
             }
 
@@ -190,9 +267,12 @@ public sealed class EventEngine : IDisposable
 
     private async Task<List<ScumPlayer>> FetchPlayersAsync(CancellationToken cancellationToken)
     {
-        var response = await _rcon.SendCommandAsync(CommandRegistry.ListPlayersJson(), cancellationToken);
-        var players = PlayerParser.ParseListPlayersJson(response);
-        _log($"Spieler-Scan: {players.Count} online.");
+        if (_settings is null)
+        {
+            throw new InvalidOperationException("ggCON HTTP Einstellungen fehlen fuer den Spieler-Scan.");
+        }
+
+        var players = await new GgconHttpApiService(_settings).GetOnlinePlayersAsync(cancellationToken);
         return players;
     }
 
@@ -201,6 +281,21 @@ public sealed class EventEngine : IDisposable
         var now = DateTime.UtcNow;
         InitializeLocalStates(now);
 
+        // ggCON server commands need a live player controller. Keep every runtime state
+        // intact while the server is empty so cleanup/start commands can resume safely
+        // after the next player joins instead of failing on every engine poll.
+        if (players.Count == 0)
+        {
+            if (_lastNoPlayersPauseLogUtc == DateTime.MinValue || now - _lastNoPlayersPauseLogUtc >= TimeSpan.FromMinutes(5))
+            {
+                _lastNoPlayersPauseLogUtc = now;
+                _log("Script Engine pausiert spielabhaengige Eventaktionen: keine Spieler online. Offene Eventzustaende bleiben erhalten und werden nach dem naechsten Join fortgesetzt.");
+            }
+
+            return;
+        }
+
+        _lastNoPlayersPauseLogUtc = DateTime.MinValue;
 
         if (_settings?.RandomQuestScheduledMode == true)
         {
@@ -373,7 +468,7 @@ public sealed class EventEngine : IDisposable
 
             if (nearest is null)
             {
-                _log($"Script Engine Diagnose: {runtime.Definition.Name} wartet, aber #ListPlayersJson liefert keine Positionen.");
+                _log($"Script Engine Diagnose: {runtime.Definition.Name} wartet, aber ggCON HTTP /players.json liefert keine Positionen.");
                 continue;
             }
 
@@ -565,12 +660,7 @@ public sealed class EventEngine : IDisposable
             return;
         }
 
-        var positiveLimits = randomScripts
-            .Select(r => r.Definition.MaxConcurrentRandomEvents)
-            .Where(limit => limit > 0)
-            .ToList();
-
-        var maxConcurrent = positiveLimits.Count == 0 ? 0 : positiveLimits.Min();
+        const int maxConcurrent = 1;
         var activeRandomCount = randomScripts.Count(IsRandomScriptActive);
 
         if (maxConcurrent > 0 && activeRandomCount >= maxConcurrent)
@@ -597,7 +687,8 @@ public sealed class EventEngine : IDisposable
         var selected = candidates[_random.Next(candidates.Count)];
         await InitiateAsync(selected, null, cancellationToken, manual: false);
 
-        var next = now.AddMinutes(Math.Max(1, selected.Definition.RandomizerEveryMinutes > 0 ? selected.Definition.RandomizerEveryMinutes : selected.Definition.AnnounceEveryMinutes));
+        var intervalMinutes = Math.Max(1, _settings?.RandomQuestIntervalMinutes ?? 60);
+        var next = now.AddMinutes(intervalMinutes);
         foreach (var candidate in candidates)
         {
             candidate.NextRandomizerUtc = next;
@@ -621,7 +712,7 @@ public sealed class EventEngine : IDisposable
 
         foreach (var runtime in candidates)
         {
-            var intervalMinutes = Math.Max(1, runtime.Definition.RandomizerEveryMinutes > 0 ? runtime.Definition.RandomizerEveryMinutes : runtime.Definition.AnnounceEveryMinutes);
+            var intervalMinutes = Math.Max(1, _settings?.RandomQuestIntervalMinutes ?? 60);
             runtime.NextRandomizerUtc = now.AddMinutes(intervalMinutes);
 
             var playersInZone = GetPlayersInZone(runtime, players);
@@ -1131,6 +1222,13 @@ public sealed class EventEngine : IDisposable
                     return;
                 }
 
+                if (NormalizeSpawnType(block.Type) == "Razor")
+                {
+                    await ExecuteRazorSpawnBlockAsync(runtime, block, i + 1, repeat, cancellationToken);
+                    await DelaySpawnBlockAsync(block, i, repeat, cancellationToken);
+                    continue;
+                }
+
                 var command = BuildSpawnBlockCommand(block, runtime, player);
                 if (string.IsNullOrWhiteSpace(command))
                 {
@@ -1154,16 +1252,7 @@ public sealed class EventEngine : IDisposable
                 MarkRuntime(runtime, $"SpawnBlock gesendet: {block.Name} ({i + 1}/{repeat})", normalizedCommand);
                 await SendAsync(normalizedCommand, cancellationToken);
 
-                if (block.DelayMs > 0)
-                {
-                    await Task.Delay(block.DelayMs, cancellationToken);
-                }
-
-                var loopDelay = GetRepeatDelay(block);
-                if (i < repeat - 1 && loopDelay > TimeSpan.Zero)
-                {
-                    await Task.Delay(loopDelay, cancellationToken);
-                }
+                await DelaySpawnBlockAsync(block, i, repeat, cancellationToken);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -1176,6 +1265,51 @@ public sealed class EventEngine : IDisposable
         }
     }
 
+    private async Task ExecuteRazorSpawnBlockAsync(EventRuntime runtime, SpawnBlock block, int iteration, int repeat, CancellationToken cancellationToken)
+    {
+        if (_settings is null)
+        {
+            throw new InvalidOperationException("ggCON HTTP Einstellungen fehlen fuer den Razor-Spawn.");
+        }
+
+        // Razor is always coordinate-bound. Never resolve its location from a trigger player.
+        var location = ReplacePlaceholders(block.Location, runtime, player: null).Trim();
+        if (!TryParseLocationCoordinates(location, out var x, out var y, out var z))
+        {
+            throw new InvalidOperationException("Razor-Location ist ungueltig. Erwartet werden X/Y/Z-Koordinaten.");
+        }
+
+        var quantity = Math.Max(1, block.Quantity);
+        var api = new GgconHttpApiService(_settings);
+        var xText = x.ToString("0.###", CultureInfo.InvariantCulture);
+        var yText = y.ToString("0.###", CultureInfo.InvariantCulture);
+        var zText = z.ToString("0.###", CultureInfo.InvariantCulture);
+        var locationText = $"X={xText} Y={yText} Z={zText}";
+        var requestBody = $"{{\"type\":\"razor\",\"x\":{xText},\"y\":{yText},\"z\":{zText}}}";
+        for (var spawnIndex = 0; spawnIndex < quantity; spawnIndex++)
+        {
+            var current = spawnIndex + 1;
+            _log($"> HTTP POST /spawn-at Body: {requestBody} | Razor '{block.Name}' ({current}/{quantity})");
+            var response = await api.SpawnRazorAtAsync(x, y, z, cancellationToken);
+            _log($"ggCON /spawn-at akzeptiert Razor '{block.Name}' ({current}/{quantity}): {response}");
+        }
+
+        MarkRuntime(runtime, $"Razor-Spawn von ggCON akzeptiert: {block.Name} ({iteration}/{repeat}, Menge {quantity})", "HTTP POST /spawn-at " + locationText);
+    }
+
+    private static async Task DelaySpawnBlockAsync(SpawnBlock block, int iterationIndex, int repeat, CancellationToken cancellationToken)
+    {
+        if (block.DelayMs > 0)
+        {
+            await Task.Delay(block.DelayMs, cancellationToken);
+        }
+
+        var loopDelay = GetRepeatDelay(block);
+        if (iterationIndex < repeat - 1 && loopDelay > TimeSpan.Zero)
+        {
+            await Task.Delay(loopDelay, cancellationToken);
+        }
+    }
     private static TimeSpan GetStartDelay(SpawnBlock block)
     {
         if (block.StartDelayMs > 0)
@@ -1348,6 +1482,32 @@ public sealed class EventEngine : IDisposable
         return NormalizeLocationKey(location.Trim().Trim('"'));
     }
 
+    private static bool TryParseLocationCoordinates(string location, out double x, out double y, out double z)
+    {
+        x = y = z = 0;
+        if (string.IsNullOrWhiteSpace(location))
+        {
+            return false;
+        }
+
+        var coordinatePart = location.Split('|')[0];
+        if (TryReadLocationCoordinate(coordinatePart, "X", out x) &&
+            TryReadLocationCoordinate(coordinatePart, "Y", out y) &&
+            TryReadLocationCoordinate(coordinatePart, "Z", out z))
+        {
+            return true;
+        }
+
+        var values = Regex.Matches(coordinatePart, @"-?\d+(?:[\.,]\d+)?")
+            .Cast<Match>()
+            .Select(match => match.Value.Replace(',', '.'))
+            .Take(3)
+            .ToArray();
+        return values.Length == 3 &&
+               double.TryParse(values[0], NumberStyles.Float, CultureInfo.InvariantCulture, out x) &&
+               double.TryParse(values[1], NumberStyles.Float, CultureInfo.InvariantCulture, out y) &&
+               double.TryParse(values[2], NumberStyles.Float, CultureInfo.InvariantCulture, out z);
+    }
     private static bool TryReadLocationCoordinate(string source, string key, out double value)
     {
         value = 0;
@@ -1401,6 +1561,8 @@ public sealed class EventEngine : IDisposable
             "cargo drop" => "CargoDrop",
             "ScheduleCargoDrop" => "CargoDrop",
             "BP_CargoDropEvent" => "CargoDrop",
+            "razor" => "Razor",
+            "RAZOR" => "Razor",
             _ => value
         };
     }
@@ -1598,7 +1760,7 @@ public sealed class EventEngine : IDisposable
     private async Task SendAsync(string command, CancellationToken cancellationToken)
     {
         _log("> " + command);
-        var response = await _rcon.SendCommandAsync(command, cancellationToken);
+        var response = await _sendCommandAsync(command, cancellationToken);
         if (!string.IsNullOrWhiteSpace(response)) _log(response);
     }
 

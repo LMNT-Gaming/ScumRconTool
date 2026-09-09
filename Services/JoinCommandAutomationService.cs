@@ -161,14 +161,13 @@ public sealed class JoinCommandAutomationService
             return;
         }
 
-        var listPlayersResponse = await _sendRconAsync("#ListPlayersJson");
-        var players = PlayerParser.ParseListPlayersJson(listPlayersResponse)
+        var players = (await new GgconHttpApiService(settings).GetOnlinePlayersAsync(cancellationToken))
             .Where(x => !string.IsNullOrWhiteSpace(x.UserId))
             .ToList();
 
         if (players.Count == 0)
         {
-            _log("Join Commands: keine verbundenen Spieler ueber #ListPlayersJson gefunden.");
+            _log("Join Commands: keine verbundenen Spieler ueber ggCON HTTP /players.json gefunden.");
             return;
         }
 

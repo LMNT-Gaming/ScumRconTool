@@ -9,23 +9,26 @@ public sealed class SettingRandomizerService
     private static readonly SemaphoreSlim ApplyLock = new(1, 1);
     private readonly BotSettings _settings;
     private readonly Action<string> _log;
+    private readonly bool _isGerman;
 
-    public SettingRandomizerService(BotSettings settings, Action<string> log)
+    public SettingRandomizerService(BotSettings settings, Action<string> log, bool isGerman = true)
     {
         _settings = settings;
         _log = log;
+        _isGerman = isGerman;
     }
 
     public async Task<SettingRandomizerResult> ApplyAsync(
         IReadOnlyCollection<SettingRandomizerRule> rules,
+        IReadOnlyCollection<SettingRandomizerPack> packs,
         bool upload,
         CancellationToken cancellationToken = default)
     {
-        ValidateRules(rules);
+        ValidateRules(rules, packs, _isGerman);
         await ApplyLock.WaitAsync(cancellationToken);
         try
         {
-            return await Task.Run(() => ApplyCore(rules, upload, cancellationToken), cancellationToken);
+            return await Task.Run(() => ApplyCore(rules, packs, upload, cancellationToken), cancellationToken);
         }
         finally
         {
@@ -33,34 +36,122 @@ public sealed class SettingRandomizerService
         }
     }
 
-    public static void ValidateRules(IEnumerable<SettingRandomizerRule> rules)
+    public async Task<string> DownloadCurrentAsync(CancellationToken cancellationToken = default)
     {
-        var enabled = rules.Where(x => x.Enabled).ToList();
-        if (enabled.Count == 0) throw new InvalidOperationException("Aktiviere mindestens eine Servereinstellung.");
-
-        foreach (var rule in enabled)
+        await ApplyLock.WaitAsync(cancellationToken);
+        try
         {
-            if (string.IsNullOrWhiteSpace(rule.Section) || string.IsNullOrWhiteSpace(rule.Key))
-            {
-                throw new InvalidOperationException("Bei einer Einstellung fehlen Sektion oder INI-Schl?ssel.");
-            }
-
-            var usable = rule.Options.Where(x => !string.IsNullOrWhiteSpace(x.Value) && x.ChancePercent > 0).ToList();
-            if (usable.Count == 0)
-            {
-                throw new InvalidOperationException($"'{rule.DisplayName}': Mindestens ein Wert ben?tigt eine Chance gr??er 0.");
-            }
-
-            var total = usable.Sum(x => x.ChancePercent);
-            if (Math.Abs(total - 100d) > 0.01d)
-            {
-                throw new InvalidOperationException(
-                    $"'{rule.DisplayName}': Die Chancen ergeben {total.ToString("0.##", CultureInfo.CurrentCulture)} % statt 100 %.");
-            }
+            return await Task.Run(() => DownloadCurrent(cancellationToken), cancellationToken);
+        }
+        finally
+        {
+            ApplyLock.Release();
         }
     }
 
-    public static IReadOnlyList<TimeSpan> ParseSchedule(string? value)
+    private string DownloadCurrent(CancellationToken cancellationToken)
+    {
+        var remoteFile = NormalizeRemoteFilePath(_settings.SettingRandomizerRemoteFilePath);
+        var (host, port) = ParseHostAndPort(_settings.FtpHost, _settings.FtpPort);
+        if (string.IsNullOrWhiteSpace(host)) throw new InvalidOperationException(L("SFTP-Host fehlt.", "SFTP host is missing."));
+        if (string.IsNullOrWhiteSpace(_settings.FtpUser)) throw new InvalidOperationException(L("SFTP-Benutzer fehlt.", "SFTP user is missing."));
+
+        using var client = new SftpClient(host, port, _settings.FtpUser, _settings.FtpPassword ?? string.Empty);
+        client.ConnectionInfo.Timeout = TimeSpan.FromSeconds(30);
+        client.OperationTimeout = TimeSpan.FromSeconds(30);
+        client.Connect();
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!client.Exists(remoteFile)) throw new FileNotFoundException(L("ServerSettings.ini wurde auf dem SFTP-Server nicht gefunden.", "ServerSettings.ini was not found on the SFTP server."), remoteFile);
+            using var input = new MemoryStream();
+            client.DownloadFile(remoteFile, input);
+            var (text, _) = Decode(input.ToArray());
+            Directory.CreateDirectory(Path.GetDirectoryName(LastUploadedCachePath)!);
+            File.WriteAllText(LastUploadedCachePath, text, new UTF8Encoding(false));
+            return text;
+        }
+        finally
+        {
+            if (client.IsConnected) client.Disconnect();
+        }
+    }
+    public static string LastUploadedCachePath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "ScumRconTool",
+        "State",
+        "server-settings-last-uploaded.ini");
+
+    public static string? ReadLastUploadedValue(string section, string key)
+    {
+        if (string.IsNullOrWhiteSpace(section) || string.IsNullOrWhiteSpace(key) || !File.Exists(LastUploadedCachePath)) return null;
+        return FindIniValue(File.ReadAllText(LastUploadedCachePath), section.Trim(), key.Trim());
+    }
+    public static void ValidateRules(
+        IEnumerable<SettingRandomizerRule> rules,
+        IEnumerable<SettingRandomizerPack> packs,
+        bool isGerman = true)
+    {
+        var allRules = rules.ToList();
+        var allPacks = packs.ToList();
+        var enabledRules = allRules.Where(x => x.Enabled).ToList();
+        var enabledPacks = allPacks.Where(x => x.Enabled).ToList();
+        if (enabledRules.Count == 0 && enabledPacks.Count == 0)
+            throw new InvalidOperationException(isGerman ? "Aktiviere mindestens eine Servereinstellung oder ein Würfelset." : "Enable at least one server setting or dice pack.");
+
+        foreach (var rule in enabledRules)
+        {
+            if (string.IsNullOrWhiteSpace(rule.Section) || string.IsNullOrWhiteSpace(rule.Key))
+                throw new InvalidOperationException(isGerman ? "Bei einer Einstellung fehlen Sektion oder INI-Schlüssel." : "A setting is missing its section or INI key.");
+            ValidateChanceTotal(rule.DisplayName, rule.Options.Where(x => !string.IsNullOrWhiteSpace(x.Value)).Select(x => x.ChancePercent), isGerman);
+        }
+
+        foreach (var pack in enabledPacks)
+        {
+            if (string.IsNullOrWhiteSpace(pack.Name))
+                throw new InvalidOperationException(isGerman ? "Ein Würfelset hat keinen Namen." : "A dice pack has no name.");
+            var usableOptions = pack.Options.Where(x => x.Values.Count > 0).ToList();
+            ValidateChanceTotal(pack.Name, usableOptions.Select(x => x.ChancePercent), isGerman);
+            foreach (var option in usableOptions)
+            {
+                if (option.Values.Any(x => string.IsNullOrWhiteSpace(x.Section) || string.IsNullOrWhiteSpace(x.Key) || string.IsNullOrWhiteSpace(x.Value)))
+                    throw new InvalidOperationException(isGerman ? $"Würfelset '{pack.Name}', Variante '{option.Name}': Sektion, Schlüssel und Wert müssen ausgefüllt sein." : $"Dice pack '{pack.Name}', variant '{option.Name}': section, key, and value are required.");
+                var duplicate = option.Values.GroupBy(x => x.Section.Trim() + "/" + x.Key.Trim(), StringComparer.OrdinalIgnoreCase).FirstOrDefault(x => x.Count() > 1);
+                if (duplicate is not null)
+                    throw new InvalidOperationException(isGerman ? $"Würfelset '{pack.Name}', Variante '{option.Name}': '{duplicate.Key}' ist doppelt enthalten." : $"Dice pack '{pack.Name}', variant '{option.Name}': '{duplicate.Key}' is duplicated.");
+            }
+        }
+
+        // A key may belong to only one configured set, even while that set is disabled.
+        var owners = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var rule in allRules.Where(x => !string.IsNullOrWhiteSpace(x.Section) && !string.IsNullOrWhiteSpace(x.Key)))
+            RegisterTarget(rule.Section, rule.Key, string.IsNullOrWhiteSpace(rule.DisplayName) ? rule.Key : rule.DisplayName, owners, isGerman);
+        foreach (var pack in allPacks)
+            foreach (var value in pack.Options.SelectMany(x => x.Values)
+                         .Where(x => !string.IsNullOrWhiteSpace(x.Section) && !string.IsNullOrWhiteSpace(x.Key))
+                         .GroupBy(x => x.Section.Trim() + "/" + x.Key.Trim(), StringComparer.OrdinalIgnoreCase)
+                         .Select(x => x.First()))
+                RegisterTarget(value.Section, value.Key, string.IsNullOrWhiteSpace(pack.Name) ? "(unbenanntes Set)" : pack.Name, owners, isGerman);
+    }
+
+    private static void ValidateChanceTotal(string name, IEnumerable<double> chances, bool isGerman)
+    {
+        var usable = chances.Where(x => x > 0).ToList();
+        if (usable.Count == 0)
+            throw new InvalidOperationException(isGerman ? $"'{name}': Mindestens eine Variante benötigt eine Chance größer 0." : $"'{name}': At least one variant needs a chance greater than 0.");
+        var total = usable.Sum();
+        if (Math.Abs(total - 100d) > 0.01d)
+            throw new InvalidOperationException(isGerman ? $"'{name}': Die Chancen ergeben {total.ToString("0.##", CultureInfo.CurrentCulture)} % statt 100 %." : $"'{name}': The chances add up to {total.ToString("0.##", CultureInfo.CurrentCulture)}% instead of 100%.");
+    }
+
+    private static void RegisterTarget(string section, string key, string owner, IDictionary<string, string> owners, bool isGerman)
+    {
+        var id = section.Trim() + "/" + key.Trim();
+        if (owners.TryGetValue(id, out var existing))
+            throw new InvalidOperationException(isGerman ? $"'{id}' wird gleichzeitig von '{existing}' und '{owner}' geändert." : $"'{id}' is changed by both '{existing}' and '{owner}'.");
+        owners[id] = owner;
+    }
+    public static IReadOnlyList<TimeSpan> ParseSchedule(string? value, bool isGerman = true)
     {
         var times = new List<TimeSpan>();
         foreach (var part in (value ?? string.Empty).Split([',', ';', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
@@ -69,20 +160,20 @@ public sealed class SettingRandomizerService
                 time < TimeSpan.Zero ||
                 time >= TimeSpan.FromDays(1))
             {
-                throw new InvalidOperationException($"Ung?ltige Uhrzeit '{part}'. Verwende z. B. 04:00, 10:00, 16:00, 22:00.");
+                throw new InvalidOperationException(isGerman ? $"Ungültige Uhrzeit '{part}'. Verwende z. B. 04:00, 10:00, 16:00, 22:00." : $"Invalid time '{part}'. Use e.g. 04:00, 10:00, 16:00, 22:00.");
             }
 
             if (!times.Contains(time)) times.Add(time);
         }
 
-        if (times.Count == 0) throw new InvalidOperationException("Trage mindestens eine Uhrzeit ein.");
+        if (times.Count == 0) throw new InvalidOperationException(isGerman ? "Trage mindestens eine Uhrzeit ein." : "Enter at least one time.");
         times.Sort();
         return times;
     }
 
-    public static string? GetDueScheduleKey(DateTime localNow, string? schedule, string? lastScheduleKey)
+    public static string? GetDueScheduleKey(DateTime localNow, string? schedule, string? lastScheduleKey, bool isGerman = true)
     {
-        foreach (var time in ParseSchedule(schedule))
+        foreach (var time in ParseSchedule(schedule, isGerman))
         {
             var scheduled = localNow.Date.Add(time);
             var age = localNow - scheduled;
@@ -96,14 +187,15 @@ public sealed class SettingRandomizerService
 
     private SettingRandomizerResult ApplyCore(
         IReadOnlyCollection<SettingRandomizerRule> rules,
+        IReadOnlyCollection<SettingRandomizerPack> packs,
         bool upload,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var remoteFile = NormalizeRemoteFilePath(_settings.SettingRandomizerRemoteFilePath);
         var (host, port) = ParseHostAndPort(_settings.FtpHost, _settings.FtpPort);
-        if (string.IsNullOrWhiteSpace(host)) throw new InvalidOperationException("SFTP-Host fehlt.");
-        if (string.IsNullOrWhiteSpace(_settings.FtpUser)) throw new InvalidOperationException("SFTP-Benutzer fehlt.");
+        if (string.IsNullOrWhiteSpace(host)) throw new InvalidOperationException(L("SFTP-Host fehlt.", "SFTP host is missing."));
+        if (string.IsNullOrWhiteSpace(_settings.FtpUser)) throw new InvalidOperationException(L("SFTP-Benutzer fehlt.", "SFTP user is missing."));
 
         using var client = new SftpClient(host, port, _settings.FtpUser, _settings.FtpPassword ?? string.Empty);
         client.ConnectionInfo.Timeout = TimeSpan.FromSeconds(30);
@@ -115,7 +207,7 @@ public sealed class SettingRandomizerService
             cancellationToken.ThrowIfCancellationRequested();
             if (!client.Exists(remoteFile))
             {
-                throw new FileNotFoundException("ServerSettings.ini wurde auf dem SFTP-Server nicht gefunden.", remoteFile);
+                throw new FileNotFoundException(L("ServerSettings.ini wurde auf dem SFTP-Server nicht gefunden.", "ServerSettings.ini was not found on the SFTP server."), remoteFile);
             }
 
             byte[] originalBytes;
@@ -126,6 +218,7 @@ public sealed class SettingRandomizerService
             }
 
             var (originalText, encoding) = Decode(originalBytes);
+            ValidateConfiguredTargetsExist(originalText, rules, packs);
             var newline = originalText.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
             var lines = originalText.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n').ToList();
             var selections = new List<SettingRandomizerSelection>();
@@ -144,15 +237,34 @@ public sealed class SettingRandomizerService
                     option.DiscordAnnouncement ?? string.Empty));
             }
 
+            foreach (var pack in packs.Where(x => x.Enabled))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var option = ChoosePackOption(pack.Options);
+                foreach (var value in option.Values)
+                {
+                    var oldValue = ReplaceIniValue(lines, value.Section.Trim(), value.Key.Trim(), value.Value.Trim());
+                    selections.Add(new SettingRandomizerSelection(
+                        value.Section.Trim(),
+                        value.Key.Trim(),
+                        string.IsNullOrWhiteSpace(value.DisplayName) ? value.Key.Trim() : value.DisplayName.Trim(),
+                        oldValue,
+                        value.Value.Trim(),
+                        option.StatusText ?? string.Empty));
+                }
+            }
+
             var updatedText = string.Join(newline, lines);
             if (upload)
             {
                 var updatedBytes = Encode(updatedText, encoding);
                 UploadAtomically(client, remoteFile, originalBytes, updatedBytes, cancellationToken);
-                _log($"SettingRandomizer: ServerSettings.ini aktualisiert ({selections.Count} Werte).");
+                Directory.CreateDirectory(Path.GetDirectoryName(LastUploadedCachePath)!);
+                File.WriteAllText(LastUploadedCachePath, updatedText, new UTF8Encoding(false));
+                _log($"SettingRandomizer: ServerSettings.ini aktualisiert und lokal zwischengespeichert ({selections.Count} Werte).");
             }
 
-            return new SettingRandomizerResult(remoteFile, selections, upload);
+            return new SettingRandomizerResult(remoteFile, selections, upload, updatedText);
         }
         finally
         {
@@ -160,6 +272,29 @@ public sealed class SettingRandomizerService
         }
     }
 
+    private void ValidateConfiguredTargetsExist(
+        string iniText,
+        IReadOnlyCollection<SettingRandomizerRule> rules,
+        IReadOnlyCollection<SettingRandomizerPack> packs)
+    {
+        var available = ServerSettingsValidationService.ParseEntries(iniText)
+            .Select(x => x.Section.Trim() + "/" + x.Key.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var configured = rules.Where(x => x.Enabled).Select(x => (x.Section, x.Key, Owner: x.DisplayName))
+            .Concat(packs.Where(x => x.Enabled).SelectMany(pack => pack.Options.SelectMany(option => option.Values)
+                .Select(value => (value.Section, value.Key, Owner: pack.Name))))
+            .Where(x => !string.IsNullOrWhiteSpace(x.Section) && !string.IsNullOrWhiteSpace(x.Key))
+            .DistinctBy(x => x.Section.Trim() + "/" + x.Key.Trim(), StringComparer.OrdinalIgnoreCase);
+
+        foreach (var target in configured)
+        {
+            var id = target.Section.Trim() + "/" + target.Key.Trim();
+            if (available.Contains(id)) continue;
+            throw new InvalidOperationException(L(
+                $"'{target.Key}' aus Set '{target.Owner}' existiert nicht mehr in der aktuellen ServerSettings.ini. Entferne oder ersetze diesen Wert.",
+                $"'{target.Key}' from set '{target.Owner}' no longer exists in the current ServerSettings.ini. Remove or replace this value."));
+        }
+    }
     private static SettingRandomizerOption Choose(IEnumerable<SettingRandomizerOption> options)
     {
         var usable = options.Where(x => !string.IsNullOrWhiteSpace(x.Value) && x.ChancePercent > 0).ToList();
@@ -172,7 +307,18 @@ public sealed class SettingRandomizerService
         return usable[^1];
     }
 
-    private static string ReplaceIniValue(List<string> lines, string section, string key, string newValue)
+    private static SettingRandomizerPackOption ChoosePackOption(IEnumerable<SettingRandomizerPackOption> options)
+    {
+        var usable = options.Where(x => x.Values.Count > 0 && x.ChancePercent > 0).ToList();
+        var roll = Random.Shared.NextDouble() * usable.Sum(x => x.ChancePercent);
+        foreach (var option in usable)
+        {
+            roll -= option.ChancePercent;
+            if (roll <= 0) return option;
+        }
+        return usable[^1];
+    }
+    private string ReplaceIniValue(List<string> lines, string section, string key, string newValue)
     {
         var currentSection = string.Empty;
         var sectionFound = false;
@@ -215,7 +361,26 @@ public sealed class SettingRandomizerService
         {
             lines.Insert(insertAt, $"{key}={newValue}");
         }
-        return "(nicht gesetzt)";
+        return L("(nicht gesetzt)", "(not set)");
+    }
+
+    private static string? FindIniValue(string text, string section, string key)
+    {
+        var currentSection = string.Empty;
+        foreach (var line in text.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
+        {
+            var trimmed = line.Trim();
+            if (trimmed.StartsWith("[", StringComparison.Ordinal) && trimmed.EndsWith("]", StringComparison.Ordinal))
+            {
+                currentSection = trimmed[1..^1].Trim();
+                continue;
+            }
+            if (!currentSection.Equals(section, StringComparison.OrdinalIgnoreCase)) continue;
+            var equals = line.IndexOf('=');
+            if (equals < 0 || !line[..equals].Trim().Equals(key, StringComparison.OrdinalIgnoreCase)) continue;
+            return line[(equals + 1)..].Trim();
+        }
+        return null;
     }
 
     private static void UploadAtomically(
@@ -284,13 +449,15 @@ public sealed class SettingRandomizerService
         return result;
     }
 
-    private static string NormalizeRemoteFilePath(string? path)
+    private string NormalizeRemoteFilePath(string? path)
     {
         var value = (path ?? string.Empty).Trim().Replace('\\', '/');
-        if (string.IsNullOrWhiteSpace(value)) throw new InvalidOperationException("Remote-Pfad zur ServerSettings.ini fehlt.");
+        if (string.IsNullOrWhiteSpace(value)) throw new InvalidOperationException(L("Remote-Pfad zur ServerSettings.ini fehlt.", "Remote path to ServerSettings.ini is missing."));
         if (!value.StartsWith('/')) value = "/" + value;
         return value;
     }
+
+    private string L(string de, string en) => _isGerman ? de : en;
 
     private static (string Host, int Port) ParseHostAndPort(string? value, int configuredPort)
     {

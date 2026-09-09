@@ -210,6 +210,7 @@ public sealed class LootPack
 {
     public string Name { get; set; } = "LootPack";
     public bool Enabled { get; set; } = true;
+    public string Category { get; set; } = string.Empty;
 
     // Gewicht fuer die Zufallsauswahl. 1 = normal, 2 = doppelt so wahrscheinlich.
     public int Weight { get; set; } = 1;
