@@ -1,0 +1,40 @@
+{
+  "AssociatedNpc": "Doctor",
+  "Tier": 1,
+  "Title": "Der Husten kommt um drei",
+  "Description": "Irgendwer hat sich den Magen verdorben, das Bein verdreht und hustet Blut – und das alles gleichzeitig. Der Doc? Der spielt Karten mit dem Mechaniker und „beobachtet die Symptome aus der Ferne“. Also darfst du ran. Viel Glück. Oder ein Testament.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 45,
+      "Fame": 5,
+      "Skills": [
+        {
+          "Skill": "Medical",
+          "Experience": 180
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Suche 1x Aktivkohle",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "ActivatedCharcoal_03",
+            "ActivatedCharcoal_02",
+            "ActivatedCharcoal_01"
+          ],
+          "RequiredNum": 1,
+          "MinAcceptedItemUses": 1
+        }
+      ]
+    }
+  ]
+}

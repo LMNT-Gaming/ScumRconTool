@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RedRaven · Herausforderungen</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <div class="eyebrow">REDRAVEN · LOCAL ADMIN</div>
+      <h1>Herausforderungen</h1>
+      <p>Direkte Verwaltung der lokalen Challenge-Konfiguration.</p>
+    </div>
+    <div class="toolbar">
+      <span id="saveState" class="state neutral">Wird geladen …</span>
+      <button id="reloadButton" class="button ghost" type="button">Neu laden</button>
+      <button id="newButton" class="button ghost" type="button">+ Neue Challenge</button>
+      <button id="saveButton" class="button primary" type="button">Alle speichern</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar panel">
+      <div class="sidebar-head">
+        <div>
+          <strong id="challengeCount">0 Challenges</strong>
+          <small>Änderungen werden gemeinsam gespeichert.</small>
+        </div>
+        <input id="searchInput" type="search" placeholder="Titel, ID oder Typ suchen …" autocomplete="off">
+      </div>
+      <div id="challengeList" class="challenge-list" aria-label="Herausforderungen"></div>
+    </aside>
+
+    <section class="editor panel">
+      <div id="emptyState" class="empty-state">
+        <div class="empty-icon">◆</div>
+        <h2>Challenge auswählen</h2>
+        <p>Wähle links eine Herausforderung oder lege eine neue an.</p>
+      </div>
+
+      <form id="editorForm" class="hidden" novalidate>
+        <div class="editor-title-row">
+          <div>
+            <div class="eyebrow">CHALLENGE EDITOR</div>
+            <h2 id="editorTitle">Herausforderung</h2>
+          </div>
+          <div class="toolbar compact">
+            <button id="duplicateButton" class="button ghost" type="button">Duplizieren</button>
+            <button id="deleteButton" class="button danger" type="button">Löschen</button>
+          </div>
+        </div>
+
+        <section class="form-section">
+          <div class="section-title"><span>01</span><div><h3>Grunddaten</h3><p>Name, Typ und Sichtbarkeit</p></div></div>
+          <div class="form-grid">
+            <label class="switch-field full"><input id="enabled" type="checkbox"><span class="switch"></span><span><strong>Aktiv</strong><small>Die Challenge kann vom Dienst ausgewertet werden.</small></span></label>
+            <label><span>Typ</span><select id="type"><option>Daily</option><option>Weekly</option><option>Event</option><option>Quiz</option></select></label>
+            <label><span>Eindeutige ID</span><input id="id" type="text" maxlength="80" spellcheck="false"></label>
+            <label class="full"><span>Titel</span><input id="title" type="text" maxlength="160"></label>
+            <label class="full"><span>Beschreibung</span><textarea id="description" rows="3"></textarea></label>
+          </div>
+        </section>
+
+        <section class="form-section">
+          <div class="section-title"><span>02</span><div><h3>Zeitplan</h3><p>Sofort, terminiert oder zeitlich begrenzt</p></div></div>
+          <div class="form-grid three">
+            <label><span>Start</span><input id="startUtc" type="datetime-local"></label>
+            <label><span>Ende</span><input id="endUtc" type="datetime-local"></label>
+            <label><span>Laufzeit in Stunden</span><input id="durationHours" type="number" min="0" max="8760" step="1"><small>0 = Standard des Typs</small></label>
+          </div>
+        </section>
+
+        <section id="goalsSection" class="form-section">
+          <div class="section-title action-title"><span>03</span><div><h3>Ziele</h3><p>Ein Ziel oder mehrere Bedingungen</p></div><button id="addGoalButton" class="button ghost small" type="button">+ Ziel</button></div>
+          <div class="form-grid three">
+            <label><span>Wertung</span><select id="goalScope"><option value="Community">Community</option><option value="PerPlayer">Pro Spieler</option></select></label>
+            <label><span>Mehrere Ziele</span><select id="goalLogic"><option value="Any">Eines erfüllen</option><option value="All">Alle erfüllen</option></select></label>
+            <label><span>Mindestbeitrag</span><input id="minimumParticipationValue" type="number" min="0" step="1"></label>
+          </div>
+          <div id="goalsList" class="goals-list"></div>
+        </section>
+
+        <section id="quizSection" class="form-section hidden">
+          <div class="section-title"><span>03</span><div><h3>Quiz</h3><p>Frage und erlaubte Antworten für /quizN</p></div></div>
+          <div class="form-grid">
+            <label><span>Quiznummer</span><input id="quizNumber" type="number" min="1" step="1"></label>
+            <label><span>Bildpfad / URL</span><input id="quizImagePath" type="text"></label>
+            <label class="full"><span>Frage</span><textarea id="quizQuestion" rows="3"></textarea></label>
+            <label class="full"><span>Akzeptierte Antworten</span><textarea id="quizAcceptedAnswers" rows="2" placeholder="Mehrere Antworten wie bisher im Desktop-Editor trennen"></textarea></label>
+          </div>
+        </section>
+
+        <section class="form-section">
+          <div class="section-title"><span>04</span><div><h3>Belohnung</h3><p>Geld, Fame und zufällige Lootpacks</p></div></div>
+          <div class="form-grid three">
+            <label><span>Geld</span><input id="rewardMoney" type="number" min="0" step="1"></label>
+            <label><span>Fame</span><input id="rewardFame" type="number" min="0" step="1"></label>
+            <label><span>Auszahlung</span><select id="rewardDistribution"><option value="PerParticipant">Pro Teilnehmer</option><option value="PerSquad">Pro Squad</option></select></label>
+            <label class="full"><span>Belohnungstext</span><input id="rewardText" type="text"></label>
+            <fieldset class="full pack-field"><legend>Lootpacks · eines wird zufällig gewählt</legend><div id="lootPackList" class="pack-list"></div></fieldset>
+            <label class="full"><span>Abschlusstext</span><textarea id="completedText" rows="2"></textarea></label>
+          </div>
+        </section>
+      </form>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>

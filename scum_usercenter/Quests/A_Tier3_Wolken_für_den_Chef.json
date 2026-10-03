@@ -1,0 +1,48 @@
+{
+  "AssociatedNpc": "Armorer",
+  "Tier": 3,
+  "Title": "Wolken für den Chef",
+  "Description": "Der Waffenhändler will beim nächsten Outpost Treffen etwas mehr Eindruck schinden als sonst. Dazu hat er eine Idee: Jemand wirft ein paar Rauchgranaten und er tritt dann mit Sonnenbrille aus der Rauchwolke hervor. Das ganze sollte auch durch coole Musik untermalt werden. Er zahlt gut, wenn du alles schnell besorgen kannst. ",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 280,
+      "Fame": 15,
+      "Skills": [
+        {
+          "Skill": "Demolition",
+          "Experience": 333
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Besorge 2 Rauchgranaten und etwas das Musik abspielt. Eine Boombox oder ein Radio sollten reichen. ",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "Smoke_Grenade",
+            "Smoke_Grenade_Green",
+            "Smoke_Grenade_Red",
+            "Smoke_Grenade_Violet",
+            "Smoke_Grenade_Yellow"
+          ],
+          "RequiredNum": 2
+        },
+        {
+          "AcceptedItems": [
+            "BoomBox_01",
+            "Radio"
+          ],
+          "RequiredNum": 1
+        }
+      ]
+    }
+  ]
+}

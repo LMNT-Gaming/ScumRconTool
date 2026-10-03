@@ -1,0 +1,4 @@
+.order-pack[hidden] { display: none !important; }
+.order-pack { min-height: 290px; }
+.pack-image { height: 74px; }
+.pack-image img { max-width: 82px; padding: 7px; }

@@ -15,6 +15,10 @@ public static class CommandRegistry
     public static string ListPlayers() => "#ListPlayers";
     public static string Server() => "#Server";
     public static string Weather() => "#Weather";
+    public static string SetTime(double hour) =>
+        $"#SetTime {Math.Clamp(hour, 0d, 23.999d).ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}";
+    public static string SetWeather(double intensity) =>
+        $"#SetWeather {Math.Clamp(intensity, 0d, 1d).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}";
 
     public static string Broadcast(string type, string text)
     {

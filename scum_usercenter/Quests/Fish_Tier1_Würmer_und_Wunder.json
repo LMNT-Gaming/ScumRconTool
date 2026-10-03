@@ -1,0 +1,46 @@
+{
+  "AssociatedNpc": "Harbourmaster",
+  "Tier": 1,
+  "Title": "Würmer und Wunder",
+  "Description": "Die besten Fänge beginnen mit dem richtigen Köder – und der Fischer hat seine letzten Würmer beim Kartenspielen verloren. Kein Kommentar. Deine Aufgabe ist simpel: Hol Nachschub, bevor die nächste Beißzeit beginnt. Und bring nichts Glitschiges mit, was nicht auf den Haken passt.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 35,
+      "Fame": 5,
+      "Skills": [
+        {
+          "Skill": "Survival",
+          "Experience": 130
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Sammle Köder (alles außer Brot)",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": true,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "FishingBait_Bleak",
+            "FishingBait_Cheese",
+            "FishingBait_Corn",
+            "FishingBait_Cricket",
+            "FishingBait_Grasshopper",
+            "FishingBait_Meat",
+            "FishingBait_RedWorm",
+            "FishingBait_Sardine",
+            "FishingBait_Worm",
+            "FishingBait_BoiliesPrm1"
+          ],
+          "RequiredNum": 2
+        }
+      ]
+    }
+  ]
+}

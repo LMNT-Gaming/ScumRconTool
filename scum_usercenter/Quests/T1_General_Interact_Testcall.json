@@ -1,0 +1,43 @@
+{
+  "AssociatedNpc": "GeneralGoods",
+  "Tier": 1,
+  "Title": "Testcall",
+  "Description": "Ich möchte die Verbindung zur Süd-Quarry testen.",
+  "TimeLimitHours": 12.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 400,
+      "Fame": 5
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Benutze das Wählscheibentelefon",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": true,
+      "Type": "Interaction",
+      "Locations": [
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/A_3_Stone_Mine_02b_Int.A_3_Stone_Mine_02b_Int:PersistentLevel.BP_Building_17.InteriorStaticMesh111",
+          "FallbackTransform": "139365.031250,-340842.156250,22166.921875|0.020204,11.729967,-0.192971|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Indoor/Office/Phone/SM_Phone_01.SM_Phone_01",
+          "Instance": 17
+        }
+      ],
+      "MinNeeded": 1,
+      "MaxNeeded": 1,
+      "SpawnOnlyNeeded": true,
+      "WorldMarkerShowDistance": 5,
+      "LocationsShownOnMap": [
+        {
+          "Location": {
+            "X": 139348.344,
+            "Y": -340677.781,
+            "Z": 22165.385
+          },
+          "SizeFactor": 0.5
+        }
+      ]
+    }
+  ]
+}

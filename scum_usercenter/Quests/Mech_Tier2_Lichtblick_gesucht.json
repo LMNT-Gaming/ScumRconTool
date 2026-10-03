@@ -1,0 +1,51 @@
+{
+  "AssociatedNpc": "Mechanic",
+  "Tier": 2,
+  "Title": "Lichtblick gesucht",
+  "Description": "Der Mechaniker bastelt gerade an einem Buggy, den man nachts nur findet, wenn man drüber stolpert. Du sollst ihm einen funktionstüchtigen Scheinwerfer bringen – Marke egal, solange er heller leuchtet als ein Feuerzeug.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 120,
+      "Fame": 10,
+      "Skills": [
+        {
+          "Skill": "Aviation",
+          "Experience": 500
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Sammle einen beliebigen Scheinwerfer und bring ihn zurück zum Händler.",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "Cruiser_Headlight_Item",
+            "Dirtbike_Headlight_Item",
+            "Laika_Lights_FrontLeft",
+            "Laika_Lights_FrontRight",
+            "PortableWorkLight",
+            "Rager_Lights_FrontLeft",
+            "Rager_Lights_FrontRight",
+            "RIS_Headlight_Left_Item",
+            "RIS_Headlight_Right_Item",
+            "SportBike_Wind_Deflector_Headlight_Item",
+            "SportBike_Wind_Deflector_Street_Headlight_Item",
+            "Tractor_Door_Hood_Headlight_Left_Item",
+            "Tractor_Door_Hood_Headlight_Right_Item",
+            "WW_Lights_FrontLeft",
+            "WW_Lights_FrontRight"
+          ],
+          "RequiredNum": 1
+        }
+      ]
+    }
+  ]
+}

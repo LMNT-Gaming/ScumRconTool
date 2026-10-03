@@ -50,6 +50,111 @@
 
 
 
+    <Style TargetType="{x:Type DatePickerTextBox}" BasedOn="{StaticResource {x:Type TextBox}}">
+        <Setter Property="Background" Value="#101016" />
+        <Setter Property="Foreground" Value="{StaticResource AppTextBrush}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Margin" Value="0" />
+        <Setter Property="Padding" Value="8" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="DarkCalendarStyle" TargetType="{x:Type Calendar}">
+        <Setter Property="Background" Value="#101016" />
+        <Setter Property="Foreground" Value="{StaticResource AppTextBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource AccentDarkBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+    </Style>
+
+    <Style TargetType="{x:Type Calendar}" BasedOn="{StaticResource DarkCalendarStyle}" />
+
+    <Style TargetType="{x:Type CalendarItem}">
+        <Setter Property="Background" Value="#101016" />
+        <Setter Property="Foreground" Value="{StaticResource AppTextBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource AccentDarkBrush}" />
+    </Style>
+
+    <Style TargetType="{x:Type CalendarButton}">
+        <Setter Property="Background" Value="#15151B" />
+        <Setter Property="Foreground" Value="{StaticResource AppTextBrush}" />
+    </Style>
+
+    <Style TargetType="{x:Type CalendarDayButton}">
+        <Setter Property="Background" Value="#101016" />
+        <Setter Property="Foreground" Value="{StaticResource AppTextBrush}" />
+    </Style>
+
+    <Style TargetType="{x:Type DatePicker}">
+        <Setter Property="Background" Value="#101016" />
+        <Setter Property="Foreground" Value="{StaticResource AppTextBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource AppBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Margin" Value="0,4,0,10" />
+        <Setter Property="MinHeight" Value="38" />
+        <Setter Property="CalendarStyle" Value="{StaticResource DarkCalendarStyle}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type DatePicker}">
+                    <Grid>
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="9">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="38" />
+                                </Grid.ColumnDefinitions>
+                                <DatePickerTextBox x:Name="PART_TextBox"
+                                                   Grid.Column="0"
+                                                   Background="{TemplateBinding Background}"
+                                                   Foreground="{TemplateBinding Foreground}"
+                                                   BorderThickness="0"
+                                                   Padding="8"
+                                                   VerticalContentAlignment="Center" />
+                                <Button x:Name="PART_Button"
+                                        Grid.Column="1"
+                                        Content="&#x1F4C5;"
+                                        Margin="0"
+                                        Padding="4"
+                                        Focusable="False"
+                                        BorderThickness="1,0,0,0" />
+                            </Grid>
+                        </Border>
+                        <Popup x:Name="PART_Popup"
+                               IsOpen="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}}"
+                               Placement="Bottom"
+                               AllowsTransparency="True"
+                               StaysOpen="False"
+                               Focusable="False">
+                            <Border Background="#101016"
+                                    BorderBrush="{StaticResource AccentBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="10"
+                                    Padding="6"
+                                    Margin="0,4,0,0">
+                                <Calendar x:Name="PART_Calendar"
+                                          Background="#101016"
+                                          Foreground="{StaticResource AppTextBrush}"
+                                          BorderBrush="{StaticResource AccentDarkBrush}"
+                                          Style="{StaticResource DarkCalendarStyle}" />
+                            </Border>
+                        </Popup>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.55" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style TargetType="ComboBox">
         <Setter Property="Background" Value="#101016" />
         <Setter Property="Foreground" Value="{StaticResource AppTextBrush}" />

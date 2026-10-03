@@ -1,0 +1,52 @@
+{
+  "AssociatedNpc": "GeneralGoods",
+  "Tier": 3,
+  "Title": "Ist das noch Handgepäck?",
+  "Description": "Jeder will ihn und dem Händler gehen langsam die Vorräte der Wanderrucksäcke zur Neige. Bring ihm neue Ware für sein Lager.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 140,
+      "Fame": 10,
+      "Skills": [
+        {
+          "Skill": "Thievery",
+          "Experience": 400
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Besorge einen Wanderrucksack",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "Hiking_Backpack_01_01",
+            "Hiking_Backpack_01_02",
+            "Hiking_Backpack_01_03",
+            "Hiking_Backpack_01_04",
+            "Hiking_Backpack_01_05",
+            "Hiking_Backpack_Tyrone",
+            "Military_Backpack_02_01",
+            "Military_Backpack_02_03",
+            "Military_Backpack_02_02",
+            "Military_Backpack_02_04",
+            "Military_Backpack_02_05",
+            "Military_Backpack_02_06",
+            "Military_Backpack_02_07",
+            "Military_Backpack_02_08",
+            "Police_Backpack_02"
+          ],
+          "RequiredNum": 1,
+          "MinAcceptedItemHealth": 50.0
+        }
+      ]
+    }
+  ]
+}

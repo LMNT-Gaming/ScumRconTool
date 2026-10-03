@@ -1,0 +1,55 @@
+{
+  "AssociatedNpc": "Doctor",
+  "Tier": 2,
+  "Title": "Schneller als der Tod",
+  "Description": "Ein Überlebender wurde angeblich von einem wilden Esel attackiert. Der Doc glaubt kein Wort – sagt aber, das Opfer sei „leicht panisch“ und braucht dringend ’ne Dosis Aufmunterung. Hol was Beruhigendes und sorge dafür, dass keine Esel mehr rumtoben. Es reicht wenn du was 4-beiniges erledigst. Die Verletzung scheint sowieso nicht von einem Esel zu stammen...",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 88,
+      "Fame": 10,
+      "Skills": [
+        {
+          "Skill": "Survival",
+          "Experience": 240
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Sammle 1x Schmerzmittel",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": true,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "Painkillers_01",
+            "Painkillers_02",
+            "PainKillers_03"
+          ],
+          "RequiredNum": 1,
+          "MinAcceptedItemUses": 1
+        }
+      ]
+    },
+    {
+      "TrackingCaption": "Töte einen Esel, Ziege, Wildschwein, Pferd, Wolf oder Bär",
+      "SequenceIndex": 1,
+      "CanBeAutoCompleted": false,
+      "Type": "Elimination",
+      "Amount": 1,
+      "TargetCharacters": [
+        "BP_Bear2",
+        "BP_Boar",
+        "BP_Donkey2",
+        "BP_Goat2",
+        "BP_Horse2",
+        "BP_Wolf3"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "AssociatedNpc": "Mechanic",
+  "Tier": 1,
+  "Title": "Gummi oder gar nicht",
+  "Description": "Der Mechaniker will ein Ersatzrad montieren – aber nicht irgendeins, sondern eines, das „nicht schon drei Zombiegebisse und einen Schraubenschlüssel gesehen hat“. Du sollst ein halbwegs brauchbares Rad organisieren, bevor er dem Kunden stattdessen eine Schubkarre verkauft.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 60,
+      "Fame": 1,
+      "Skills": [
+        {
+          "Skill": "Driving",
+          "Experience": 200
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Sammle ein beliebiges Rad und bringe es zurück zum Händler. ",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "Bicycle_Wheel_54_622_Item",
+            "Bicycle_Wheel_60_622_Item",
+            "Cruiser_Wheel_155_66_R17",
+            "Cruiser_Wheel_188_53_R17",
+            "Dirtbike_Front_Wheel_Cover_Item",
+            "Dirtbike_Wheel_110_80_R19_Item",
+            "Dirtbike_Wheel_90_90_R21_Item",
+            "Improvised_Wheel",
+            "SportBike_Wheel_100_90_R18_Item",
+            "SportBike_Wheel_90_90_R18_Item",
+            "Wheel_155_R65_Item",
+            "Wheel_205_80_R12_Item",
+            "Wheel_255_55_R16_Item",
+            "Wheel_265_60_R18_Item",
+            "Wheel_6x16_Item"
+          ],
+          "RequiredNum": 1
+        }
+      ]
+    }
+  ]
+}

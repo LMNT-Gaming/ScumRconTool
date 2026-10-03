@@ -1,0 +1,49 @@
+{
+  "AssociatedNpc": "Banker",
+  "Tier": 2,
+  "Title": "Vermögenssicherung vor Ort",
+  "Description": "Ein ehemaliger Kunde hat behauptet, er habe sein ganzes Erspartes „an einem sicheren Ort deponiert“. Danach wurde er von Puppets gefressen. Der Banker will wissen, ob dieser Ort echt war – oder nur Teil eines fortgeschrittenen Hirnschadens.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 120,
+      "Fame": 10,
+      "Skills": [
+        {
+          "Skill": "Camouflage",
+          "Experience": 240
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Suche nach dem versteckten Safe",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": true,
+      "Type": "Interaction",
+      "Locations": [
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/B_1_Prkno_02_Interior_04.B_1_Prkno_02_Interior_04:PersistentLevel.BP_CB_Store_A_INT_2.SM_Crate_Pile_04_0",
+          "FallbackTransform": "-459696.250000,-108086.781250,31086.560547|0.000000,-160.250458,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Outdoor/Crate/SM_Crate_Pile_04.SM_Crate_Pile_04",
+          "Instance": 4
+        }
+      ],
+      "MinNeeded": 1,
+      "MaxNeeded": 1,
+      "SpawnOnlyNeeded": true,
+      "WorldMarkerShowDistance": 50,
+      "LocationsShownOnMap": [
+        {
+          "Location": {
+            "X": -459547.812,
+            "Y": -107923.141,
+            "Z": 31178.711
+          },
+          "SizeFactor": 0.5
+        }
+      ]
+    }
+  ]
+}

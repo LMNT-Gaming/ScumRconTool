@@ -1,0 +1,42 @@
+{
+  "AssociatedNpc": "GeneralGoods",
+  "Tier": 1,
+  "Title": "Airfieldfiles",
+  "Description": "Ich brauch Dokumente vom Militärflugfeld",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 2800,
+      "Fame": 15
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Dokumente einsammeln",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Interaction",
+      "Locations": [
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/B_2_Airport_06_Int.B_2_Airport_06_Int:PersistentLevel.BP_Hangar_01_RW_INT_0.SM_filecab_green_01_StaticMeshComponent5",
+          "FallbackTransform": "-245127.296875,-48366.589844,36132.535156|0.000000,163.581619,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Indoor/Office/File_cabinet/SM_FileCabinet_green_01.SM_FileCabinet_green_01"
+        }
+      ],
+      "MinNeeded": 1,
+      "MaxNeeded": 1,
+      "SpawnOnlyNeeded": true,
+      "WorldMarkerShowDistance": 5,
+      "LocationsShownOnMap": [
+        {
+          "Location": {
+            "X": -245266.0,
+            "Y": -48486.0,
+            "Z": 36225.02
+          },
+          "SizeFactor": 0.6
+        }
+      ]
+    }
+  ]
+}

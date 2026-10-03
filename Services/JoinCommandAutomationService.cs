@@ -79,6 +79,8 @@ public sealed class JoinCommandAutomationService
 
             foreach (var rule in rules.Where(x => x.Enabled))
             {
+                if (!AutomationLogParser.IsJoinTargetMatch(rule, join)) continue;
+
                 if (!AutomationLogParser.TryBuildJoinCommand(rule, join, out var command, out var error))
                 {
                     _log("Join Commands: " + error);
@@ -159,14 +161,13 @@ public sealed class JoinCommandAutomationService
             return;
         }
 
-        var listPlayersResponse = await _sendRconAsync("#ListPlayersJson");
-        var players = PlayerParser.ParseListPlayersJson(listPlayersResponse)
+        var players = (await new GgconHttpApiService(settings).GetOnlinePlayersAsync(cancellationToken))
             .Where(x => !string.IsNullOrWhiteSpace(x.UserId))
             .ToList();
 
         if (players.Count == 0)
         {
-            _log("Join Commands: keine verbundenen Spieler ueber #ListPlayersJson gefunden.");
+            _log("Join Commands: keine verbundenen Spieler ueber ggCON HTTP /players.json gefunden.");
             return;
         }
 
@@ -183,6 +184,8 @@ public sealed class JoinCommandAutomationService
 
             foreach (var rule in rules)
             {
+                if (!AutomationLogParser.IsJoinTargetMatch(rule, join)) continue;
+
                 if (!AutomationLogParser.TryBuildJoinCommand(rule, join, out var command, out var error))
                 {
                     _log("Join Commands: " + error);
@@ -262,7 +265,7 @@ public sealed class JoinCommandAutomationService
 
     private static string BuildJobKey(JoinAutomationRule rule, PlayerJoinEvent join)
     {
-        var source = $"{rule.Command}|{join.SteamId}|{join.RawLine}";
+        var source = $"{rule.Command}|{rule.TargetSteamId}|{join.SteamId}|{join.RawLine}";
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(source));
         return Convert.ToHexString(bytes);
     }

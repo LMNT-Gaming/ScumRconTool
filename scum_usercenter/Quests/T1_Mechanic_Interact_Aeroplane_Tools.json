@@ -1,0 +1,63 @@
+{
+  "AssociatedNpc": "Mechanic",
+  "Tier": 1,
+  "Title": "Aeroplane Tools",
+  "Description": "Ich brauche Spezialwerkzeug vom Flugfeld in A4, Handbücher dazu wären auch Super! Du müsstest welche in Kisten dort finden.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 600,
+      "Fame": 5,
+      "Skills": [
+        {
+          "Skill": "Aviation",
+          "Experience": 100
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Spezialwerkzeug",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Interaction",
+      "Locations": [
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/A_4_Airfield.A_4_Airfield:PersistentLevel.BP_Airplane_Hangar2_2.HierarchicalInstancedStaticMesh4",
+          "FallbackTransform": "350803.156250,-517025.125000,7545.749512|0.000000,-126.047119,0.000000|0.692494,1.000998,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Outdoor/Military/MilitaryFurniture/Meshes/SM_Portable_Cot_01b.SM_Portable_Cot_01b",
+          "Instance": 2
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/A_4_Airfield.A_4_Airfield:PersistentLevel.BP_Airplane_Hangar2_2.StaticMesh59",
+          "FallbackTransform": "350081.125000,-517865.656250,7547.259277|0.000000,-23.970718,0.000000|0.951968,0.951968,0.951968",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Outdoor/Crate/SM_Crate_Pile_01.SM_Crate_Pile_01",
+          "Instance": 2
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/A_4_Airfield.A_4_Airfield:PersistentLevel.BP_Airplane_Hangar2_2.HierarchicalInstancedStaticMesh4",
+          "FallbackTransform": "349901.781250,-518745.406250,7671.624023|0.000000,-16.018476,0.000000|0.692494,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Outdoor/Military/MilitaryFurniture/Meshes/SM_Portable_Cot_01b.SM_Portable_Cot_01b",
+          "Instance": 8
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/A_4_Airfield.A_4_Airfield:PersistentLevel.BP_Airplane_Hangar2_2.StaticMesh98",
+          "FallbackTransform": "351642.468750,-517224.718750,7627.897461|0.000000,-137.035965,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Buildings/Abandoned_School/Meshes/Misc/SM_MERGED_TableClutter_SchoolLibrary_01.SM_MERGED_TableClutter_SchoolLibrary_01",
+          "Instance": 2
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/A_4_Airfield.A_4_Airfield:PersistentLevel.BP_Airplane_Hangar2_2.HierarchicalInstancedStaticMesh23",
+          "FallbackTransform": "351656.187500,-516929.281250,7546.685547|0.000000,62.255211,0.000000|0.965408,0.965408,0.965408",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Indoor/Storage/Cardboard_Boxes/SM_Cardboard_Box_01_Workshop.SM_Cardboard_Box_01_Workshop",
+          "Instance": 20
+        }
+      ],
+      "MinNeeded": 3,
+      "MaxNeeded": 5,
+      "SpawnOnlyNeeded": true,
+      "WorldMarkerShowDistance": 5
+    }
+  ]
+}

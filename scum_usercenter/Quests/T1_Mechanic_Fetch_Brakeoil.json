@@ -1,0 +1,52 @@
+{
+  "AssociatedNpc": "Mechanic",
+  "Tier": 1,
+  "Title": "Brakeoil",
+  "Description": "Ich brauch Bremsflüssigkeit mit einem zustand besser als 40%",
+  "TimeLimitHours": 12.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 400,
+      "Fame": 5,
+      "Skills": [
+        {
+          "Skill": "Engineering",
+          "Experience": 100
+        },
+        {
+          "Skill": "Driving",
+          "Experience": 100
+        }
+      ],
+      "TradeDeals": [
+        {
+          "Item": "Car_Repair_Kit",
+          "Price": 100,
+          "Amount": 1,
+          "Fame": 1,
+          "AllowExcluded": true
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Bremsflüssigkeit +40%",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "Brake_Oil"
+          ],
+          "RequiredNum": 1,
+          "MinAcceptedItemHealth": 40.0,
+          "RandomAdditionalRequiredNum": 2
+        }
+      ]
+    }
+  ]
+}

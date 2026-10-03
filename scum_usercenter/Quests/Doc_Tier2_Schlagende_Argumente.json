@@ -1,0 +1,37 @@
+{
+  "AssociatedNpc": "Doctor",
+  "Tier": 2,
+  "Title": "Schlagende Argumente",
+  "Description": "Ein paar Patienten haben sich beim Faustkampf die Hände gebrochen. Der Doc meint: „Wenn schon prügeln, dann wenigstens mit Stil und Verband.“ Du weißt, was das heißt: Sanitätsnachschub besorgen, bevor sie anfangen, sich gegenseitig mit Baumrinde zu schienen.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 100,
+      "Fame": 2,
+      "Skills": [
+        {
+          "Skill": "Boxing",
+          "Experience": 220
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Sammle sterile Notverbände",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "Emergency_bandage"
+          ],
+          "RequiredNum": 4
+        }
+      ]
+    }
+  ]
+}

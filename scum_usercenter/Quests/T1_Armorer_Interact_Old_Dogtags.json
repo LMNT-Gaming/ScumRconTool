@@ -1,0 +1,79 @@
+{
+  "AssociatedNpc": "Armorer",
+  "Tier": 1,
+  "Title": "Alte Dogtags",
+  "Description": "Ich habe meine Hundemarken im Army-Training-Camp nördlich vom See  in C3 verloren. Kannst du nach Ihnen suchen? ",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 1500,
+      "Fame": 10
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Finde die Hundemarken",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Interaction",
+      "Locations": [
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/C_3_Military_Polygon.C_3_Military_Polygon:PersistentLevel.SM_Box_5.StaticMeshComponent0",
+          "FallbackTransform": "239119.390625,101724.171875,26668.835938|0.000000,0.000000,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Outdoor/Country/SM_box_04.SM_box_04",
+          "Instance": 5
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/C_3_Military_Polygon.C_3_Military_Polygon:PersistentLevel.SM_Crate_02_Military_46.StaticMeshComponent0",
+          "FallbackTransform": "237717.875000,104345.781250,26589.302734|-6.428553,0.102040,2.675689|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Outdoor/Crate/SM_Crate_02_A_Military.SM_Crate_02_A_Military",
+          "Instance": 46
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/C_3_Military_Polygon.C_3_Military_Polygon:PersistentLevel.SM_Crate_Tarp_01_36.StaticMeshComponent0",
+          "FallbackTransform": "236621.765625,104238.015625,26680.566406|1.147062,119.577728,-3.096405|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Outdoor/Military/Crate_Tarp/SM_Crate_Tarp_01.SM_Crate_Tarp_01",
+          "Instance": 36
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/C_3_Military_Polygon.C_3_Military_Polygon:PersistentLevel.SM_Board_Set_3.StaticMeshComponent0",
+          "FallbackTransform": "235872.171875,106549.812500,26839.580078|0.732845,150.051468,-0.772583|0.725049,0.725049,0.725049",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Outdoor/Hangar/Meshes/SM_Board_Set_01.SM_Board_Set_01",
+          "Instance": 3
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/C_3_Military_Polygon.C_3_Military_Polygon:PersistentLevel.SM_Board_Set_5.StaticMeshComponent0",
+          "FallbackTransform": "240252.218750,112456.406250,26594.833984|-0.298493,-99.009354,16.126183|0.710847,0.710847,0.710847",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Outdoor/Hangar/Meshes/SM_Board_Set_01.SM_Board_Set_01",
+          "Instance": 5
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/C_3_Military_Polygon.C_3_Military_Polygon:PersistentLevel.SM_log_7.StaticMeshComponent0",
+          "FallbackTransform": "241757.937500,111376.343750,26391.740234|-65.548355,9.089263,-71.729652|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Outdoor/Country/SM_log_02.SM_log_02",
+          "Instance": 7
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/C_3_Military_Polygon.C_3_Military_Polygon:PersistentLevel.SM_log_6.StaticMeshComponent0",
+          "FallbackTransform": "239547.312500,100156.750000,26751.972656|1.768513,-107.782440,0.000038|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Outdoor/Country/SM_log_02.SM_log_02",
+          "Instance": 6
+        }
+      ],
+      "MinNeeded": 1,
+      "MaxNeeded": 5,
+      "SpawnOnlyNeeded": true,
+      "WorldMarkerShowDistance": 5,
+      "LocationsShownOnMap": [
+        {
+          "Location": {
+            "X": 239477.016,
+            "Y": 100258.312,
+            "Z": 26828.883
+          },
+          "SizeFactor": 0.8
+        }
+      ]
+    }
+  ]
+}

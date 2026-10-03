@@ -1,0 +1,65 @@
+{
+  "AssociatedNpc": "GeneralGoods",
+  "Tier": 1,
+  "Title": "Gib mier Kies",
+  "Description": "Kannst du bei der Kiesfabrik die Kiessilos prüfen im Gebäude? Ich möchte mir ein Haus bauen und will nur beste Materialien nutzen.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "Skills": [
+        {
+          "Skill": "Engineering",
+          "Experience": 400
+        }
+      ],
+      "TradeDeals": [
+        {
+          "Item": "Refrigerator_Portable_Small",
+          "Price": 150,
+          "Amount": 1,
+          "Fame": 1,
+          "AllowExcluded": true
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Prüfe die Silos",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Interaction",
+      "Locations": [
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/B_1_Factory_BASE_02_Int.B_1_Factory_BASE_02_Int:PersistentLevel.BP_Factory_B_Int_0.StaticMesh12",
+          "FallbackTransform": "-408968.562500,-11639.226562,35254.273438|0.000000,110.000015,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Buildings/Industrial/Silo_Factory/Objects/SM_Silos_Outlet.SM_Silos_Outlet"
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/B_1_Factory_BASE_02_Int.B_1_Factory_BASE_02_Int:PersistentLevel.BP_Factory_B_Int_0.StaticMesh9",
+          "FallbackTransform": "-410097.281250,-10987.569336,35254.273438|0.000000,89.999977,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Buildings/Industrial/Silo_Factory/Objects/SM_Silos_Outlet.SM_Silos_Outlet"
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/B_1_Factory_BASE_02_Int.B_1_Factory_BASE_02_Int:PersistentLevel.BP_Factory_B_Int_0.StaticMesh3",
+          "FallbackTransform": "-411226.906250,-10335.378906,35254.273438|0.000000,9.999954,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Buildings/Industrial/Silo_Factory/Objects/SM_Silos_Outlet.SM_Silos_Outlet"
+        }
+      ],
+      "MinNeeded": 1,
+      "MaxNeeded": 3,
+      "SpawnOnlyNeeded": true,
+      "WorldMarkerShowDistance": 15,
+      "LocationsShownOnMap": [
+        {
+          "Location": {
+            "X": -410245.062,
+            "Y": -10957.587,
+            "Z": 35365.668
+          },
+          "SizeFactor": 0.8
+        }
+      ]
+    }
+  ]
+}

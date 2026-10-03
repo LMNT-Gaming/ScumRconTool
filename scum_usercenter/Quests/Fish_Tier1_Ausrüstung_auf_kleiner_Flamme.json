@@ -1,0 +1,49 @@
+{
+  "AssociatedNpc": "Harbourmaster",
+  "Tier": 1,
+  "Title": "Ausrüstung auf kleiner Flamme",
+  "Description": "Ein Feuer, ein Fisch und ein voller Magen – mehr braucht ein richtiger Angler nicht. Der Fischer will vorbereitet sein, falls es doch mal wieder jemand seine Ausrüstung „aus Versehen“ im See versenkt. Nicht jeder hat schließlich das Geld für eine vollwertige neue Ausrüstung.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 50,
+      "Fame": 2,
+      "Skills": [
+        {
+          "Skill": "Cooking",
+          "Experience": 120
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Sammle improvisierten Schwimmer, improvisierte Angelschnur und zwei Zunder",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": true,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "ImprovisedFishingFloater"
+          ],
+          "RequiredNum": 1
+        },
+        {
+          "AcceptedItems": [
+            "Improvised_FishingLine"
+          ],
+          "RequiredNum": 1
+        },
+        {
+          "AcceptedItems": [
+            "Tinder"
+          ],
+          "RequiredNum": 2
+        }
+      ]
+    }
+  ]
+}

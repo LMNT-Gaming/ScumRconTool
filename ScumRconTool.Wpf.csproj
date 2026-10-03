@@ -10,24 +10,39 @@
     <ApplicationTitle>Red Raven Rcon Tool</ApplicationTitle>
     <Product>Red Raven Rcon Tool</Product>
     <RootNamespace>ScumRconTool</RootNamespace>
-    <Version>1.0.1</Version>
-    <AssemblyVersion>1.0.1</AssemblyVersion>
-    <FileVersion>1.0.1</FileVersion>
-    <InformationalVersion>1.0.1</InformationalVersion>
+    <Version>1.3.0</Version>
+    <AssemblyVersion>1.3.0</AssemblyVersion>
+    <FileVersion>1.3.0</FileVersion>
+    <InformationalVersion>1.3.0</InformationalVersion>
 	<ApplicationIcon>Assets\app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="WebAdmin\challenges.html" LogicalName="ScumRconTool.WebAdmin.challenges.html" />
+    <EmbeddedResource Include="WebAdmin\challenges.css" LogicalName="ScumRconTool.WebAdmin.challenges.css" />
+    <EmbeddedResource Include="WebAdmin\challenges.js" LogicalName="ScumRconTool.WebAdmin.challenges.js" />
+    <Compile Remove="tests\**\*.cs" />
+    <Compile Remove="tools\**\*.cs" />
+    <Content Include="dbs14756250.sql">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="Data\Scripts\*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="Data\weapon_compatibility.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <EmbeddedResource Include="Data\weapon_compatibility.json" LogicalName="ScumRconTool.Data.weapon_compatibility.json" />
     <Content Include="Assets\*.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="scum_kartographer\assets\scum_map.jpg">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="SSH.NET" Version="2024.2.0" />
+    <PackageReference Include="SSH.NET" Version="2026.0.0" />
     <PackageReference Include="Discord.Net.Core" Version="3.17.4" />
     <PackageReference Include="Discord.Net.Rest" Version="3.17.4" />
     <PackageReference Include="Discord.Net.WebSocket" Version="3.17.4" />

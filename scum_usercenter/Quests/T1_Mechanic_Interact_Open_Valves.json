@@ -1,0 +1,94 @@
+{
+  "AssociatedNpc": "Mechanic",
+  "Tier": 1,
+  "Title": "Open Valves",
+  "Description": "In der Rafenerie spinnen die Ventile, kannst du diese bitte wieder korrekt einstellen?",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 3500,
+      "Fame": 15,
+      "TradeDeals": [
+        {
+          "Item": "Car_Repair_Kit",
+          "Price": 100,
+          "Amount": 1,
+          "Fame": 25,
+          "AllowExcluded": true
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Ventile einstellen",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Interaction",
+      "Locations": [
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/B_3_Refinery_BASE_02.B_3_Refinery_BASE_02:PersistentLevel.BP_RefineryElement_01_2082.StaticMeshComponent0",
+          "FallbackTransform": "96434.125000,-164351.187500,31164.156250|0.000000,-0.008606,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Outdoor/Refinery/SM_RefineryElement_01.SM_RefineryElement_01",
+          "Instance": 2
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/B_3_Refinery_BASE_02.B_3_Refinery_BASE_02:PersistentLevel.SM_gaspipes_5.StaticMeshComponent0",
+          "FallbackTransform": "96070.812500,-165290.437500,31155.412109|0.000000,0.000090,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Outdoor/Hangar/Meshes/SM_Gas_Pipes_01.SM_Gas_Pipes_01",
+          "Instance": 2
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/B_3_Refinery_BASE_03.B_3_Refinery_BASE_03:PersistentLevel.SM_gaspipes_3.StaticMeshComponent0",
+          "FallbackTransform": "99071.062500,-169366.750000,31039.878906|0.000000,0.000090,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Outdoor/Hangar/Meshes/SM_Gas_Pipes_01.SM_Gas_Pipes_01",
+          "Instance": 3
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/B_3_Refinery_BASE_03.B_3_Refinery_BASE_03:PersistentLevel.SM_gaspipes_4.StaticMeshComponent0",
+          "FallbackTransform": "99071.062500,-168710.750000,31039.878906|0.000000,0.000090,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Outdoor/Hangar/Meshes/SM_Gas_Pipes_01.SM_Gas_Pipes_01",
+          "Instance": 3
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/B_3_Refinery_BASE_01.B_3_Refinery_BASE_01:PersistentLevel.SM_gaspipes_2.StaticMeshComponent0",
+          "FallbackTransform": "99886.812500,-165208.250000,31167.041016|0.000000,-90.000114,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Outdoor/Hangar/Meshes/SM_Gas_Pipes_01.SM_Gas_Pipes_01",
+          "Instance": 1
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/B_3_Refinery_BASE_01.B_3_Refinery_BASE_01:PersistentLevel.SM_GasPipes_01_656.StaticMeshComponent0",
+          "FallbackTransform": "99886.812500,-164622.000000,31167.041016|0.000000,-90.000114,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Outdoor/Hangar/Meshes/SM_Gas_Pipes_01.SM_Gas_Pipes_01",
+          "Instance": 1
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/B_3_Refinery_BASE_01.B_3_Refinery_BASE_01:PersistentLevel.SM_land_rig_01_58.StaticMeshComponent0",
+          "FallbackTransform": "100493.812500,-163068.250000,31180.892578|0.000000,179.999924,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Outdoor/Hangar/Meshes/SM_land_rig_01.SM_land_rig_01",
+          "Instance": 1
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/B_3_Refinery_BASE_03.B_3_Refinery_BASE_03:PersistentLevel.BP_RefineryElement_3.StaticMeshComponent0",
+          "FallbackTransform": "100344.750000,-169059.875000,31051.445312|0.000000,-90.008842,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Outdoor/Refinery/SM_RefineryElement_01.SM_RefineryElement_01",
+          "Instance": 3
+        }
+      ],
+      "MinNeeded": 1,
+      "MaxNeeded": 5,
+      "SpawnOnlyNeeded": true,
+      "WorldMarkerShowDistance": 5,
+      "LocationsShownOnMap": [
+        {
+          "Location": {
+            "X": 96858.5,
+            "Y": -168267.922,
+            "Z": 31132.766
+          },
+          "SizeFactor": 0.8
+        }
+      ]
+    }
+  ]
+}

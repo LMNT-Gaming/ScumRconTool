@@ -1,0 +1,71 @@
+{
+  "AssociatedNpc": "GeneralGoods",
+  "Tier": 2,
+  "Title": "Kompensationskiste",
+  "Description": "Ein Kunde hat sich über eine Lieferung beschwert – „ausgelaufene Ravioli, zerbrochene Chips und kein einziger Schokoriegel drin“. Der Trader braucht deine Hilfe, um eine großzügige Wiedergutmachung zu basteln – natürlich ohne selbst was herzugeben.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 100,
+      "Fame": 10,
+      "Skills": [
+        {
+          "Skill": "Awareness",
+          "Experience": 250
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Finde Schokoriegel oder Chips & 2 Konserven",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": true,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "ChocolateCandy_01",
+            "ChocolateCandy_03",
+            "ChocolateCandy_04",
+            "ChocolateCandy_05",
+            "ChocolateCandy_06",
+            "ChocolateCandy_07",
+            "ChocolateCandy_08",
+            "ChocolateCandy_09",
+            "ChocolateCandy_10",
+            "ChocolateCandy_11",
+            "Chips",
+            "Chips2",
+            "Chips3",
+            "Chips4"
+          ],
+          "RequiredNum": 1,
+          "MinAcceptedItemHealth": 50.0,
+          "RandomAdditionalRequiredNum": 1
+        },
+        {
+          "AcceptedItems": [
+            "Canned_Corn",
+            "Canned_Tuna",
+            "CannedCatfood",
+            "CannedDogFood",
+            "CannedFruitCocktail",
+            "CannedGoulash",
+            "CannedPeach",
+            "CannedPear",
+            "CannedPeas",
+            "CannedSardine",
+            "CannedSardine_Deluxe",
+            "CannedSeafoodMix",
+            "CannedSpaghetti"
+          ],
+          "RequiredNum": 2,
+          "MinAcceptedItemHealth": 50.0
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,226 @@
+{
+  "AssociatedNpc": "Doctor",
+  "Tier": 1,
+  "Title": "Seltsames Moos",
+  "Description": "Kannst du für mich ein paar Steine kontrollieren wo Moos wächst? Dieses Moos soll hat wie es mir scheint besondere Heilkräfte. Ich trage in deinem GPS mehrere Locations ein wo dieses Moos vorkommen könnte nach meiner Recherche.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 200,
+      "Fame": 10,
+      "Skills": [
+        {
+          "Skill": "Medical",
+          "Experience": 200
+        }
+      ],
+      "TradeDeals": [
+        {
+          "Item": "Emergency_bandage",
+          "Price": 50,
+          "Amount": 4,
+          "Fame": 1,
+          "AllowExcluded": true
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Prüfe Steine",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Interaction",
+      "Locations": [
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/Landscape_C_3_2b.Landscape_C_3_2b:PersistentLevel.Cliff_08_48.StaticMeshComponent0",
+          "FallbackTransform": "244278.625000,64053.812500,25735.882812|0.908784,-1.299530,-27.444536|1.385978,1.385978,1.385978",
+          "VisibleMesh": "/Game/ConZ_Files/Landscape/Rocks/Cliff_08/Cliff_08.Cliff_08",
+          "Instance": 1
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/Landscape_B_4_3c.Landscape_B_4_3c:PersistentLevel.InstancedFoliageActor_0.FoliageInstancedStaticMeshComponent_15",
+          "FallbackTransform": "385445.437500,-64309.687500,16034.655273|9.258266,-16.768320,-20.723251|1.096886,1.096886,1.096886",
+          "VisibleMesh": "/Game/ConZ_Files/Landscape/Rocks/Big_Rock_01_Paint_Coastal/Big_Rock_01_03_Paint_Coastal.Big_Rock_01_03_Paint_Coastal",
+          "Instance": 1
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/Landscape_A_2_2c.Landscape_A_2_2c:PersistentLevel.InstancedFoliageActor_0.FoliageInstancedStaticMeshComponent_74",
+          "FallbackTransform": "-102328.937500,-457566.500000,2884.223389|-5.757562,-139.912888,20.122635|1.928290,1.928290,1.928290",
+          "VisibleMesh": "/Game/ConZ_Files/Landscape/Rocks/Large_Rock_01/SM_Large_Rock_01_2.SM_Large_Rock_01_2",
+          "Instance": 1
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/Landscape_A_1_1c.Landscape_A_1_1c:PersistentLevel.Cliff_02_2.StaticMeshComponent0",
+          "FallbackTransform": "-571742.000000,-452040.531250,11898.791992|0.000000,-101.832954,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Landscape/Rocks/Cliff_02/Cliff_02.Cliff_02",
+          "Instance": 1
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/Landscape_A_0_1d.Landscape_A_0_1d:PersistentLevel.InstancedFoliageActor_0.FoliageInstancedStaticMeshComponent_17",
+          "FallbackTransform": "-760361.000000,-490498.968750,8983.180664|12.948256,-43.091362,-5.872480|2.697905,2.697905,2.697905",
+          "VisibleMesh": "/Game/ConZ_Files/Landscape/Rocks/Large_Rock_01/SM_Large_Rock_01_7.SM_Large_Rock_01_7",
+          "Instance": 1
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/Landscape_Z_2_4c.Landscape_Z_2_4c:PersistentLevel.InstancedFoliageActor_0.FoliageInstancedStaticMeshComponent_29",
+          "FallbackTransform": "-77104.304688,-657452.250000,761.724182|-3.050041,2.475636,-0.131799|2.904439,2.904439,2.904439",
+          "VisibleMesh": "/Game/ConZ_Files/Landscape/Rocks/Large_Rock_01/SM_Large_Rock_01_3.SM_Large_Rock_01_3",
+          "Instance": 1
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/Landscape_Z_2_2.Landscape_Z_2_2:PersistentLevel.InstancedFoliageActor_0.FoliageInstancedStaticMeshComponent_7",
+          "FallbackTransform": "-109587.320312,-856683.250000,4700.848633|9.476122,179.068588,22.695782|2.343998,2.343998,2.343997",
+          "VisibleMesh": "/Game/ConZ_Files/Landscape/Rocks/Large_Rock_01/SM_Large_Rock_01_6.SM_Large_Rock_01_6",
+          "Instance": 1
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/Landscape_Z_3_2.Landscape_Z_3_2:PersistentLevel.InstancedFoliageActor_0.FoliageInstancedStaticMeshComponent_18",
+          "FallbackTransform": "167050.359375,-844041.375000,848.093994|9.443460,165.433914,21.018862|2.259857,2.259857,2.259858",
+          "VisibleMesh": "/Game/ConZ_Files/Landscape/Rocks/Large_Rock_01/SM_Large_Rock_01_7.SM_Large_Rock_01_7",
+          "Instance": 1
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/Landscape_A_4_4.Landscape_A_4_4:PersistentLevel.InstancedFoliageActor_1.FoliageInstancedStaticMeshComponent_104",
+          "FallbackTransform": "524215.437500,-395784.250000,755.481934|1.292565,-159.138260,-7.635303|1.839725,1.839725,1.839725",
+          "VisibleMesh": "/Game/ConZ_Files/Landscape/Rocks/Large_Rock_01/SM_Large_Rock_01_6.SM_Large_Rock_01_6",
+          "Instance": 1
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/Landscape_C_2_3.Landscape_C_2_3:PersistentLevel.InstancedFoliageActor_0.FoliageInstancedStaticMeshComponent_12",
+          "FallbackTransform": "-250433.000000,214614.437500,83894.203125|-17.048725,15.399014,5.957749|3.798845,3.798845,3.798845",
+          "VisibleMesh": "/Game/ConZ_Files/Landscape/Rocks/Large_Rock_01_Cont/SM_Large_Rock_01_6.SM_Large_Rock_01_6",
+          "Instance": 1
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/Landscape_D_2_2b.Landscape_D_2_2b:PersistentLevel.Cliff_01b11.StaticMeshComponent0",
+          "FallbackTransform": "-32110.421875,365463.093750,76590.757812|0.000000,-2.612214,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Landscape/Rocks/Cliff_01/Cliff_01b.Cliff_01b",
+          "Instance": 1
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/Landscape_B_3_3b.Landscape_B_3_3b:PersistentLevel.InstancedFoliageActor_0.FoliageInstancedStaticMeshComponent_9",
+          "FallbackTransform": "154315.406250,-76281.945312,33410.718750|-15.098125,-12.030050,-13.173491|2.544718,2.544718,2.544718",
+          "VisibleMesh": "/Game/ConZ_Files/Landscape/Rocks/Large_Rock_01_Cont/SM_Large_Rock_01_6.SM_Large_Rock_01_6",
+          "Instance": 1
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/Landscape_Z_0_4c.Landscape_Z_0_4c:PersistentLevel.InstancedFoliageActor_0.FoliageInstancedStaticMeshComponent_31",
+          "FallbackTransform": "-684051.687500,-673403.312500,729.692871|2.958353,-75.692322,0.754118|3.260926,3.260926,3.260926",
+          "VisibleMesh": "/Game/ConZ_Files/Landscape/Rocks/Large_Rock_01/SM_Large_Rock_01_6.SM_Large_Rock_01_6",
+          "Instance": 1
+        }
+      ],
+      "MinNeeded": 2,
+      "MaxNeeded": 2,
+      "SpawnOnlyNeeded": true,
+      "WorldMarkerShowDistance": 10,
+      "LocationsShownOnMap": [
+        {
+          "Location": {
+            "X": 244278.625,
+            "Y": 64053.8125,
+            "Z": 25735.882812
+          },
+          "SizeFactor": 0.4
+        },
+        {
+          "Location": {
+            "X": 385445.4375,
+            "Y": -64309.6875,
+            "Z": 16034.655273
+          },
+          "SizeFactor": 0.4
+        },
+        {
+          "Location": {
+            "X": -102328.9375,
+            "Y": -457566.5,
+            "Z": 2884.223389
+          },
+          "SizeFactor": 0.4
+        },
+        {
+          "Location": {
+            "X": -571742.0,
+            "Y": -452040.53125,
+            "Z": 11898.791992
+          },
+          "SizeFactor": 0.4
+        },
+        {
+          "Location": {
+            "X": -760361.0,
+            "Y": -490498.96875,
+            "Z": 8983.180664
+          },
+          "SizeFactor": 0.4
+        },
+        {
+          "Location": {
+            "X": -77104.304688,
+            "Y": -657452.25,
+            "Z": 761.724182
+          },
+          "SizeFactor": 0.4
+        },
+        {
+          "Location": {
+            "X": -109587.320312,
+            "Y": -856683.25,
+            "Z": 4700.848633
+          },
+          "SizeFactor": 0.4
+        },
+        {
+          "Location": {
+            "X": 167050.359375,
+            "Y": -844041.375,
+            "Z": 848.093994
+          },
+          "SizeFactor": 0.4
+        },
+        {
+          "Location": {
+            "X": 524215.4375,
+            "Y": -395784.25,
+            "Z": 755.481934
+          },
+          "SizeFactor": 0.4
+        },
+        {
+          "Location": {
+            "X": -250433.0,
+            "Y": 214614.4375,
+            "Z": 83894.203125
+          },
+          "SizeFactor": 0.4
+        },
+        {
+          "Location": {
+            "X": -32110.421875,
+            "Y": 365463.09375,
+            "Z": 76590.757812
+          },
+          "SizeFactor": 0.4
+        },
+        {
+          "Location": {
+            "X": 154315.40625,
+            "Y": -76281.945312,
+            "Z": 33410.71875
+          },
+          "SizeFactor": 0.4
+        },
+        {
+          "Location": {
+            "X": -684051.6875,
+            "Y": -673403.3125,
+            "Z": 729.692871
+          },
+          "SizeFactor": 0.4
+        }
+      ]
+    }
+  ]
+}

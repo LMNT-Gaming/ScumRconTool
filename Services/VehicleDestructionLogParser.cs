@@ -18,7 +18,7 @@ public static partial class VehicleDestructionLogParser
                 match.Groups["ts"].Value,
                 "yyyy.MM.dd-HH.mm.ss",
                 CultureInfo.InvariantCulture,
-                DateTimeStyles.AssumeLocal,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
                 out var parsedTimestamp))
         {
             timestamp = parsedTimestamp;

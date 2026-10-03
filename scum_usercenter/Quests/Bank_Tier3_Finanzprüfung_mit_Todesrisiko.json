@@ -1,0 +1,59 @@
+{
+  "AssociatedNpc": "Banker",
+  "Tier": 3,
+  "Title": "Finanzprüfung mit Todesrisiko",
+  "Description": "Der Banker hat erfahren, dass in einem alten Gefängnisblock noch eine versiegelte TEC1-Kassette liegt – angeblich mit sensiblen Transaktionsdaten aus der Frühphase des Programms. Was da wirklich drin ist? Keine Ahnung. Aber die Puppets bewachen es wie ihren Gott. Viel Spaß.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 3100,
+      "Fame": 15,
+      "Skills": [
+        {
+          "Skill": "Awareness",
+          "Experience": 4600
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Suche die TEC1-Kassette",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": true,
+      "Type": "Interaction",
+      "Locations": [
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/C_2_Prison_03_Interior.C_2_Prison_03_Interior:PersistentLevel.BP_Prison_B_Basement_INT_2.SM_AmmunitionBox (ISMA)_InstancedStaticMesh",
+          "FallbackTransform": "-61821.949219,146216.875000,72194.929688|-2.995482,-118.450729,-0.575592|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Indoor/Armory/Ammunition_Box/SM_AmmunitionBox.SM_AmmunitionBox",
+          "Instance": 2
+        }
+      ],
+      "MinNeeded": 1,
+      "MaxNeeded": 1,
+      "SpawnOnlyNeeded": true,
+      "WorldMarkerShowDistance": 50,
+      "LocationsShownOnMap": [
+        {
+          "Location": {
+            "X": -61732.582,
+            "Y": 146283.219,
+            "Z": 72183.0
+          },
+          "SizeFactor": 3.0
+        }
+      ]
+    },
+    {
+      "TrackingCaption": "Töte Puppets",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Elimination",
+      "Amount": 5,
+      "TargetCharacters": [
+        "Puppet"
+      ]
+    }
+  ]
+}

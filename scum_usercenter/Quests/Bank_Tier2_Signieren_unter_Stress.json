@@ -1,0 +1,50 @@
+{
+  "AssociatedNpc": "Banker",
+  "Tier": 2,
+  "Title": "Signieren unter Stress",
+  "Description": "Der Banker will einen Stapel Schuldscheine unterzeichnen – in dreifacher Ausführung, versteht sich. Leider sind alle brauchbaren Stifte verschwunden. Du sollst gleich ein komplettes Schreibset beschaffen.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 130,
+      "Fame": 10,
+      "Skills": [
+        {
+          "Skill": "Engineering",
+          "Experience": 260
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Sammle Stift, Papier und Lupe",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": true,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "Pen"
+          ],
+          "RequiredNum": 1
+        },
+        {
+          "AcceptedItems": [
+            "Paper"
+          ],
+          "RequiredNum": 1
+        },
+        {
+          "AcceptedItems": [
+            "Magnifying_Glass",
+            "Magnifying_Glass1"
+          ],
+          "RequiredNum": 1
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "AssociatedNpc": "Harbourmaster",
+  "Tier": 3,
+  "Title": "Werkzeug eines Meisters",
+  "Description": "Gerüchte machen die Runde, dass irgendwo an der Küste eine Profi-Angel zurückgelassen wurde – vergessen in einer Kiste, verloren in einem Boot, oder einfach fallengelassen von jemandem, der’s nicht verdient hat. Der Fischer will sie haben. Und du darfst suchen.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 200,
+      "Fame": 10,
+      "Skills": [
+        {
+          "Skill": "Awareness",
+          "Experience": 350
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Bringe dem Händler eine gute Angel und eine Profi-Angelrolle",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": true,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "FishingRod",
+            "FishingRod_A",
+            "FishingRod_B"
+          ],
+          "RequiredNum": 1
+        },
+        {
+          "AcceptedItems": [
+            "FishingReelPro"
+          ],
+          "RequiredNum": 1
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "AssociatedNpc": "GeneralGoods",
+  "Tier": 3,
+  "Title": "Party Vorbereitungen",
+  "Description": "Der Händler wurde zu einer Party eingeladen und jeder soll etwas mitbringen zur Versorgung während der Feier. Ihm wurde zugewürfelt für das Rauchen zuständig zu sein. Er möchte aber nicht nur normale Zigaretten mitbringen...",
+  "TimeLimitHours": 48.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 180,
+      "Fame": 15,
+      "Skills": [
+        {
+          "Skill": "Farming",
+          "Experience": 500
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Besorge ein paar Joints",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "Joint01",
+            "Spliff"
+          ],
+          "RequiredNum": 3,
+          "RandomAdditionalRequiredNum": 2
+        }
+      ]
+    }
+  ]
+}

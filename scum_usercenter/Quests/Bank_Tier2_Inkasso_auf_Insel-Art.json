@@ -1,0 +1,31 @@
+{
+  "AssociatedNpc": "Banker",
+  "Tier": 2,
+  "Title": "Inkasso auf Insel-Art",
+  "Description": "Ein Schuldner hat versucht, mit Monopoly-Geld seine Kontogebühren zu begleichen. Der Banker hat ihm das Konto „vorübergehend eingefroren“ – was auf der Insel heißt: Er wurde zu einem Zombie. Dem Bankier ist das aber noch nicht genug. Sorge dafür, dass der Schuldner auf jeden Fall völlig draufgeht. ",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 115,
+      "Fame": 10,
+      "Skills": [
+        {
+          "Skill": "Boxing",
+          "Experience": 230
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Töte Puppets",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Elimination",
+      "Amount": 10,
+      "TargetCharacters": [
+        "Puppet"
+      ]
+    }
+  ]
+}

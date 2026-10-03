@@ -1,0 +1,45 @@
+{
+  "AssociatedNpc": "Mechanic",
+  "Tier": 2,
+  "Title": "Auf Öl gestoßen",
+  "Description": "Auch wenn die Fahrzeuge auf der Insel nicht wirklich im besten Zustand sind und selten checkheftgepflegt, sind Ölwechsel doch manchmal unerlässlich. Die Ölfilter sind jedoch knapp und Lieferungen dafür gibt es nur selten. Wenn du 3 Ölfilter besorgen kannst, ist der Mechaniker bereit dir dafür eine Belohnung und ein gutes Angebot für einen Wagenheber zu machen. ",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 130,
+      "Fame": 5,
+      "Skills": [
+        {
+          "Skill": "Driving",
+          "Experience": 300
+        }
+      ],
+      "TradeDeals": [
+        {
+          "Item": "Car_Jack",
+          "Price": 50,
+          "Amount": 1,
+          "Fame": 0
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Sammle 3 Ölfilter. ",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "Oil_Filter"
+          ],
+          "RequiredNum": 3
+        }
+      ]
+    }
+  ]
+}

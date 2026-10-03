@@ -1,0 +1,30 @@
+:root {
+
+  /* Farben */
+  --nav-bg: rgba(0,0,0,0.9);
+  --nav-btn-bg: rgba(0,0,0,0.95);
+  --nav-btn-text: #ffffff;
+
+  --nav-btn-active-bg: #ffffff;
+  --nav-btn-active-text: #000000;
+
+  --card-bg: rgba(0,0,0,0.40);
+  --text-muted: rgba(255,255,255,0.75);
+
+  /* Background */
+  --bg-overlay: rgba(0,0,0,0.35);
+  --bg-image: url("background.jpg");
+
+  /* Radien */
+  --radius-nav: 18px;
+  --radius-btn: 10px;
+  --radius-card: 22px;
+
+  /* Layout */
+  --max-width: 1100px;
+
+  /* Effekte */
+  --shadow-strong: 0 12px 30px rgba(0,0,0,0.45);
+
+   --topbar-height: 48px; /* ggf. anpassen */
+}

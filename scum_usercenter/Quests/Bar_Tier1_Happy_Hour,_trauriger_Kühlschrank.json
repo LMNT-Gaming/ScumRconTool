@@ -1,0 +1,41 @@
+{
+  "AssociatedNpc": "Bartender",
+  "Tier": 1,
+  "Title": "Happy Hour, trauriger Kühlschrank",
+  "Description": "Die Barkeeperin hat ihren gesamten Schnapsvorrat bei einem Trinkspiel gegen den Mechaniker verloren. Sie schwört, es sei „für die Moral gewesen“. Jetzt braucht sie Nachschub – und du bist günstiger als ein Lieferdienst mit Helikopter.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 200,
+      "Fame": 5,
+      "Skills": [
+        {
+          "Skill": "Cooking",
+          "Experience": 170
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Besorge eine Flasche starken Alkohol, die min. noch halb voll ist",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "Vodka",
+            "Absinthe",
+            "Tequila",
+            "Whiskey"
+          ],
+          "RequiredNum": 1,
+          "MinAcceptedItemResourceRatio": 50.0
+        }
+      ]
+    }
+  ]
+}

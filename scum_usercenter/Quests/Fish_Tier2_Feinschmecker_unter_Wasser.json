@@ -1,0 +1,39 @@
+{
+  "AssociatedNpc": "Harbourmaster",
+  "Tier": 2,
+  "Title": "Feinschmecker unter Wasser",
+  "Description": "Ein dubioser Gourmet-Kunde hat dem Fischer eine seltsame Wunschliste geschickt. Keine gewöhnlichen Fische – nur das Beste, sagt er. Ob der Typ wirklich kocht oder ein Ritual vorbereitet, will niemand so genau wissen. Du sammelst – und stellst keine Fragen. Es ist eigentlich alles vorhanden, nur ein Salzwasserfisch fehlt noch.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 130,
+      "Fame": 10,
+      "Skills": [
+        {
+          "Skill": "Cooking",
+          "Experience": 270
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Fange einen Dentex, einen Orata oder einen Tuna",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": true,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "Fish_Dentex",
+            "Fish_Orata",
+            "Fish_Tuna"
+          ],
+          "RequiredNum": 1
+        }
+      ]
+    }
+  ]
+}

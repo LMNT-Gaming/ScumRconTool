@@ -1,0 +1,49 @@
+{
+  "AssociatedNpc": "Armorer",
+  "Tier": 3,
+  "Title": "Versteckte U-Boote",
+  "Description": "Der Waffenhändler hat eine Theorie: Mechs haben Schwachstellen – und ein verdammt schlechtes Gedächtnis für alte Zugangscodes. Du sollst in der Naval Base ein Terminal reaktivieren, das angeblich ihre Bewegungsdaten loggt. Blöd nur, dass mindestens ein Mech noch dort patrouilliert.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 330,
+      "Fame": 15,
+      "Skills": [
+        {
+          "Skill": "Stealth",
+          "Experience": 800
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Reaktiviere das alte Terminal in der Naval Base!",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": true,
+      "Type": "Interaction",
+      "Locations": [
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/B_1_Prkno_02_Interior_04.B_1_Prkno_02_Interior_04:PersistentLevel.BP_CB_Store_A_INT_2.SM_Crate_Pile_04_0",
+          "FallbackTransform": "-459696.250000,-108086.781250,31086.560547|0.000000,-160.250458,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Outdoor/Crate/SM_Crate_Pile_04.SM_Crate_Pile_04",
+          "Instance": 4
+        }
+      ],
+      "MinNeeded": 1,
+      "MaxNeeded": 1,
+      "SpawnOnlyNeeded": true,
+      "WorldMarkerShowDistance": 0,
+      "LocationsShownOnMap": [
+        {
+          "Location": {
+            "X": 466916.094,
+            "Y": -564298.062,
+            "Z": 818.804
+          },
+          "SizeFactor": 0.5
+        }
+      ]
+    }
+  ]
+}

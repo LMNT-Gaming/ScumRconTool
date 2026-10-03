@@ -1,0 +1,66 @@
+{
+  "AssociatedNpc": "Bartender",
+  "Tier": 1,
+  "Title": "Gärtner",
+  "Description": "Kannst du mir verschiedenes Gemüse bringen?.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 800,
+      "Fame": 10,
+      "Skills": [
+        {
+          "Skill": "Farming",
+          "Experience": 400
+        }
+      ],
+      "TradeDeals": [
+        {
+          "Item": "African_Biltong",
+          "Price": 15,
+          "Amount": 2,
+          "Fame": 0,
+          "AllowExcluded": true
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Paprika 50%+",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "Bell_Pepper"
+          ],
+          "RequiredNum": 2,
+          "MinAcceptedItemHealth": 50.0,
+          "RandomAdditionalRequiredNum": 2
+        }
+      ]
+    },
+    {
+      "TrackingCaption": "Knoblauch 50%+",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "Garlic"
+          ],
+          "RequiredNum": 1,
+          "MinAcceptedItemHealth": 50.0,
+          "RandomAdditionalRequiredNum": 2
+        }
+      ]
+    }
+  ]
+}

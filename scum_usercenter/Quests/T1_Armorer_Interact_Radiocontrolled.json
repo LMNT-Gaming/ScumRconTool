@@ -1,0 +1,132 @@
+{
+  "AssociatedNpc": "Armorer",
+  "Tier": 1,
+  "Title": "Radiocontrolled",
+  "Description": "Kannst du die Funkverbindung von unterschiedlichen Standorten überprüfen?",
+  "TimeLimitHours": 48.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 5000,
+      "Fame": 20,
+      "Skills": [
+        {
+          "Skill": "Awareness",
+          "Experience": 500
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Radio Airfield A4",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Interaction",
+      "Locations": [
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/A_4_Airfield.A_4_Airfield:PersistentLevel.BP_Airplane_Hangar2_2.StaticMesh83",
+          "FallbackTransform": "352106.906250,-516546.875000,7627.252441|0.000000,121.163673,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Outdoor/Military/MilitaryFieldCamp/Meshes/SM_radio_station_4.SM_radio_station_4",
+          "Instance": 2
+        }
+      ],
+      "MinNeeded": 1,
+      "MaxNeeded": 1,
+      "SpawnOnlyNeeded": true,
+      "WorldMarkerShowDistance": 5,
+      "LocationsShownOnMap": [
+        {
+          "Location": {
+            "X": 351943.281,
+            "Y": -516621.656,
+            "Z": 7639.224
+          },
+          "SizeFactor": 0.4
+        }
+      ]
+    },
+    {
+      "TrackingCaption": "Zahlenfeld in der Raffenerie",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Interaction",
+      "Locations": [
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/B_3_Refinery_BASE_02.B_3_Refinery_BASE_02:PersistentLevel.BP_PrisonSecurityLock_7.StaticMeshComponent0",
+          "FallbackTransform": "96499.218750,-160407.781250,31282.773438|0.000000,89.427200,0.000000|0.351000,0.351000,0.351000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Buildings/Prison/Objects/SM_PrisonSecurityLock_01/SM_PrisonSecurityLock_01.SM_PrisonSecurityLock_01",
+          "Instance": 2
+        }
+      ],
+      "MinNeeded": 1,
+      "MaxNeeded": 1,
+      "SpawnOnlyNeeded": true,
+      "WorldMarkerShowDistance": 5,
+      "LocationsShownOnMap": [
+        {
+          "Location": {
+            "X": 96361.758,
+            "Y": -160406.094,
+            "Z": 31290.824
+          },
+          "SizeFactor": 0.4
+        }
+      ]
+    },
+    {
+      "TrackingCaption": "Bildschirm Bootcamp",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Interaction",
+      "Locations": [
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/B_3_Military_base_03_Int.B_3_Military_base_03_Int:PersistentLevel.BP_Hospital_Workshop_Medical_RW_INT_0.SM_Monitor2_01",
+          "FallbackTransform": "257791.687500,-39626.464844,23685.146484|0.000000,32.721722,0.000000|0.801000,0.801000,0.801000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Indoor/ScienceLab/Meshes/OfficeProps/SM_Monitor2.SM_Monitor2"
+        }
+      ],
+      "MinNeeded": 1,
+      "MaxNeeded": 1,
+      "SpawnOnlyNeeded": true,
+      "WorldMarkerShowDistance": 5,
+      "LocationsShownOnMap": [
+        {
+          "Location": {
+            "X": 257881.312,
+            "Y": -39744.156,
+            "Z": 23683.85
+          },
+          "SizeFactor": 0.4
+        }
+      ]
+    },
+    {
+      "TrackingCaption": "Radio Tisno",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Interaction",
+      "Locations": [
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/A_2_Port_03.A_2_Port_03:PersistentLevel.BP_Prison_Tower_House_01_Blueprint_0.SM_electro_01",
+          "FallbackTransform": "-53024.417969,-495354.812500,325.677307|0.000000,130.512222,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Indoor/Office/Electro/SM_electro_01.SM_electro_01",
+          "Instance": 3
+        }
+      ],
+      "MinNeeded": 1,
+      "MaxNeeded": 1,
+      "SpawnOnlyNeeded": true,
+      "WorldMarkerShowDistance": 5,
+      "LocationsShownOnMap": [
+        {
+          "Location": {
+            "X": -53051.305,
+            "Y": -495495.062,
+            "Z": 339.725
+          },
+          "SizeFactor": 0.4
+        }
+      ]
+    }
+  ]
+}

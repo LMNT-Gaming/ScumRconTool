@@ -1,0 +1,41 @@
+{
+  "AssociatedNpc": "Armorer",
+  "Tier": 1,
+  "Title": "Schießeisen mit Stil...und Plastik",
+  "Description": "Ein Kunde möchte „wie im Film“ mit Schalldämpfer herumlaufen – aber hat natürlich nichts Passendes. Der Waffenhändler will ihm zeigen, wie sowas wirklich aussieht – jedenfalls wenn man leicht Geld machen möchte.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 50,
+      "Fame": 5,
+      "Skills": [
+        {
+          "Skill": "Survival",
+          "Experience": 200
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Besorge einen improvisierten Schalldämpfer.",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "WeaponSuppressor_ImprovisedBottle_Grey",
+            "WeaponSuppressor_ImprovisedBottle_White",
+            "WeaponSuppressor_ImprovisedCan_Grey",
+            "WeaponSuppressor_ImprovisedCan_Red",
+            "WeaponSuppressor_ImprovisedOilCan_01"
+          ],
+          "RequiredNum": 1
+        }
+      ]
+    }
+  ]
+}

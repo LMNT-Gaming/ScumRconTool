@@ -1,0 +1,41 @@
+{
+  "AssociatedNpc": "Bartender",
+  "Tier": 1,
+  "Title": "Cigaretts",
+  "Description": "Kannst du mir Zigaretten bringen?",
+  "TimeLimitHours": 48.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 500,
+      "Fame": 5,
+      "Skills": [
+        {
+          "Skill": "Awareness",
+          "Experience": 200
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Zigaretten 50%+",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": true,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "Cigarettes",
+            "Cigarettes1"
+          ],
+          "RequiredNum": 1,
+          "MinAcceptedItemUses": 5,
+          "MinAcceptedItemHealth": 50.0,
+          "RandomAdditionalRequiredNum": 2
+        }
+      ]
+    }
+  ]
+}

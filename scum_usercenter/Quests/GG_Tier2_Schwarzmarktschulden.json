@@ -1,0 +1,31 @@
+{
+  "AssociatedNpc": "GeneralGoods",
+  "Tier": 2,
+  "Title": "Schwarzmarkt-Schulden",
+  "Description": "Der Trader hat sich auf zwielichtige Geschäfte eingelassen und nun steht eine Gruppe „Gläubiger“ vor der Tür. Bevor sie ihm alle Gliedmaßen brechen, fordern sie, dass er einen Sprengstoffgürtel-Zombie erledigt, um die Orte ihrer Geschäfte sicherer zu machen. Er braucht deine Hilfe, denn für sowas ist er nicht gemacht.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 120,
+      "Fame": 10,
+      "Skills": [
+        {
+          "Skill": "Demolition",
+          "Experience": 280
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Eliminiere 1x Suicide Puppet",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": true,
+      "Type": "Elimination",
+      "Amount": 1,
+      "TargetCharacters": [
+        "BP_Zombie_SuicideVest"
+      ]
+    }
+  ]
+}

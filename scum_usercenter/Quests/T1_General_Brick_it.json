@@ -1,0 +1,104 @@
+{
+  "AssociatedNpc": "GeneralGoods",
+  "Tier": 1,
+  "Title": "Brick it",
+  "Description": "Kannst du mir Ziegelherstellen in Z0? Du musst nur die Öfen dafür starten. Sollte leicht sein für dich. Oder?",
+  "TimeLimitHours": 48.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 4000,
+      "Fame": 40,
+      "Skills": [
+        {
+          "Skill": "Engineering",
+          "Experience": 4000
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Starte den Ziegelofen",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": true,
+      "Type": "Interaction",
+      "Locations": [
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/B_0_Brick_Factory_11_INT02.B_0_Brick_Factory_11_INT02:PersistentLevel.BP_BrickFactory_Building_Large_5.HierarchicalInstancedStaticMesh39",
+          "FallbackTransform": "-778355.562500,-281349.906250,16652.494141|0.000000,3.940177,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Buildings/Brick_Factory/Interior/Brick_Oven_Stuff/SM_Brick_Oven_01.SM_Brick_Oven_01",
+          "Instance": 2
+        }
+      ],
+      "MinNeeded": 1,
+      "MaxNeeded": 1,
+      "SpawnOnlyNeeded": true,
+      "WorldMarkerShowDistance": 80,
+      "LocationsShownOnMap": [
+        {
+          "Location": {
+            "X": -778355.5625,
+            "Y": -281349.90625,
+            "Z": 16652.494141
+          },
+          "SizeFactor": 1.0
+        }
+      ]
+    },
+    {
+      "TrackingCaption": "Prüfe den Wagen",
+      "SequenceIndex": 1,
+      "CanBeAutoCompleted": true,
+      "Type": "Interaction",
+      "Locations": [
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/B_0_Brick_Factory_11_INT02.B_0_Brick_Factory_11_INT02:PersistentLevel.BP_BrickFactory_Building_Large_5.HierarchicalInstancedStaticMesh58",
+          "FallbackTransform": "-779651.875000,-281305.968750,16654.359375|0.000000,123.940125,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Buildings/Brick_Factory/Interior/Brick_Oven_Stuff/SM_OvenCart_01.SM_OvenCart_01",
+          "Instance": 5
+        }
+      ],
+      "MinNeeded": 1,
+      "MaxNeeded": 1,
+      "SpawnOnlyNeeded": true,
+      "WorldMarkerShowDistance": 80,
+      "LocationsShownOnMap": [
+        {
+          "Location": {
+            "X": -778355.5625,
+            "Y": -281349.90625,
+            "Z": 16652.494141
+          },
+          "SizeFactor": 1.0
+        }
+      ]
+    },
+    {
+      "TrackingCaption": "Bring Ziegel zum Trader",
+      "SequenceIndex": 2,
+      "CanBeAutoCompleted": false,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": false,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "Brick"
+          ],
+          "RequiredNum": 2,
+          "RandomAdditionalRequiredNum": 2
+        }
+      ],
+      "LocationsShownOnMap": [
+        {
+          "Location": {
+            "X": -778355.5625,
+            "Y": -281349.90625,
+            "Z": 16652.494141
+          },
+          "SizeFactor": 1.0
+        }
+      ]
+    }
+  ]
+}

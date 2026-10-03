@@ -1,0 +1,40 @@
+{
+  "AssociatedNpc": "Doctor",
+  "Tier": 1,
+  "Title": "Notfall? Nimm 'nen Kaugummi.",
+  "Description": "Der Vorrat an Schmerzmitteln ist leer. Stattdessen verteilt der Doc Pfefferminz-Kaugummis und tut so, als wär’s Opium. Du willst das ändern? Dann schaff Nachschub ran, bevor er auch noch Hustensaft durch Schnaps ersetzt.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 37,
+      "Fame": 5,
+      "Skills": [
+        {
+          "Skill": "Medical",
+          "Experience": 160
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Sammle 1x Schmerzmittel",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "Painkillers_01",
+            "Painkillers_02",
+            "PainKillers_03"
+          ],
+          "RequiredNum": 1,
+          "MinAcceptedItemUses": 1
+        }
+      ]
+    }
+  ]
+}

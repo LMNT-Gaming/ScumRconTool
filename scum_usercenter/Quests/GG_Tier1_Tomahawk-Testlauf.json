@@ -1,0 +1,37 @@
+{
+  "AssociatedNpc": "GeneralGoods",
+  "Tier": 1,
+  "Title": "Tomahawk-Testlauf",
+  "Description": "Der General-Goods-Händler hat einen Kunden mit… sagen wir, ungewöhnlichen Hobbys. Der Typ will eine Axt – nicht zum Hacken, sondern zum Werfen. Und zwar keine aus dem Katalog, sondern etwas, das roh aussieht und wehtut. Du baust das Ding. Und besser, es fliegt gerade.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 41,
+      "Fame": 5,
+      "Skills": [
+        {
+          "Skill": "MeleeWeapons",
+          "Experience": 80
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Crafte ein improvisiertes Tomahawk",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": true,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "1H_Improvised_Tomahawk"
+          ],
+          "RequiredNum": 1
+        }
+      ]
+    }
+  ]
+}

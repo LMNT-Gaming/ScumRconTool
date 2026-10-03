@@ -1,0 +1,37 @@
+{
+  "AssociatedNpc": "Harbourmaster",
+  "Tier": 1,
+  "Title": "DIY oder geh heim",
+  "Description": "Ein echter Angler wartet nicht – er baut.\" Der Fischer will wissen, ob du’s draufhast oder nur rumschwätzt. Zeig ihm, dass du auch ohne Laden und Luxus auskommst. Holz, Draht, Geduld – und am Ende steht sie da: deine erste selbstgebaute Angel",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 45,
+      "Fame": 5,
+      "Skills": [
+        {
+          "Skill": "Survival",
+          "Experience": 140
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Crafte eine improvisierte Angelrute",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": true,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "ImprovisedFishingRod"
+          ],
+          "RequiredNum": 1
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,127 @@
+{
+  "AssociatedNpc": "Mechanic",
+  "Tier": 1,
+  "Title": "Green Powah!",
+  "Description": "Die Windturbinen unten in Z steigen immer wieder aus. Kannst du diese bitte reparieren?",
+  "TimeLimitHours": 48.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 1000,
+      "Fame": 25
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Repariere Windturbinen",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": true,
+      "Type": "Interaction",
+      "Locations": [
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/Z_3_Wind_Turbines_01.Z_3_Wind_Turbines_01:PersistentLevel.BP_Wind_Turbine_NoEntry_2.SM_Wind_Turbine_Main",
+          "FallbackTransform": "133106.625000,-812433.125000,11886.695312|0.000000,89.999962,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Buildings/Wind_Turbine/Meshes/SM_Wind_Turbine_Main.SM_Wind_Turbine_Main",
+          "Instance": 1
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/Z_3_Wind_Turbines_01.Z_3_Wind_Turbines_01:PersistentLevel.BP_Wind_Turbine_speed_51.SM_Wind_Turbine_Main",
+          "FallbackTransform": "111909.343750,-817457.000000,13366.954102|0.000000,89.999962,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Buildings/Wind_Turbine/Meshes/SM_Wind_Turbine_Main.SM_Wind_Turbine_Main",
+          "Instance": 1
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/Z_3_Wind_Turbines_01.Z_3_Wind_Turbines_01:PersistentLevel.BP_Wind_Turbine_speed_50.SM_Wind_Turbine_Main",
+          "FallbackTransform": "90974.906250,-823454.062500,13684.201172|0.000000,95.487762,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Buildings/Wind_Turbine/Meshes/SM_Wind_Turbine_Main.SM_Wind_Turbine_Main",
+          "Instance": 1
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/Z_3_Wind_Turbines_02.Z_3_Wind_Turbines_02:PersistentLevel.BP_Wind_Turbine_NoEntry_2.SM_Wind_Turbine_Main",
+          "FallbackTransform": "72767.937500,-832661.500000,11880.560547|0.000000,89.999962,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Buildings/Wind_Turbine/Meshes/SM_Wind_Turbine_Main.SM_Wind_Turbine_Main",
+          "Instance": 2
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/Z_3_Wind_Turbines_02.Z_3_Wind_Turbines_02:PersistentLevel.BP_Wind_Turbine_NoEntry2_5.SM_Wind_Turbine_Main",
+          "FallbackTransform": "53054.812500,-838556.250000,10821.028320|0.000000,89.999954,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Buildings/Wind_Turbine/Meshes/SM_Wind_Turbine_Main.SM_Wind_Turbine_Main",
+          "Instance": 2
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/Z_3_Wind_Turbines_02.Z_3_Wind_Turbines_02:PersistentLevel.BP_Wind_Turbine_speed_46.SM_Wind_Turbine_Main",
+          "FallbackTransform": "30662.468750,-848007.312500,11547.720703|0.000000,89.999962,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Buildings/Wind_Turbine/Meshes/SM_Wind_Turbine_Main.SM_Wind_Turbine_Main",
+          "Instance": 2
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/Z_3_Wind_Turbines_02.Z_3_Wind_Turbines_02:PersistentLevel.BP_Wind_Turbine_speed_45.SM_Wind_Turbine_Main",
+          "FallbackTransform": "13201.765625,-852558.812500,13219.638672|0.000000,89.999977,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Buildings/Wind_Turbine/Meshes/SM_Wind_Turbine_Main.SM_Wind_Turbine_Main",
+          "Instance": 2
+        }
+      ],
+      "MinNeeded": 4,
+      "MaxNeeded": 7,
+      "SpawnOnlyNeeded": true,
+      "WorldMarkerShowDistance": 100,
+      "LocationsShownOnMap": [
+        {
+          "Location": {
+            "X": 133106.625,
+            "Y": -812433.125,
+            "Z": 11886.695312
+          },
+          "SizeFactor": 0.5
+        },
+        {
+          "Location": {
+            "X": 111909.34375,
+            "Y": -817457.0,
+            "Z": 13366.954102
+          },
+          "SizeFactor": 0.5
+        },
+        {
+          "Location": {
+            "X": 90974.90625,
+            "Y": -823454.0625,
+            "Z": 13684.201172
+          },
+          "SizeFactor": 0.5
+        },
+        {
+          "Location": {
+            "X": 72767.9375,
+            "Y": -832661.5,
+            "Z": 11880.560547
+          },
+          "SizeFactor": 0.5
+        },
+        {
+          "Location": {
+            "X": 53054.8125,
+            "Y": -838556.25,
+            "Z": 10821.02832
+          },
+          "SizeFactor": 0.5
+        },
+        {
+          "Location": {
+            "X": 30662.46875,
+            "Y": -848007.3125,
+            "Z": 11547.720703
+          },
+          "SizeFactor": 0.5
+        },
+        {
+          "Location": {
+            "X": 13201.765625,
+            "Y": -852558.8125,
+            "Z": 13219.638672
+          },
+          "SizeFactor": 0.5
+        }
+      ]
+    }
+  ]
+}

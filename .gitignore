@@ -361,3 +361,27 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Local credentials, generated state and workspace files
+.codex_tmp/
+.codex/
+.agents/
+Thumbs.db
+**/.env
+**/.env.*
+!**/.env.*.example
+!**/*.env.example
+*.zip
+scum_usercenter/private/challenge_data/**
+scum_usercenter/private/gym_data/**
+!scum_usercenter/private/**/.htaccess
+deploy/lmnt-server-browser/config.php
+deploy/lmnt-server-browser/data/*.json
+deploy/vehicle-insurance/*-before-*
+**/backup-before-install/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+scum_usercenter/scum_db/strato-test.txt

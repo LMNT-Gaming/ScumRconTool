@@ -1,0 +1,38 @@
+{
+  "AssociatedNpc": "Bartender",
+  "Tier": 2,
+  "Title": "Was glitzert da in meinem Drink?",
+  "Description": "Ein Gast hat beim Trinken plötzlich gepfiffen wie ein Teekessel. Stellte sich raus: Jemand hat Metallspitzen von Pfeilen als Eiswürfelersatz benutzt. Die Barkeeperin möchte diese Idee als neuen wiederverwendbaren Eiswürfelersatz einführen – und du darfst suchen gehen.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 50,
+      "Fame": 4,
+      "Skills": [
+        {
+          "Skill": "Archery",
+          "Experience": 230
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Sammle oder crafte Metallspitzen",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": true,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "Bundle_Of_Metal_Tips"
+          ],
+          "RequiredNum": 2,
+          "MinAcceptedItemUses": 5
+        }
+      ]
+    }
+  ]
+}

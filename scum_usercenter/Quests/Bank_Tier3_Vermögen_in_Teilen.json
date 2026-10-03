@@ -1,0 +1,37 @@
+{
+  "AssociatedNpc": "Banker",
+  "Tier": 3,
+  "Title": "Vermögen in Teilen",
+  "Description": "Der Schwarzmarkt für Autoteile boomt – besonders, wenn die Teile noch warm sind. Der Banker hat einen Käufer gefunden, der auf Rager-Teile steht. Er braucht einen Beifahrersitz für sein nächstes Date. Woher du den bekommst, interessiert niemanden. Nur: Keine Kratzer, keine Fragen.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 180,
+      "Fame": 15,
+      "Skills": [
+        {
+          "Skill": "Driving",
+          "Experience": 350
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Sammle den rechten Frontsitz eines Ragers",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": true,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "Rager_Seat_FrontRight_Item"
+          ],
+          "RequiredNum": 1
+        }
+      ]
+    }
+  ]
+}

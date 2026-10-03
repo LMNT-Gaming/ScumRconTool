@@ -1,0 +1,14 @@
+CheatManagerEnablerMod : 0
+ConsoleCommandsMod : 0
+ConsoleEnablerMod : 0
+SplitScreenMod : 0
+LineTraceMod : 0
+BPML_GenericFunctions : 0
+BPModLoaderMod : 0
+SurvivalStatsProbe : 0
+SurvivalStatsNativeProbe : 0
+SurvivalStatsSaveProbe : 1
+
+
+; Built-in keybinds, do not move up!
+Keybinds : 0

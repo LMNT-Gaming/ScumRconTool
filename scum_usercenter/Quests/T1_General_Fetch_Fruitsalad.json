@@ -1,0 +1,85 @@
+{
+  "AssociatedNpc": "GeneralGoods",
+  "Tier": 1,
+  "Title": "Fruitsalad",
+  "Description": "Ich brauche Früchte für einen Obstsalat.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 2500,
+      "Fame": 10,
+      "Skills": [
+        {
+          "Skill": "Cooking",
+          "Experience": 200
+        }
+      ],
+      "TradeDeals": [
+        {
+          "Item": "Screwdriver_Small",
+          "Price": 60,
+          "Amount": 1,
+          "Fame": 1,
+          "AllowExcluded": true
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Apfel 50%+",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "Apple",
+            "Apple_2"
+          ],
+          "RequiredNum": 1,
+          "MinAcceptedItemHealth": 50.0,
+          "RandomAdditionalRequiredNum": 1
+        }
+      ]
+    },
+    {
+      "TrackingCaption": "Zwetschgen 50%+",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "Plum"
+          ],
+          "RequiredNum": 1,
+          "MinAcceptedItemHealth": 50.0,
+          "RandomAdditionalRequiredNum": 1
+        }
+      ]
+    },
+    {
+      "TrackingCaption": "Blaubeere 50%+",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "Blueberries"
+          ],
+          "RequiredNum": 1,
+          "MinAcceptedItemHealth": 50.0,
+          "RandomAdditionalRequiredNum": 1
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "AssociatedNpc": "Mechanic",
+  "Tier": 1,
+  "Title": "Werkzeugwanderung",
+  "Description": "Der Mechaniker hat einem Kollegen „kurz mal“ seinen Schraubenschlüssel ausgeliehen – der jetzt irgendwo zwischen Werkstatt, Bar und Bunker verschollen ist. Besorge ihm neues Werkzeug und er wird dir für immer dankbar sein!",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 50,
+      "Fame": 5,
+      "Skills": [
+        {
+          "Skill": "Engineering",
+          "Experience": 200
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Besorge eine Werkzeugkiste mit mindestens 10 übrigen Verwendungen.",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "Improvised_Tool_Box",
+            "Tool_Box",
+            "Tool_Box_Small"
+          ],
+          "RequiredNum": 1,
+          "MinAcceptedItemUses": 10
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "AssociatedNpc": "Banker",
+  "Tier": 1,
+  "Title": "Alternative Zahlungsmittel",
+  "Description": "Der Banker hat eine Kiste mit Zigaretten beschlagnahmt – sie wurden als „Währung der Zukunft“ gehandelt. Leider hat einer seiner Praktikanten die Dinger direkt weggeraucht. Jetzt sollst du Nachschub besorgen, bevor wieder jemand versucht, mit Pilzen zu bezahlen.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 500,
+      "Fame": 5,
+      "Skills": [
+        {
+          "Skill": "Thievery",
+          "Experience": 180
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Sammle Zigarettenpackung",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": true,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "Cigarettes1",
+            "Cigarettes"
+          ],
+          "RequiredNum": 1,
+          "MinAcceptedItemUses": 2
+        }
+      ]
+    }
+  ]
+}

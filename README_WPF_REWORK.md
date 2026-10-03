@@ -1,6 +1,6 @@
 # Red Raven Rcon Tool
 
-Dieser Ordner ist ein erster WPF-Umbau des vorhandenen WinForms-Projekts.
+Aktueller Windows-WPF-Stand des Red Raven Rcon Tools. Einstieg, Build und Funktionen sind in [README.md](README.md) beschrieben. Hinweise zur neuen Herausforderungsplanung stehen in [docs/challenge-planning.md](docs/challenge-planning.md).
 
 ## Was neu ist
 
@@ -44,7 +44,7 @@ dotnet run --project .\ScumRconTool.Wpf.csproj
 
 ## Hinweis
 
-In dieser Umgebung konnte nicht kompiliert werden, weil `dotnet` nicht installiert ist. Die Dateien sind als Windows-WPF-Projekt vorbereitet.
+Der aktuelle Stand wurde unter Windows mit dem .NET SDK erfolgreich gebaut. Voraussetzung ist die .NET-8-Windows-Desktop-Runtime; zum Entwickeln wird ein .NET SDK benötigt.
 
 ## Debug Logs
 

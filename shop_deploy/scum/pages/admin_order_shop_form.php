@@ -1,0 +1,13 @@
+<form method="post" class="shop-admin-form">
+ <input type="hidden" name="action" value="shop_save"><input type="hidden" name="csrf" value="<?=htmlspecialchars($shopCsrf,ENT_QUOTES)?>"><input type="hidden" name="pack_id" value="<?=(int)$pack['id']?>">
+ <label>Untershop<select name="category"><?php foreach($shopCats as $key=>$cat):?><option value="<?=htmlspecialchars($key)?>" <?=$pack['category']===$key?'selected':''?>><?=htmlspecialchars($cat['name'])?></option><?php endforeach;?></select></label>
+ <label>Name<input name="name" maxlength="120" required value="<?=htmlspecialchars($pack['name'],ENT_QUOTES)?>"></label>
+ <label>Preis in Scummies<input type="number" name="price" min="1" max="100000000" required value="<?=(int)$pack['price']?>"></label>
+ <label>Lieferart<select name="fulfillment_type"><option value="items" <?=$pack['fulfillment_type']==='items'?'selected':''?>>Itempack</option><option value="vehicle" <?=$pack['fulfillment_type']==='vehicle'?'selected':''?>>Fahrzeug</option></select></label>
+ <label class="wide">Beschreibung<textarea name="description" rows="3"><?=htmlspecialchars($pack['description'])?></textarea></label>
+ <label class="wide">Bild-URL<input type="url" name="image_url" value="<?=htmlspecialchars($pack['image_url'],ENT_QUOTES)?>" placeholder="https://lmnt-gaming.net/images/items/ITEMNAME.png"><span class="image-quick"><button type="button" class="image-from-first">Bild vom ersten Item übernehmen</button><span class="image-check"><img alt="Bildvorschau" hidden><small>Keine Bildadresse geprüft</small></span></span></label>
+ <label class="wide">Spawn-Codes, eine Zeile je Eintrag<textarea name="payload_lines" rows="6" required placeholder="Weapon_AK47|1&#10;Cal_7_62x39mm_Ammobox|2"><?=htmlspecialchars(order_shop_payload_lines($pack))?></textarea><span class="item-picker-actions"><button type="button" class="open-item-catalog">Itemkatalog öffnen</button><small>Mehrere Items auswählen, suchen und Mengen direkt festlegen.</small></span></label>
+ <label>Sortierung<input type="number" name="sort_order" value="<?=(int)$pack['sort_order']?>"></label><label class="check"><input type="checkbox" name="enabled" value="1" <?=!empty($pack['enabled'])?'checked':''?>> Aktiv</label>
+ <button type="submit">Speichern</button>
+</form>
+<?php if((int)$pack['id']>0):?><form method="post" onsubmit="return confirm('Pack wirklich löschen?')"><input type="hidden" name="action" value="shop_delete"><input type="hidden" name="csrf" value="<?=htmlspecialchars($shopCsrf,ENT_QUOTES)?>"><input type="hidden" name="pack_id" value="<?=(int)$pack['id']?>"><button class="danger" type="submit">Pack löschen</button></form><?php endif;?>

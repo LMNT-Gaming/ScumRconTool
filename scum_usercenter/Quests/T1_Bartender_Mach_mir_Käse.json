@@ -1,0 +1,133 @@
+{
+  "AssociatedNpc": "Bartender",
+  "Tier": 1,
+  "Title": "Mach mir Käse",
+  "Description": "In A2 gibt es eine Käsefabrik. Kannst du bitte die Käserei Anlage wieder in gang bringen und Käse herstellen? Ich mag Käse! Bring mir diesen dann bitte!",
+  "TimeLimitHours": 48.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 500,
+      "Fame": 20,
+      "Skills": [
+        {
+          "Skill": "Cooking",
+          "Experience": 500
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Repariere die Anlage",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": true,
+      "Type": "Interaction",
+      "Locations": [
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/A_2_Cheese_Factory.A_2_Cheese_Factory:PersistentLevel.BP_Cheese_Factory2_2.StaticMesh11",
+          "FallbackTransform": "-116898.546875,-355453.937500,15123.441406|0.000000,125.000710,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Buildings/Cheese_Factory/Custom_Assets/SM_Milker_Big.SM_Milker_Big",
+          "Instance": 2
+        }
+      ],
+      "MinNeeded": 1,
+      "MaxNeeded": 1,
+      "SpawnOnlyNeeded": true,
+      "WorldMarkerShowDistance": 80,
+      "LocationsShownOnMap": [
+        {
+          "Location": {
+            "X": -116898.546875,
+            "Y": -355453.9375,
+            "Z": 15123.441406
+          },
+          "SizeFactor": 1.0
+        }
+      ]
+    },
+    {
+      "TrackingCaption": "Repariere den Boiler",
+      "SequenceIndex": 1,
+      "CanBeAutoCompleted": true,
+      "Type": "Interaction",
+      "Locations": [
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/A_2_Cheese_Factory.A_2_Cheese_Factory:PersistentLevel.BP_Cheese_Factory2_2.Big_Barrel",
+          "FallbackTransform": "-116738.601562,-354869.187500,15127.436523|0.000000,-54.999989,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Buildings/Cheese_Factory/Custom_Assets/SM_Big_Barrel_Metal.SM_Big_Barrel_Metal",
+          "Instance": 2
+        }
+      ],
+      "MinNeeded": 1,
+      "MaxNeeded": 1,
+      "SpawnOnlyNeeded": true,
+      "WorldMarkerShowDistance": 80,
+      "LocationsShownOnMap": [
+        {
+          "Location": {
+            "X": -116898.546875,
+            "Y": -355453.9375,
+            "Z": 15123.441406
+          },
+          "SizeFactor": 1.0
+        }
+      ]
+    },
+    {
+      "TrackingCaption": "Repariere die Anlage",
+      "SequenceIndex": 2,
+      "CanBeAutoCompleted": true,
+      "Type": "Interaction",
+      "Locations": [
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/A_2_Cheese_Factory_Int_01.A_2_Cheese_Factory_Int_01:PersistentLevel.BP_Cheese_Factory3.StaticMesh14",
+          "FallbackTransform": "-117037.625000,-355579.406250,15180.463867|0.000000,-54.999947,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Buildings/Cheese_Factory/Custom_Assets/SM_Main_Mixer.SM_Main_Mixer",
+          "Instance": 1
+        }
+      ],
+      "MinNeeded": 1,
+      "MaxNeeded": 1,
+      "SpawnOnlyNeeded": true,
+      "WorldMarkerShowDistance": 80,
+      "LocationsShownOnMap": [
+        {
+          "Location": {
+            "X": -116898.546875,
+            "Y": -355453.9375,
+            "Z": 15123.441406
+          },
+          "SizeFactor": 1.0
+        }
+      ]
+    },
+    {
+      "TrackingCaption": "Bring käse zur Barfrau",
+      "SequenceIndex": 3,
+      "CanBeAutoCompleted": false,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": false,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "Richards_Cheese",
+            "Cheese"
+          ],
+          "RequiredNum": 1,
+          "RandomAdditionalRequiredNum": 2
+        }
+      ],
+      "LocationsShownOnMap": [
+        {
+          "Location": {
+            "X": -116898.546875,
+            "Y": -355453.9375,
+            "Z": 15123.441406
+          },
+          "SizeFactor": 1.0
+        }
+      ]
+    }
+  ]
+}

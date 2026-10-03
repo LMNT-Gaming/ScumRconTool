@@ -1,11 +1,13 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using ScumRconTool.Services;
 namespace ScumRconTool;
 
 public sealed class BotSettings
 {
     public string UiLanguage { get; set; } = "de";
+    public VehicleInsuranceOptions VehicleInsurance { get; set; } = new();
     public string Host { get; set; } = "88.198.43.88";
     public int Port { get; set; } = 5377;
     public string Password { get; set; } = string.Empty;
@@ -16,14 +18,11 @@ public sealed class BotSettings
     public string FtpPassword { get; set; } = string.Empty;
     public bool FtpUseSsl { get; set; } // legacy setting, ignored for SFTP
     public string FtpRemoteDirectory { get; set; } = "/";
-    public string FtpKillLogPattern { get; set; } = "kill*.log";
     public string FtpLocalDirectory { get; set; } = string.Empty;
-    public int KillPollSeconds { get; set; } = 30;
-    public string KillAnnounceTemplate { get; set; } = "{killer} killed {victim} {weapon} {distance}";
-    public string KillAnnounceColor { get; set; } = "Red";
-    public bool AutoStartKillFeed { get; set; }
 
     public string DiscordBotToken { get; set; } = string.Empty;
+    public bool UseSeparateDiscordStatusBot { get; set; }
+    public string DiscordStatusBotToken { get; set; } = string.Empty;
     public ulong DiscordChatLogChannelId { get; set; }
     public ulong DiscordGameBridgeChannelId { get; set; }
     public ulong DiscordServerStatusChannelId { get; set; }
@@ -38,6 +37,13 @@ public sealed class BotSettings
     public string GgconHttpPassword { get; set; } = string.Empty;
     public bool AutoCheckForUpdates { get; set; } = true;
     public string UpdateLatestJsonUrl { get; set; } = "https://lmnt-gaming.net/rrrt/latest.json";
+    public bool UsageDirectoryEnabled { get; set; }
+    public string UsageDirectoryConsentVersion { get; set; } = string.Empty;
+    public string UsageDirectoryConsentUtc { get; set; } = string.Empty;
+    public string UsageDirectoryEndpointUrl { get; set; } = UsageDirectoryService.DefaultEndpointUrl;
+    public string UsageDirectoryInstallId { get; set; } = string.Empty;
+    public string UsageDirectoryInstallToken { get; set; } = string.Empty;
+    public bool UsageDirectoryRemovalPending { get; set; }
     public bool DiscordChatLogEmbedsEnabled { get; set; } = true;
     public bool DiscordVehicleLogEmbedsEnabled { get; set; } = true;
     public bool DiscordGameBridgeEnabled { get; set; }
@@ -58,9 +64,34 @@ public sealed class BotSettings
     public int AutomationPollSeconds { get; set; } = 30;
     public bool AutoStartAutomation { get; set; }
     public bool AutoStartChatCommands { get; set; }
-    public bool UseGgconLogsForChatCommands { get; set; } = true;
-    public int GgconChatCommandPollSeconds { get; set; } = 3;
-    public int GgconChatCommandInitialBackfillSeconds { get; set; } = 10;
+    public bool GgconHttpLogsEnabled { get; set; } = true;
+    public int GgconHttpLogPollSeconds { get; set; } = 3;
+    public int GgconHttpLogInitialBackfillSeconds { get; set; } = 10;
+
+    [JsonIgnore]
+    public bool UseGgconLogsForChatCommands
+    {
+        get => GgconHttpLogsEnabled;
+        set => GgconHttpLogsEnabled = value;
+    }
+
+    [JsonIgnore]
+    public int GgconChatCommandPollSeconds
+    {
+        get => GgconHttpLogPollSeconds;
+        set => GgconHttpLogPollSeconds = value;
+    }
+
+    [JsonIgnore]
+    public int GgconChatCommandInitialBackfillSeconds
+    {
+        get => GgconHttpLogInitialBackfillSeconds;
+        set => GgconHttpLogInitialBackfillSeconds = value;
+    }
+
+    public bool NewPlayerWelcomeEnabled { get; set; }
+    public string NewPlayerWelcomeMessageType { get; set; } = "Cyan";
+    public string NewPlayerWelcomeResponse { get; set; } = "[Server] Willkommen {name}! Viel Spass auf dem Server. Bei Fragen nutze den Chat oder komm auf unseren Discord.";
     public bool PaidVotesEnabled { get; set; } = true;
     public int VotePrice { get; set; } = 5000;
     public int VoteConfirmationTimeoutSeconds { get; set; } = 60;
@@ -73,14 +104,27 @@ public sealed class BotSettings
     public string VoteCooldownBlockedResponse { get; set; } = "[Server] {name}, du kannst nur alle {cooldownHours}h eine Abstimmung starten. Verbleibend: {remaining}.";
     public bool AutoStartJoinCommands { get; set; }
     public string ChatAutomationRulesJson { get; set; } = "";
+    public string RedeemCodeRulesJson { get; set; } = "";
     public string JoinAutomationRulesJson { get; set; } = "";
 
     public bool AutoStartWeeklyTasks { get; set; }
     public bool WeeklyTaskOnlyWhenPlayersOnline { get; set; } = true;
     public int WeeklyTaskPollMinutes { get; set; } = 30;
+    public bool ChallengeRotationEnabled { get; set; }
+    public int ChallengeRotationMaximum { get; set; } = 3;
+    public int ChallengeRotationPauseHours { get; set; } = 24;
+    public int ChallengeCompletedVisibleMinutes { get; set; } = 10;
     public string WeeklyTaskDbRemoteFilePath { get; set; } = "/88.198.43.88_7182/SaveFiles/SCUM.db";
     public ulong WeeklyTaskDiscordChannelId { get; set; }
-    public string WeeklyTaskJson { get; set; } = WeeklyCommunityTaskService.BuildDefaultTaskJson();
+    public bool VehicleInactivityWarningEnabled { get; set; }
+    public ulong VehicleInactivityWarningDiscordChannelId { get; set; }
+    public int VehicleInactivityWarningHours { get; set; } = 12;
+    public int VehicleInactivityScanMinutes { get; set; } = 60;
+    public string WeeklyTaskJson { get; set; } = "";
+    public bool WeeklyTaskWebApiEnabled { get; set; }
+    public string WeeklyTaskWebApiEndpointUrl { get; set; } = string.Empty;
+    public string WeeklyTaskWebApiToken { get; set; } = string.Empty;
+    public int LocalWebAdminPort { get; set; } = 8787;
 
     public bool AutoStartAutoMessages { get; set; }
     public bool AutoMessagesOnlyWhenPlayersOnline { get; set; } = true;
@@ -88,31 +132,45 @@ public sealed class BotSettings
     public string AutoMessagesBroadcastType { get; set; } = "Yellow";
     public int AutoMessagesMaxLength { get; set; } = 180;
     public string AutoMessagesNoChallengeText { get; set; } = "Aktuell sind keine aktiven Community Challenges konfiguriert.";
+    public string ChallengeMessageLanguage { get; set; } = "de";
     public string AutoMessagesFlowJson { get; set; } = AutoMessageFlow.BuildDefaultJson();
+
+    public bool AutoStartSettingRandomizer { get; set; }
+    public string SettingRandomizerRemoteFilePath { get; set; } = "/Serveradresse_Port/Config/WindowsServer/ServerSettings.ini";
+    public string SettingRandomizerScheduleTimes { get; set; } = "04:00,10:00,16:00,22:00";
+    public bool SettingRandomizerDiscordAnnouncementEnabled { get; set; }
+    public string SettingRandomizerRulesJson { get; set; } = "[]";
+    public string SettingRandomizerPacksJson { get; set; } = SettingRandomizerConfiguration.BuildDefaultPacksJson();
+    public string SettingRandomizerLastScheduleKey { get; set; } = string.Empty;
+
+
+
+
+    public bool AutoStartEconomy { get; set; }
+    public bool EconomyAutoUpload { get; set; }
+    public string EconomyOverrideRemoteFilePath { get; set; } = "/88.198.43.88_7182/Config/WindowsServer/EconomyOverride.json";
+    public string EconomyLogsRemoteDirectory { get; set; } = "/88.198.43.88_7182/SaveFiles/Logs";
+    public string EconomyLogPattern { get; set; } = "economy_*.log";
+    public int EconomyPollMinutes { get; set; } = 15;
+    public string EconomyUploadTimes { get; set; } = "03:55,09:55,15:55,21:55";
+    public string EconomyLastUploadScheduleKey { get; set; } = string.Empty;
+    public double EconomyRecoveryHalfLifeHours { get; set; } = 336d;
+    public double EconomyPurchaseImpactPercent { get; set; } = 8d;
+    public double EconomySaleImpactPercent { get; set; } = 4d;
+    public double EconomyMaximumPurchaseMultiplier { get; set; } = 12d;
+    public int EconomyMinimumSellPrice { get; set; } = 10;
+    public bool EconomyWebApiEnabled { get; set; }
+    public string EconomyWebApiEndpointUrl { get; set; } = string.Empty;
+    public string EconomyWebApiToken { get; set; } = string.Empty;
+    public bool ShopOrdersEnabled { get; set; }
+    public string ShopWorkerApiEndpointUrl { get; set; } = string.Empty;
+    public string ShopWorkerApiToken { get; set; } = string.Empty;
 
     public List<WeeklyCommunityTaskDefinition> GetWeeklyTaskDefinitions()
     {
         try
         {
-            if (string.IsNullOrWhiteSpace(WeeklyTaskJson)) return new List<WeeklyCommunityTaskDefinition> { new() };
-
-            var options = new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true,
-                ReadCommentHandling = JsonCommentHandling.Skip,
-                AllowTrailingCommas = true
-            };
-
-            var trimmed = WeeklyTaskJson.Trim();
-            if (trimmed.StartsWith("[", StringComparison.Ordinal))
-            {
-                return JsonSerializer.Deserialize<List<WeeklyCommunityTaskDefinition>>(trimmed, options)?
-                    .Where(x => x is not null)
-                    .ToList() ?? new List<WeeklyCommunityTaskDefinition>();
-            }
-
-            var single = JsonSerializer.Deserialize<WeeklyCommunityTaskDefinition>(trimmed, options);
-            return single is null ? new List<WeeklyCommunityTaskDefinition>() : new List<WeeklyCommunityTaskDefinition> { single };
+            return WeeklyTaskDefinitionStore.Load(WeeklyTaskJson);
         }
         catch
         {

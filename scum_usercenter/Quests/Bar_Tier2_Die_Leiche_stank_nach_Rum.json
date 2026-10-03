@@ -1,0 +1,49 @@
+{
+  "AssociatedNpc": "Bartender",
+  "Tier": 2,
+  "Title": "Die Leiche stank nach Rum",
+  "Description": "Ein Kunde wurde in der Nähe tot aufgefunden – angeblich vergiftet, laut Doc. Die Barkeeperin schwört, dass der Typ einfach ihren Schwarzgebrannten nicht vertragen hat. Jetzt will sie die Flasche zurück, bevor TEC1 sie „Produktpiratin“ nennt.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 110,
+      "Fame": 5,
+      "Skills": [
+        {
+          "Skill": "Endurance",
+          "Experience": 240
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Suche an der angegebenen Stelle nach dem Schwarzgebrannten",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": true,
+      "Type": "Interaction",
+      "Locations": [
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/B_2_Spickovina_01_Interior_05.B_2_Spickovina_01_Interior_05:PersistentLevel.BP_CB_03_A_INT_9.SM_Soviet_Toilet_V02",
+          "FallbackTransform": "-63714.898438,-82438.195312,36382.679688|-0.110171,-151.275620,-0.127167|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Indoor/Soviet_Bathroom/Soviet_Toilets/SM_Soviet_Toilet_V02.SM_Soviet_Toilet_V02",
+          "Instance": 5
+        }
+      ],
+      "MinNeeded": 1,
+      "MaxNeeded": 1,
+      "SpawnOnlyNeeded": true,
+      "WorldMarkerShowDistance": 100,
+      "LocationsShownOnMap": [
+        {
+          "Location": {
+            "X": -63654.023,
+            "Y": -82493.016,
+            "Z": 36475.0
+          },
+          "SizeFactor": 0.3
+        }
+      ]
+    }
+  ]
+}

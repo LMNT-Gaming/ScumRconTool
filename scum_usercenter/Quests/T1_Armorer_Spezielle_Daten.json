@@ -1,0 +1,58 @@
+{
+  "AssociatedNpc": "Armorer",
+  "Tier": 1,
+  "Title": "Spezielle Daten",
+  "Description": "Am Airfield in B2/B3 gibt es einen Serverraum. Bitte beschaffe mir die Festplatte die dort verbaut ist.",
+  "TimeLimitHours": 8.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 2000,
+      "Fame": 15,
+      "Skills": [
+        {
+          "Skill": "Awareness",
+          "Experience": 5000
+        }
+      ],
+      "TradeDeals": [
+        {
+          "Item": "Magazine_AK15",
+          "Price": 500,
+          "Amount": 1,
+          "Fame": 25,
+          "AllowExcluded": true
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Hole die Festplatte",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Interaction",
+      "Locations": [
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/B_2_Airport_06_Int.B_2_Airport_06_Int:PersistentLevel.BP_Control_Tower_01_RW_INT_0.SM_Servers02 (ISMA)3_InstancedStaticMesh",
+          "FallbackTransform": "-251651.718750,-52825.757812,36162.859375|0.000000,-15.745163,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Indoor/ScienceLab/Meshes/ScientificDevices/SM_Servers02.SM_Servers02",
+          "Instance": 2
+        }
+      ],
+      "MinNeeded": 1,
+      "MaxNeeded": 1,
+      "SpawnOnlyNeeded": true,
+      "WorldMarkerShowDistance": 100,
+      "LocationsShownOnMap": [
+        {
+          "Location": {
+            "X": -251651.71875,
+            "Y": -52825.757812,
+            "Z": 36162.859375
+          },
+          "SizeFactor": 1.0
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,110 @@
+{
+  "AssociatedNpc": "Doctor",
+  "Tier": 1,
+  "Title": "Akten aufstockung",
+  "Description": "Viele kommen zu mir mit Problemen. Aber nicht für alle habe ich die Akten dazu. Kannst du bitte mehr Patienten-Akten holen? Das Samobor Sanatorium hat bestimmt noch sehr viele davon. Kannst du mir diese Bringen?",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 150,
+      "Fame": 10,
+      "Skills": [
+        {
+          "Skill": "Medical",
+          "Experience": 500
+        },
+        {
+          "Skill": "Running",
+          "Experience": 500
+        }
+      ],
+      "TradeDeals": [
+        {
+          "Item": "Bundle_Of_Rags",
+          "Price": 20,
+          "Amount": 2,
+          "Fame": 1,
+          "AllowExcluded": true
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Hole Patientenakten",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Interaction",
+      "Locations": [
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/C_4_Sanitarium_INT.C_4_Sanitarium_INT:PersistentLevel.BP_Main_Hospital_Building_02_INT_01.ISMA_SM_Hospital_Cabinet_02_02",
+          "FallbackTransform": "373804.625000,292767.562500,20057.199219|0.000000,109.999428,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Buildings/Hospital/Props/SM_Hospital_Cabinet_02.SM_Hospital_Cabinet_02",
+          "Instance": 2
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/C_4_Sanitarium_INT.C_4_Sanitarium_INT:PersistentLevel.BP_Main_Hospital_Building_02_INT_01.ISMA_SM_Hospital_Cabinet_02_02",
+          "FallbackTransform": "373274.250000,293071.218750,20057.199219|0.000000,-160.000458,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Buildings/Hospital/Props/SM_Hospital_Cabinet_02.SM_Hospital_Cabinet_02",
+          "Instance": 1
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/C_4_Sanitarium_INT.C_4_Sanitarium_INT:PersistentLevel.BP_Main_Hospital_Building_02_INT_01.SM_Hospital_Cabinet_03_Open_StaticMeshComponent0",
+          "FallbackTransform": "373428.156250,293119.312500,20057.800781|0.000000,-153.980316,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Buildings/Hospital/Props/SM_Hospital_Cabinet_03_Open.SM_Hospital_Cabinet_03_Open",
+          "Instance": 1
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/C_4_Sanitarium_INT.C_4_Sanitarium_INT:PersistentLevel.BP_Main_Hospital_Building_02_INT_01.ISMA_SM_Hospital_Cabinet_OPEN_02_01",
+          "FallbackTransform": "373879.750000,291740.125000,20502.308594|0.000000,19.999601,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Buildings/Hospital/Props/Open_Cabinets/SM_Hospital_Cabinet_OPEN_02.SM_Hospital_Cabinet_OPEN_02",
+          "Instance": 2
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/C_4_Sanitarium_INT.C_4_Sanitarium_INT:PersistentLevel.BP_Main_Hospital_Building_02_INT_01.SM_Lab_Cabinet_Big_01_03",
+          "FallbackTransform": "375441.218750,292430.250000,19602.800781|0.000000,-165.376038,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Buildings/TV_Bunker/Props/SM_Lab_Cabinet_Big_01.SM_Lab_Cabinet_Big_01",
+          "Instance": 1
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/C_4_Sanitarium_INT.C_4_Sanitarium_INT:PersistentLevel.BP_Main_Hospital_Building_02_INT_01.SM_Lab_Desk_03_02",
+          "FallbackTransform": "376636.718750,294008.156250,19602.826172|0.000000,-161.600281,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Buildings/TV_Bunker/Props/SM_Lab_Desk_03.SM_Lab_Desk_03",
+          "Instance": 1
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/C_4_Sanitarium_INT.C_4_Sanitarium_INT:PersistentLevel.BP_Main_Hospital_Building_02_INT_01.ISMA_SM_Lab_Cabinet_Big_01_01",
+          "FallbackTransform": "371534.406250,291671.968750,19602.650391|0.000000,22.828394,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Buildings/TV_Bunker/Props/SM_Lab_Cabinet_Big_01.SM_Lab_Cabinet_Big_01",
+          "Instance": 1
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/C_4_Sanitarium_INT.C_4_Sanitarium_INT:PersistentLevel.BP_Main_Hospital_Building_02_INT_01.SM_Hospital_Cabinet_02_01",
+          "FallbackTransform": "372356.750000,291472.593750,19602.800781|0.000000,118.934418,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Buildings/Hospital/Props/SM_Hospital_Cabinet_02.SM_Hospital_Cabinet_02",
+          "Instance": 1
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/C_4_Sanitarium_INT.C_4_Sanitarium_INT:PersistentLevel.BP_Main_Hospital_Building_02_INT_01.ISMA_SM_Lab_Desk_02_04",
+          "FallbackTransform": "372057.531250,292198.718750,19602.650391|0.000000,111.123802,0.000000|1.000999,1.000999,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Buildings/TV_Bunker/Props/SM_Lab_Desk_02.SM_Lab_Desk_02",
+          "Instance": 2
+        }
+      ],
+      "MinNeeded": 1,
+      "MaxNeeded": 1,
+      "SpawnOnlyNeeded": true,
+      "WorldMarkerShowDistance": 15,
+      "LocationsShownOnMap": [
+        {
+          "Location": {
+            "X": 373828.844,
+            "Y": 292401.75,
+            "Z": 19694.904
+          },
+          "SizeFactor": 0.8
+        }
+      ]
+    }
+  ]
+}

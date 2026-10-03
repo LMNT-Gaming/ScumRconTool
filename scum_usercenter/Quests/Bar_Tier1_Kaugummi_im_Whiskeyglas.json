@@ -1,0 +1,41 @@
+{
+  "AssociatedNpc": "Bartender",
+  "Tier": 1,
+  "Title": "Kaugummi im Whiskeyglas",
+  "Description": "Jemand hat seinen Kaugummi in jedes verdammte Glas gespuckt. Die Barkeeperin ist bedient. Sie will jetzt nur noch in verschließbaren Plastikflaschen ausschenken – aber selbst die sind ihr ausgegangen. Bring Nachschub, bevor sie zur Shotgun greift.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 520,
+      "Fame": 5,
+      "Skills": [
+        {
+          "Skill": "Survival",
+          "Experience": 180
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Sammle Plastikflaschen",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "PETBottle01",
+            "PETBottle02",
+            "PETBottle03",
+            "PETBottle04",
+            "Water_05l"
+          ],
+          "RequiredNum": 3
+        }
+      ]
+    }
+  ]
+}

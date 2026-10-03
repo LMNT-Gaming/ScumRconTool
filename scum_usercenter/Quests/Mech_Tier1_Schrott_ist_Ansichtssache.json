@@ -1,0 +1,42 @@
+{
+  "AssociatedNpc": "Mechanic",
+  "Tier": 1,
+  "Title": "Schrott ist Ansichtssache",
+  "Description": "Der Mechaniker schwört, er könne aus jedem Stück verbeultem Blech ein Meisterwerk basteln – wenn ihm nicht ständig das Rohmaterial ausgehen würde. Du sollst ihm Nachschub besorgen, bevor er anfängt, seine eigene Werkbank zu demontieren.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 30,
+      "Fame": 1,
+      "Skills": [
+        {
+          "Skill": "Thievery",
+          "Experience": 10
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Sammle Metallschrott und bringe die Teile dem Händler.",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "Metal_Scrap_01",
+            "Metal_Scrap_02",
+            "Metal_Scrap_03",
+            "Metal_Scrap_04",
+            "Metal_Scrap_05"
+          ],
+          "RequiredNum": 8,
+          "RandomAdditionalRequiredNum": 3
+        }
+      ]
+    }
+  ]
+}

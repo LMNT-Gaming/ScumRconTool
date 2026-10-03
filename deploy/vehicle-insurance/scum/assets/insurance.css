@@ -1,0 +1,37 @@
+.insurance-page{padding:24px;min-width:0}.insurance-toolbar{display:flex;align-items:center;justify-content:space-between;gap:20px}.insurance-toolbar p{max-width:780px;line-height:1.7;color:#bcb8c5}.insurance-page code{color:#f1c4ce;overflow-wrap:anywhere}.insurance-page button{border:1px solid #8b2940;background:#301522;color:#fff;border-radius:8px;padding:11px 15px;cursor:pointer}.insurance-page button:focus-visible{outline:2px solid #f09eb2;outline-offset:3px}.insurance-page button:disabled{opacity:.5;cursor:wait}.insurance-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:16px;margin-top:18px}.insurance-card{background:#14121c;border:1px solid #302a3a;border-radius:12px;padding:20px;min-width:0}.insurance-card header{display:flex;align-items:center;gap:14px;margin-bottom:16px}.insurance-card img{width:64px;height:64px;object-fit:contain}.insurance-card h3{margin:0 0 5px;font-size:19px;color:#f5f2f8}.insurance-card small,.insurance-note,[data-insurance-status]{color:#aaa4b4}.insurance-card dl{display:grid;grid-template-columns:auto 1fr;gap:10px;font-size:14px}.insurance-card dt{color:#aaa4b4}.insurance-card dd{margin:0;text-align:right;color:#eee8f3;overflow-wrap:anywhere}.insurance-card progress{width:100%;height:6px;accent-color:#b94062}.insurance-card .insurance-badge{display:inline-block;border:1px solid #59404e;padding:4px 9px;border-radius:20px;color:#e4c7d4;font-size:12px}.insurance-card[data-status=Claimable]{border-color:#419a78}.insurance-card[data-status=Claimable] .insurance-badge{color:#a3e4c9;border-color:#419a78}.insurance-card[data-status=PaymentReview],.insurance-card[data-status=SpawnReview]{border-color:#ae833c}.insurance-note{font-size:13px;line-height:1.7;margin-top:24px}.insurance-empty{border:1px dashed #453747;border-radius:12px;padding:28px;color:#c1b8c8}@media(max-width:600px){.insurance-page{padding:12px}.insurance-toolbar{align-items:stretch;flex-direction:column;gap:5px}}
+.insurance-section-title{margin-top:36px}.insurance-page h2{font-size:21px;color:#f5f2f8}.insurance-page [data-insurance-vehicle-count]{font-size:15px;color:#aaa4b4}.insurance-page [data-insurance-vehicles-status]{color:#aaa4b4;font-size:13px}.insurance-vehicle-copy{display:block;margin-top:12px}
+.scum-app .content.insurance-page {
+  /* The legacy .content rule is a horizontal flex container for the dashboard. */
+  display: block;
+  min-width: 0;
+  color: var(--lmnt-white, #fffdf8);
+}
+.page-insurance .app-context > div:first-child { min-width: 0; }
+.page-insurance .app-context h1 { overflow-wrap: anywhere; hyphens: auto; }
+.insurance-page .insurance-toolbar { margin-bottom: 24px; }
+.insurance-page .insurance-toolbar p { margin: 0; }
+.insurance-page .insurance-toolbar > button { flex: 0 0 auto; }
+.insurance-page .insurance-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  align-items: start;
+}
+.insurance-page .insurance-card {
+  background: var(--lmnt-panel, #111017);
+  border-color: var(--lmnt-line, rgba(255,255,255,.12));
+}
+.insurance-page .insurance-card header > div { min-width: 0; }
+.insurance-page .insurance-card h3,
+.insurance-page .insurance-card small { overflow-wrap: anywhere; }
+.insurance-page .insurance-card h3,
+.insurance-page h2 { color: var(--lmnt-white, #fffdf8); }
+.insurance-page .insurance-card small,
+.insurance-page .insurance-note,
+.insurance-page .insurance-toolbar p { color: var(--lmnt-muted, #98939f); }
+.insurance-page .insurance-card dl { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.insurance-page .insurance-note { margin: 10px 0 16px; }
+.insurance-page .insurance-card[data-status=Claimable] { border-color: #419a78; }
+.insurance-page .insurance-card[data-status=PaymentReview],
+.insurance-page .insurance-card[data-status=SpawnReview] { border-color: #ae833c; }
+@media(max-width:600px) {
+  .insurance-page .insurance-toolbar { align-items: stretch; gap: 12px; }
+}

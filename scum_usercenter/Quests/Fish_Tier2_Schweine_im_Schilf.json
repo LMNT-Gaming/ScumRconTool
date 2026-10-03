@@ -1,0 +1,31 @@
+{
+  "AssociatedNpc": "Harbourmaster",
+  "Tier": 2,
+  "Title": "Schweine im Schilf",
+  "Description": "Ein Wildschwein treibt sich regelmäßig in der Nähe der besten Angelplätze herum – und vertreibt nicht nur die Fische, sondern hat auch schon zwei Eimer geklaut. Der Fischer hat genug. Du sollst die Population verkleinern. Und bring besser keine Sauerei mit zurück.",
+  "TimeLimitHours": 48.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 150,
+      "Fame": 10,
+      "Skills": [
+        {
+          "Skill": "Archery",
+          "Experience": 300
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Töte ein Wildschwein",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": true,
+      "Type": "Elimination",
+      "Amount": 1,
+      "TargetCharacters": [
+        "BP_Boar"
+      ]
+    }
+  ]
+}

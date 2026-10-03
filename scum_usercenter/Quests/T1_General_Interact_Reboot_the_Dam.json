@@ -1,0 +1,100 @@
+{
+  "AssociatedNpc": "GeneralGoods",
+  "Tier": 1,
+  "Title": "Reboot the Dam",
+  "Description": "Ein paar Sicherungen im Damm sind wohl wieder ausgefallen. Kannst du diese Austauschen? Sonst ists hier bald Dunkel!",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 3000,
+      "Fame": 20,
+      "Skills": [
+        {
+          "Skill": "Engineering",
+          "Experience": 100
+        }
+      ],
+      "TradeDeals": [
+        {
+          "Item": "ElectricityGenerator",
+          "Price": 250,
+          "Amount": 1,
+          "Fame": 1,
+          "AllowExcluded": true
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Sicherungen getauscht am Damm",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Interaction",
+      "Locations": [
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/C_2_Power_Plant.C_2_Power_Plant:PersistentLevel.BP_Dam_Power_Building_6.HierarchicalInstancedStaticMesh7",
+          "FallbackTransform": "-13533.197266,250137.218750,44201.796875|0.000000,84.515533,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Outdoor/Switchboard/SM_Switchboard1.SM_Switchboard1",
+          "Instance": 26
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/C_2_Power_Plant.C_2_Power_Plant:PersistentLevel.BP_Dam_Power_Building_6.HierarchicalInstancedStaticMesh7",
+          "FallbackTransform": "-13513.072266,250346.156250,44201.796875|0.000000,84.515533,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Outdoor/Switchboard/SM_Switchboard1.SM_Switchboard1",
+          "Instance": 9
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/C_2_Power_Plant.C_2_Power_Plant:PersistentLevel.BP_Dam_Power_Building_6.HierarchicalInstancedStaticMesh7",
+          "FallbackTransform": "-13369.449219,251842.890625,44201.796875|0.000000,84.515533,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Outdoor/Switchboard/SM_Switchboard1.SM_Switchboard1",
+          "Instance": 5
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/C_2_Power_Plant.C_2_Power_Plant:PersistentLevel.BP_Dam_Power_Building_6.HierarchicalInstancedStaticMesh7",
+          "FallbackTransform": "-13349.318359,252051.828125,44201.796875|0.000000,84.515533,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Outdoor/Switchboard/SM_Switchboard1.SM_Switchboard1",
+          "Instance": 18
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/C_2_Power_Plant.C_2_Power_Plant:PersistentLevel.BP_Dam_Power_Building_6.HierarchicalInstancedStaticMesh7",
+          "FallbackTransform": "-13207.185547,253532.531250,44201.796875|0.000000,84.515533,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Outdoor/Switchboard/SM_Switchboard1.SM_Switchboard1",
+          "Instance": 14
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/C_2_Power_Plant.C_2_Power_Plant:PersistentLevel.BP_Dam_Power_Building_6.HierarchicalInstancedStaticMesh7",
+          "FallbackTransform": "-13187.054688,253741.468750,44201.796875|0.000000,84.515533,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Outdoor/Switchboard/SM_Switchboard1.SM_Switchboard1",
+          "Instance": 13
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/C_2_Power_Plant.C_2_Power_Plant:PersistentLevel.BP_Dam_Power_Building_6.HierarchicalInstancedStaticMesh7",
+          "FallbackTransform": "-13043.567383,255237.203125,44201.796875|0.000000,84.515533,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Outdoor/Switchboard/SM_Switchboard1.SM_Switchboard1",
+          "Instance": 4
+        },
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/C_2_Power_Plant.C_2_Power_Plant:PersistentLevel.BP_Dam_Power_Building_6.HierarchicalInstancedStaticMesh7",
+          "FallbackTransform": "-13023.435547,255446.140625,44201.796875|0.000000,84.515533,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Outdoor/Switchboard/SM_Switchboard1.SM_Switchboard1",
+          "Instance": 8
+        }
+      ],
+      "MinNeeded": 1,
+      "MaxNeeded": 4,
+      "SpawnOnlyNeeded": true,
+      "WorldMarkerShowDistance": 5,
+      "LocationsShownOnMap": [
+        {
+          "Location": {
+            "X": -13527.557,
+            "Y": 253878.5,
+            "Z": 44294.371
+          },
+          "SizeFactor": 0.5
+        }
+      ]
+    }
+  ]
+}

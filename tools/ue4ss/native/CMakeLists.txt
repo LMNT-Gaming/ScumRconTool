@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.22)
+project(SurvivalStatsNativeProbe LANGUAGES C CXX)
+add_subdirectory(third_party/minhook)
+add_library(SurvivalStatsNativeProbe SHARED src/dllmain.cpp)
+target_compile_features(SurvivalStatsNativeProbe PRIVATE cxx_std_20)
+target_compile_definitions(SurvivalStatsNativeProbe PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_link_libraries(SurvivalStatsNativeProbe PRIVATE minhook)
+set_target_properties(SurvivalStatsNativeProbe PROPERTIES OUTPUT_NAME "SurvivalStatsNativeProbe" RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")

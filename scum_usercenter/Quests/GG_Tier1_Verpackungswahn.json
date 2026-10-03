@@ -1,0 +1,53 @@
+{
+  "AssociatedNpc": "GeneralGoods",
+  "Tier": 1,
+  "Title": "Verpackungswahn",
+  "Description": "Eine Lieferung ist eingetroffen und muss verschickt werden, aber der Trader hat kein Verpackungsmaterial mehr. Du sollst etwas auftreiben – oder zur Not improvisieren. Hauptsache, der Kunde bekommt keine Konservendose mit Dellen.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 44,
+      "Fame": 5,
+      "Skills": [
+        {
+          "Skill": "Survival",
+          "Experience": 200
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Sammle 4 Stofffetzen, 1 Seil und 1 Klebeband",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": true,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "Improvised_Plant_rope",
+            "Improvised_rope",
+            "Rope1"
+          ],
+          "RequiredNum": 1,
+          "MinAcceptedItemUses": 5
+        },
+        {
+          "AcceptedItems": [
+            "Rag_Stripes"
+          ],
+          "RequiredNum": 4
+        },
+        {
+          "AcceptedItems": [
+            "Duct_Tape"
+          ],
+          "RequiredNum": 1,
+          "MinAcceptedItemUses": 5
+        }
+      ]
+    }
+  ]
+}

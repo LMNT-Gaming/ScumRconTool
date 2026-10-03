@@ -1,0 +1,37 @@
+{
+  "AssociatedNpc": "Doctor",
+  "Tier": 2,
+  "Title": "Gebrauchsanweisung wäre nett gewesen",
+  "Description": "Ein Neuling hat sich eine Impro-Spritze gebaut – aus einem Kugelschreiber, Draht und einer Cola-Dose. Der Doc war beeindruckt. Dann bewusstlos. Er braucht jetzt neues, funktionierendes Material. Und bitte nix mehr mit Cola.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 112,
+      "Fame": 4,
+      "Skills": [
+        {
+          "Skill": "Engineering",
+          "Experience": 250
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Sammle Spritzen",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "Syringe"
+          ],
+          "RequiredNum": 2
+        }
+      ]
+    }
+  ]
+}

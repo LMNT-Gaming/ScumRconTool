@@ -1,0 +1,43 @@
+{
+  "AssociatedNpc": "GeneralGoods",
+  "Tier": 1,
+  "Title": "Urlaubs Wohnwagen",
+  "Description": "Kannst du nach meinem Urlaubswohnwagen in Z3 schauen?",
+  "TimeLimitHours": 18.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 2500,
+      "Fame": 20
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Prüfe den Wohnwagen vom Händler in Z3",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": false,
+      "Type": "Interaction",
+      "Locations": [
+        {
+          "AnchorMesh": "/Game/ConZ_Files/Maps/The_Island/Z_3_Rogoznica_06_b.Z_3_Rogoznica_06_b:PersistentLevel.BP_Camper_Trailer_5.PBR_Camper_Trailer",
+          "FallbackTransform": "218116.125000,-682711.687500,144.031250|0.000000,125.225258,0.000000|1.001000,1.001000,1.001000",
+          "VisibleMesh": "/Game/ConZ_Files/Models/Objects/Outdoor/Camping/Camper_Trailer_01/SM_Camper_Trailer_01.SM_Camper_Trailer_01",
+          "Instance": 5
+        }
+      ],
+      "MinNeeded": 1,
+      "MaxNeeded": 1,
+      "SpawnOnlyNeeded": true,
+      "WorldMarkerShowDistance": 80,
+      "LocationsShownOnMap": [
+        {
+          "Location": {
+            "X": 218116.125,
+            "Y": -682711.6875,
+            "Z": 144.03125
+          },
+          "SizeFactor": 0.5
+        }
+      ]
+    }
+  ]
+}

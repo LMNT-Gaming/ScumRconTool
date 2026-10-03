@@ -1,0 +1,41 @@
+{
+  "AssociatedNpc": "Armorer",
+  "Tier": 2,
+  "Title": "Die Jagdprüfung",
+  "Description": "Der Waffenhändler will sich beweisen – mit einem Jagderfolg, der Eindruck macht. Du sollst für ihn ein Wildtier erlegen, damit er später so tun kann, als wär’s sein Abschuss. Moralisch fragwürdig? Ja. Aber bezahlt wird gut.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 200,
+      "Fame": 10,
+      "Skills": [
+        {
+          "Skill": "Cooking",
+          "Experience": 240
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Erledige ein Tier mit einer Waffe deiner Wahl.",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": true,
+      "Type": "Elimination",
+      "Amount": 1,
+      "TargetCharacters": [
+        "BP_Bear2",
+        "BP_Crow",
+        "BP_Seagull",
+        "BP_Boar",
+        "BP_Chicken",
+        "BP_Deer2",
+        "BP_Donkey2",
+        "BP_Goat2",
+        "BP_Horse2",
+        "BP_Rabbit2",
+        "BP_Wolf3"
+      ]
+    }
+  ]
+}

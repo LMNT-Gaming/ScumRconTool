@@ -1,0 +1,38 @@
+{
+	"AssociatedNPC": "GeneralGoods",
+	"Tier": 1,
+	"Title": "Schraube locker",
+	"Description": "Dem Trader ist ein Regal im Lager zusammengebrochen. Die letzte Lieferung Nägel war... nicht ganz vollständig. Du sollst neue besorgen – am besten bevor ihm noch das Dach auf den Kopf fällt.",
+	"RewardPool": [
+		{
+			"CurrencyNormal": 5,
+			"Fame": 1,
+			"Skills": [
+				{
+					"Skill": "Engineering",
+					"Experience": 200
+				}
+			]
+		}
+	],
+	"Conditions": [
+		{
+			"Type": "Fetch",
+			"SequenceIndex": 0,
+			"CanBeAutoCompleted": false,
+			"TrackingCaption": "Besorge Nägel oder Bolzen aus dem Umland.",
+			"DisablePurchaseOfRequiredItems": true,
+			"PlayerKeepsItems": false,
+			"RequiredItems": [
+				{
+					"AcceptedItems": [
+						"Nails",
+						"Bolts"
+					],
+					"RequiredNum": 5
+				}
+			]
+		}
+	],
+	"TimeLimitHours": 24
+}

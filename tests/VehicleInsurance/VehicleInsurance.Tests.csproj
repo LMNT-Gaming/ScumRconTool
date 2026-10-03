@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+ <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+ <ItemGroup>
+  <Compile Include="../../Services/AutomationModels.cs" Link="AutomationModels.cs"/>
+  <Compile Include="../../Services/BuiltinChatCommandCatalog.cs" Link="BuiltinChatCommandCatalog.cs"/>
+  <Compile Include="../../Services/VehicleInsuranceModels.cs" Link="VehicleInsuranceModels.cs"/>
+  <Compile Include="../../Services/VehicleInsuranceService.cs" Link="VehicleInsuranceService.cs"/>
+  <Compile Include="../../Services/VehicleDestructionLogParser.cs" Link="VehicleDestructionLogParser.cs"/>
+  <Compile Include="../../Services/VehicleDestructionLogEntry.cs" Link="VehicleDestructionLogEntry.cs"/>
+ </ItemGroup>
+</Project>

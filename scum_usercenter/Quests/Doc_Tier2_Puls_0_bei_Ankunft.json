@@ -1,0 +1,43 @@
+{
+  "AssociatedNpc": "Doctor",
+  "Tier": 2,
+  "Title": "Puls 0 bei Ankunft",
+  "Description": "Der Arzt spricht selten über seine Vergangenheit, aber heute war er blass. Ein alter Kollege von ihm – Chirurg, mutmaßlich tot – wurde im Ödland gesichtet. Nicht ganz tot, nicht ganz lebendig. Wenn es stimmt, dann trägt er noch die alte medizinische Kleidung. Erlöse ihn.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 100,
+      "Fame": 10,
+      "Skills": [
+        {
+          "Skill": "Medical",
+          "Experience": 230
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Töte einen Zombie in medizinischer Kleidung beim Krankenhaus",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": true,
+      "Type": "Elimination",
+      "Amount": 1,
+      "TargetCharacters": [
+        "BP_Zombie_Hospital_Fat",
+        "BP_Zombie_Hospital_Muscle",
+        "BP_Zombie_Hospital_Normal"
+      ],
+      "LocationsShownOnMap": [
+        {
+          "Location": {
+            "X": -621906.812,
+            "Y": -145969.578,
+            "Z": 29662.484
+          },
+          "SizeFactor": 1.0
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "AssociatedNpc": "Banker",
+  "Tier": 1,
+  "Title": "Bonuspunkte aus Blech",
+  "Description": "Der Banker hat ein Belohnungssystem eingeführt: Wer Schrott bringt, bekommt einen Beleg. Wer drei Belege hat, darf sich beim Bartender ausheulen. Der Haken? Es gibt noch keine Belege – aber er testet gerade, ob leere Dosen auch gehen. Man könnte sich auch zum Auffangen der Tränen verwenden. Also hopp.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 400,
+      "Fame": 5,
+      "Skills": [
+        {
+          "Skill": "Awareness",
+          "Experience": 120
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Bringe dem Banker eine Konserve",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": true,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "Canned_Corn",
+            "Canned_Tuna",
+            "CannedCatfood",
+            "CannedDogFood",
+            "CannedFruitCocktail",
+            "CannedGoulash",
+            "CannedPeach",
+            "CannedPear",
+            "CannedPeas",
+            "CannedSardine",
+            "CannedSardine_Deluxe",
+            "CannedSeafoodMix",
+            "CannedSpaghetti"
+          ],
+          "RequiredNum": 1,
+          "MinAcceptedItemUses": 1
+        }
+      ]
+    }
+  ]
+}

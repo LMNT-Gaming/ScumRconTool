@@ -1,0 +1,8 @@
+Require all denied
+Deny from all
+<FilesMatch "\.(php|phar|phtml)$">
+  Require all denied
+</FilesMatch>
+<Files ".env">
+  Require all denied
+</Files>

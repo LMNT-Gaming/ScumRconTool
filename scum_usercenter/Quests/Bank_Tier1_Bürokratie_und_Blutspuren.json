@@ -1,0 +1,38 @@
+{
+  "AssociatedNpc": "Banker",
+  "Tier": 1,
+  "Title": "Bürokratie und Blutspuren",
+  "Description": "Der Banker will die Transaktionen der letzten Woche rekonstruieren – leider wurden seine Unterlagen von einem blutverschmierten Kunden versaut. Jetzt braucht er neues Papier für den nächsten Buchhaltungsversuch. Und diesmal bitte ohne Organspuren.",
+  "TimeLimitHours": 24.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 450,
+      "Fame": 5,
+      "Skills": [
+        {
+          "Skill": "Survival",
+          "Experience": 160
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Sammle Tagebuch",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": true,
+      "Type": "Fetch",
+      "DisablePurchaseOfRequiredItems": true,
+      "PlayerKeepsItems": false,
+      "RequiredItems": [
+        {
+          "AcceptedItems": [
+            "Diary"
+          ],
+          "RequiredNum": 1,
+          "MinAcceptedItemUses": 5
+        }
+      ]
+    }
+  ]
+}

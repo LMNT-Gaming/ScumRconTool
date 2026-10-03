@@ -1,0 +1,32 @@
+{
+  "AssociatedNpc": "Armorer",
+  "Tier": 3,
+  "Title": "Operation: Blechsalat",
+  "Description": "Der Waffenhändler will wissen, wie viel ein Mensch gegen Maschine wirklich ausrichten kann – rein wissenschaftlich, versteht sich. Du sollst einen aktiven Mech ausschalten, um zu zeigen, dass Präzision und Mut noch gegen Panzerplatten gewinnen können. Und vielleicht auch ein bisschen Wahnsinn.",
+  "TimeLimitHours": 48.0,
+  "RewardPool": [
+    {
+      "CurrencyNormal": 600,
+      "Fame": 15,
+      "Skills": [
+        {
+          "Skill": "Rifles",
+          "Experience": 1500
+        }
+      ]
+    }
+  ],
+  "Conditions": [
+    {
+      "TrackingCaption": "Erledige einen Mech!",
+      "SequenceIndex": 0,
+      "CanBeAutoCompleted": true,
+      "Type": "Elimination",
+      "Amount": 1,
+      "TargetCharacters": [
+        "SentryOld",
+        "Sentry"
+      ]
+    }
+  ]
+}

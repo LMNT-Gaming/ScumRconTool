@@ -135,9 +135,20 @@ public sealed class SourceRconClient : IAsyncDisposable
             {
                 return await SendCommandCoreAsync(command, cancellationToken);
             }
-            catch (Exception ex) when (IsConnectionException(ex) && !cancellationToken.IsCancellationRequested)
+            catch (Exception ex) when (IsConnectionException(ex) &&
+                                       !cancellationToken.IsCancellationRequested)
             {
+                // A TcpClient/NetworkStream can still look connected after the peer has
+                // already closed the socket. Always discard that broken connection.
+                // Only read-only commands are retried automatically; mutating commands
+                // must not be sent twice because the first write may have reached ggCON.
                 Close();
+
+                if (!IsSafeToRetry(command))
+                {
+                    throw;
+                }
+
                 await EnsureConnectedCoreAsync(cancellationToken, forceReconnect: true);
                 await ThrottleCommandAsync(cancellationToken);
                 return await SendCommandCoreAsync(command, cancellationToken);
@@ -265,15 +276,22 @@ public sealed class SourceRconClient : IAsyncDisposable
                ex.InnerException is IOException || ex.InnerException is SocketException;
     }
 
+    private static bool IsSafeToRetry(string command)
+    {
+        var value = command?.Trim() ?? string.Empty;
+        return value.StartsWith("#List", StringComparison.OrdinalIgnoreCase) ||
+               value.StartsWith("#Get", StringComparison.OrdinalIgnoreCase) ||
+               value.StartsWith("#PlayerInfo", StringComparison.OrdinalIgnoreCase) ||
+               value.StartsWith("#ServerInfo", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static void AddPacket(RconPacket packet, List<string> bodies, List<string> debugPackets, int commandId)
     {
         debugPackets.Add($"Id={packet.Id}, Type={packet.Type}, Body={packet.Body}");
 
+        // Responses from a previous command can arrive late (notably after #SetWeather).
+        // Never merge a packet with a different request id into the current command response.
         if (packet.Id == commandId && !string.IsNullOrWhiteSpace(packet.Body))
-        {
-            bodies.Add(packet.Body);
-        }
-        else if (!string.IsNullOrWhiteSpace(packet.Body) && packet.Id != -1)
         {
             bodies.Add(packet.Body);
         }

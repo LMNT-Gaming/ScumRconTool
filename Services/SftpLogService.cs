@@ -103,7 +103,9 @@ public sealed class SftpLogService
                 // Exakte Datei-Downloads (z. B. SCUM.db fuer Weekly Tasks) werden bewusst
                 // nicht unter dem KillLogs-Ordner gespeichert. FtpLocalDirectory kann bei manchen
                 // Setups auf einen Log-Unterordner zeigen und dort gibt es haeufig Lock-/Rechteprobleme.
-                var localDirectory = GetAppDataLocalDirectory(localSubDirectory);
+                var localDirectory = localSubDirectory.StartsWith("WeeklyTasks", StringComparison.OrdinalIgnoreCase)
+                    ? Path.Combine(EventDefinitionStore.DataDirectory, localSubDirectory)
+                    : GetAppDataLocalDirectory(localSubDirectory);
                 Directory.CreateDirectory(localDirectory);
                 LocalRetentionService.CleanupDirectory(localDirectory);
 
