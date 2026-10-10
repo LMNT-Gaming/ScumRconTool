@@ -1,6 +1,6 @@
 namespace ScumRconTool.ViewModels;
 
-public sealed class UiTextProvider : ObservableObject
+public sealed partial class UiTextProvider : ObservableObject
 {
     private readonly Dictionary<string, (string De, string En)> _texts = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -603,6 +603,7 @@ public sealed class UiTextProvider : ObservableObject
 
     public UiTextProvider(string? language)
     {
+        foreach (var (key, value) in SetupTexts) _texts[key] = value;
         _language = Normalize(language);
     }
 

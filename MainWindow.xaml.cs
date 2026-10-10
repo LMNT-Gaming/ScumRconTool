@@ -18,13 +18,13 @@ namespace ScumRconTool;
 
 public partial class MainWindow : Window
 {
-    private const int RedeemCodesTabIndex = 4;
-    private const int SettingRandomizerTabIndex = 8;
-    private const int EconomyTabIndex = 9;
-    private const int LootPacksTabIndex = 10;
-    private const int ScriptsTabIndex = 11;
-    private const int LogsTabIndex = 12;
-    private const int SettingsTabIndex = 13;
+    private int RedeemCodesTabIndex => MainTabs.Items.IndexOf(RedeemCodesTab);
+    private int SettingRandomizerTabIndex => MainTabs.Items.IndexOf(SettingRandomizerTab);
+    private int EconomyTabIndex => MainTabs.Items.IndexOf(EconomyTab);
+    private int LootPacksTabIndex => MainTabs.Items.IndexOf(LootPacksTab);
+    private int ScriptsTabIndex => MainTabs.Items.IndexOf(ScriptsTab);
+    private int LogsTabIndex => MainTabs.Items.IndexOf(LogsTab);
+    private int SettingsTabIndex => MainTabs.Items.IndexOf(SettingsTab);
     private const double MapWorldLeftX = 618000;
     private const double MapWorldRightX = -898000;
     private const double MapWorldTopY = 618000;
@@ -72,12 +72,14 @@ public partial class MainWindow : Window
     {
         _loadingPasswords = true;
         RconPasswordBox.Password = _viewModel.Settings.Password ?? string.Empty;
+        GgconHttpPasswordBox.Password = _viewModel.Settings.GgconHttpPassword ?? string.Empty;
         SftpPasswordBox.Password = _viewModel.Settings.FtpPassword ?? string.Empty;
         DiscordTokenBox.Password = _viewModel.Settings.DiscordBotToken ?? string.Empty;
         DiscordStatusTokenBox.Password = _viewModel.Settings.DiscordStatusBotToken ?? string.Empty;
         WeeklyTaskWebApiTokenBox.Password = _viewModel.Settings.WeeklyTaskWebApiToken ?? string.Empty;
         EconomyWebApiTokenBox.Password = _viewModel.Settings.EconomyWebApiToken ?? string.Empty;
         ShopWorkerApiTokenBox.Password = _viewModel.Settings.ShopWorkerApiToken ?? string.Empty;
+        InsuranceWebApiTokenBox.Password = _viewModel.Settings.VehicleInsurance.WebToken ?? string.Empty;
         _loadingPasswords = false;
 
         await _viewModel.InitializeUsageDirectoryAsync();
@@ -218,6 +220,30 @@ public partial class MainWindow : Window
     private void NavLogs_Click(object sender, RoutedEventArgs e) => SetMainTab(LogsTabIndex);
     private void NavSettings_Click(object sender, RoutedEventArgs e) => SetMainTab(SettingsTabIndex);
 
+    private void OpenSettingsSection_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement button) return;
+        SetupTabs.SelectedItem = SetupTabs.Items.OfType<TabItem>()
+            .FirstOrDefault(tab => Equals(tab.Tag, button.Tag));
+    }
+
+    private void OpenFeature_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement button) return;
+        var tab = MainTabs.Items.OfType<TabItem>().FirstOrDefault(item => Equals(item.Tag, button.Tag));
+        if (tab != null) SetMainTab(MainTabs.Items.IndexOf(tab));
+    }
+
+    private void GgconHttpPasswordBox_PasswordChanged(object sender, RoutedEventArgs e)
+    {
+        if (!_loadingPasswords) _viewModel.Settings.GgconHttpPassword = GgconHttpPasswordBox.Password;
+    }
+
+    private void InsuranceWebApiTokenBox_PasswordChanged(object sender, RoutedEventArgs e)
+    {
+        if (!_loadingPasswords) _viewModel.Settings.VehicleInsurance.WebToken = InsuranceWebApiTokenBox.Password;
+    }
+
     private void SetMainTab(int index)
     {
         if (!CanLeaveMainTab(MainTabs.SelectedIndex, index))
@@ -230,7 +256,7 @@ public partial class MainWindow : Window
 
     private void MainTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_handlingMainTabSelection ||
+        if (!ReferenceEquals(e.OriginalSource, MainTabs) || _handlingMainTabSelection ||
             e.AddedItems.Count == 0 ||
             e.AddedItems[0] is not TabItem ||
             (e.RemovedItems.Count > 0 && e.RemovedItems[0] is not TabItem))
