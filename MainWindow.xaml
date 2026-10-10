@@ -3338,10 +3338,11 @@
                                                 <TextBlock Text="{Binding Texts[UpdatesMaintenance]}" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,10" />
                                                 <CheckBox ToolTip="{Binding Texts[HelpAutoCheckForUpdates]}" Content="{Binding Texts[CheckUpdatesOnStart]}" IsChecked="{Binding Settings.AutoCheckForUpdates}" />
                                                 <TextBlock Text="{Binding Texts[UpdatesHint]}" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" Margin="0,0,0,12" />
-                                                <TextBlock Text="Update latest.json URL" Foreground="{StaticResource MutedTextBrush}" />
+                                                <TextBlock Text="{Binding Texts[UpdateSource]}" Foreground="{StaticResource MutedTextBrush}" />
                                                 <TextBox ToolTip="{Binding Texts[HelpUpdateLatestJsonUrl]}" Text="{Binding Settings.UpdateLatestJsonUrl, UpdateSourceTrigger=PropertyChanged}" />
                                                 <WrapPanel>
                                                     <Button Content="{Binding UpdateButtonText}" Command="{Binding CheckForUpdatesCommand}" />
+                                                    <Button Content="{Binding Texts[InstallUpdate]}" Command="{Binding InstallUpdateCommand}" IsEnabled="{Binding CanInstallUpdate}" />
                                                     <Button Content="{Binding Texts[OpenDownload]}" Command="{Binding OpenUpdateDownloadCommand}" />
                                                 </WrapPanel>
                                                 <TextBlock Text="{Binding UpdateStatusText}" TextWrapping="Wrap" />

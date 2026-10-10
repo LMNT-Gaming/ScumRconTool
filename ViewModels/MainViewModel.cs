@@ -448,6 +448,10 @@ private bool _weeklyTasksRunning;
 
     private string? _updateDownloadUrl;
     private string? _updatePatchNotesUrl;
+    private UpdateInfo? _availableUpdate;
+    private bool _updateBusy;
+    public bool CanInstallUpdate => UpdateAvailable && !_updateBusy;
+    public ICommand InstallUpdateCommand { get; }
 
     public ICommand SaveSettingsCommand { get; }
     public ICommand ConnectRconCommand { get; }
@@ -681,6 +685,7 @@ private bool _weeklyTasksRunning;
         OpenLogFolderCommand = new RelayCommand(_ => OpenLogFolder());
         CheckForUpdatesCommand = new RelayCommand(async _ => await CheckForUpdatesAsync(showMessage: true));
         OpenUpdateDownloadCommand = new RelayCommand(_ => OpenUpdateDownload());
+        InstallUpdateCommand = new RelayCommand(async _ => await InstallUpdateAsync());
         OpenGgconDocsCommand = new RelayCommand(_ => OpenGgconDocs());
         OpenUsageDirectorySourceCommand = new RelayCommand(_ => OpenUsageDirectorySource());
         SwitchLanguageCommand = new RelayCommand(_ => SwitchLanguage());
@@ -728,6 +733,9 @@ private bool _weeklyTasksRunning;
 
     public async Task CheckForUpdatesAsync(bool showMessage = false, bool silentIfCurrent = false, CancellationToken cancellationToken = default)
     {
+        if (_updateBusy) return;
+        _updateBusy = true;
+        OnPropertyChanged(nameof(CanInstallUpdate));
         try
         {
             VersionText = "Version " + UpdateService.GetCurrentVersionText();
@@ -750,18 +758,20 @@ private bool _weeklyTasksRunning;
 
             if (latest is null || string.IsNullOrWhiteSpace(latest.version))
             {
+                _availableUpdate = null;
                 UpdateAvailable = false;
                 UpdateButtonText = Texts["CheckUpdate"];
-                UpdateStatusText = T("UpdateInvalidResponse");
+                UpdateStatusText = T("UpdateNoRelease");
                 if (showMessage && !silentIfCurrent)
                 {
-                    MessageBox.Show("Update-Check lieferte keine gueltige Antwort.", "Red Raven Rcon Tool Update", MessageBoxButton.OK, MessageBoxImage.Information);
+                    MessageBox.Show(UpdateStatusText, "Red Raven Rcon Tool Update", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
                 return;
             }
 
             _updateDownloadUrl = latest.downloadUrl;
             _updatePatchNotesUrl = latest.patchNotesUrl;
+            _availableUpdate = latest;
 
             if (!UpdateService.IsNewer(latest.version))
             {
@@ -776,7 +786,7 @@ private bool _weeklyTasksRunning;
             }
 
             UpdateAvailable = true;
-            UpdateButtonText = Texts["DownloadUpdate"];
+            UpdateButtonText = Texts["CheckUpdate"];
             UpdateStatusText = latest.mandatory
                 ? Tf("UpdateMandatoryAvailableFormat", latest.version)
                 : Tf("UpdateAvailableFormat", latest.version);
@@ -784,16 +794,11 @@ private bool _weeklyTasksRunning;
 
             if (showMessage)
             {
-                var result = MessageBox.Show(
-                    $"Neue Version gefunden: v{latest.version}\nAktuell installiert: v{UpdateService.GetCurrentVersionText()}\n\nDownload jetzt oeffnen?",
+                MessageBox.Show(
+                    Tf("UpdateFoundInstallHint", latest.version),
                     "Red Raven Rcon Tool Update",
-                    MessageBoxButton.YesNo,
+                    MessageBoxButton.OK,
                     latest.mandatory ? MessageBoxImage.Warning : MessageBoxImage.Information);
-
-                if (result == MessageBoxResult.Yes)
-                {
-                    OpenUpdateDownload();
-                }
             }
         }
         catch (Exception ex)
@@ -3173,6 +3178,42 @@ private bool _weeklyTasksRunning;
                 Texts["Participants"],
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
+        }
+        finally
+        {
+            _updateBusy = false;
+            OnPropertyChanged(nameof(CanInstallUpdate));
+        }
+    }
+
+    private async Task InstallUpdateAsync()
+    {
+        if (!CanInstallUpdate || _availableUpdate is null) return;
+        if (MessageBox.Show(T("UpdateInstallConfirm"), "Red Raven Update", MessageBoxButton.YesNo,
+                MessageBoxImage.Question) != MessageBoxResult.Yes || !ConfirmScriptChangeAllowed()) return;
+        _updateBusy = true;
+        OnPropertyChanged(nameof(CanInstallUpdate));
+        try
+        {
+            var release = _availableUpdate;
+            var progress = new Progress<double>(p => UpdateStatusText = Tf("UpdateDownloadingPercent", p));
+            var work = await Task.Run(() => UpdateInstaller.PrepareAsync(release, progress));
+            // Save the current editor/configuration before restarting.
+            await SaveSettingsAsync();
+            UpdateStatusText = T("UpdateInstalling");
+            UpdateInstaller.Start(work);
+            Application.Current.MainWindow.Close();
+        }
+        catch (Exception ex)
+        {
+            UpdateStatusText = T("UpdateCheckFailed") + " " + ex.Message;
+            Log("Update installation failed: " + ex.Message);
+            MessageBox.Show(UpdateStatusText, "Red Raven Update", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            _updateBusy = false;
+            OnPropertyChanged(nameof(CanInstallUpdate));
         }
     }
     private async Task ResetWeeklyTaskEditorCounterAsync(WeeklyTaskEditorViewModel? source)

@@ -7,4 +7,5 @@ public sealed class UpdateInfo
     public string? patchNotesUrl { get; set; }
     public bool mandatory { get; set; }
     public string? sha256 { get; set; }
+    public long size { get; set; }
 }

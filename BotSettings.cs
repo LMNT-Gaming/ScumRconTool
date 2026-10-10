@@ -36,7 +36,7 @@ public sealed class BotSettings
     public int GgconHttpPort { get; set; } = 5376; // Direkter ggCON HTTP API Port. Bei GGHost oft RCON-Port minus 1.
     public string GgconHttpPassword { get; set; } = string.Empty;
     public bool AutoCheckForUpdates { get; set; } = true;
-    public string UpdateLatestJsonUrl { get; set; } = "https://lmnt-gaming.net/rrrt/latest.json";
+    public string UpdateLatestJsonUrl { get; set; } = "https://api.github.com/repos/LMNT-Gaming/ScumRconTool/releases/latest";
     public bool UsageDirectoryEnabled { get; set; }
     public string UsageDirectoryConsentVersion { get; set; } = string.Empty;
     public string UsageDirectoryConsentUtc { get; set; } = string.Empty;

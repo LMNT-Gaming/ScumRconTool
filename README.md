@@ -1,6 +1,6 @@
 # Red Raven Rcon Tool
 
-Windows-WPF-Verwaltung für SCUM-Server mit RCON, SFTP und Discord. Aktuelle Projektversion: **1.3.1**.
+Windows-WPF-Verwaltung für SCUM-Server mit RCON, SFTP und Discord. Aktuelle Projektversion: **1.3.2**.
 
 ## Funktionen
 
@@ -10,6 +10,7 @@ Windows-WPF-Verwaltung für SCUM-Server mit RCON, SFTP und Discord. Aktuelle Pro
 - Wiederverwendbare Herausforderungen und automatische Rotation mit begrenzter Anzahl, Wiederholungspause und Abschlussfrist.
 - SettingRandomizer mit gewichteten Werten, zeitlicher Planung, SFTP-Konfiguration und Discord-Ankündigungen.
 - Wirtschaft, Fahrzeugversicherung und zugehörige Web-Schnittstellen.
+- GitHub-Release-Updater mit Prüfsumme, Sicherung und Neustart unter Erweitert → Updates. [Veröffentlichung und Updates](docs/GITHUB-UPDATES.md).
 
 Die frühere Kill-Feed-Funktion wurde entfernt.
 
